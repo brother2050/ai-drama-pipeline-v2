@@ -29,12 +29,31 @@ cd ai-drama-pipeline-v2
 ### 2. 安装依赖
 
 ```bash
+# 基础安装（Web + Celery + TTS）
 pip install -e .
-# 或最小安装
-pip install fastapi uvicorn pyyaml python-dotenv httpx click rich Pillow celery redis pydantic
+
+# 含人脸检测（精确角色一致性）
+pip install -e ".[face]"
+
+# 含 GPU 加速
+pip install -e ".[gpu]"
+
+# 全量安装
+pip install -e ".[all]"
 ```
 
 > 安装后 `drama` 命令即可用。如遇问题请确认 `pyproject.toml` 中 entry point 为 `cli:cli`。
+
+#### 可选依赖说明
+
+| 包 | 用途 | 不装影响 |
+|---|------|---------|
+| `numpy` | 人脸嵌入余弦相似度 | 一致性检测用纯 Python 回退 |
+| `insightface` + `onnxruntime` | 精确人脸检测 | 回退到 face_recognition 或哈希 |
+| `face_recognition` | 次选人脸检测 | 回退到哈希模式 |
+| `opencv-python-headless` | 横转竖人脸定位 | 回退到模糊背景模式 |
+| `torch` | GPU 检测加速 | CPU 模式运行 |
+| `psycopg2-binary` | PostgreSQL 支持 | 使用 SQLite |
 
 ### 3. 启动 Redis（必选）
 
