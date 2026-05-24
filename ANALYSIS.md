@@ -107,6 +107,16 @@ Rate limit 定义了但从未调用、Rate limit 内存泄露、前端 XSS、add
 | 82 | generate_multi_char_prompt(None) 崩溃 | ✅ 空值保护 |
 | 83 | build_prompt 未知情绪标签直接拼接中文 | ✅ 回退到 neutral |
 
+### 第十三轮（1项）— 文件系统竞态
+
+| # | 问题 | 修复 |
+|---|------|------|
+| 84 | project_dir.mkdir 无 exist_ok（竞态条件） | ✅ 添加 exist_ok=True |
+
+---
+
+## ✅ 全部已修复（十三轮合计 84 项）
+
 ---
 
 ## 🟡 已知限制（非 bug，设计取舍）

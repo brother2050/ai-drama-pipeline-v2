@@ -53,7 +53,7 @@ def create_project(name: str, root: Path, console):
         console.print(f"[red]❌ 项目 '{name}' 已存在[/red]")
         return
 
-    project_dir.mkdir(parents=True)
+    project_dir.mkdir(parents=True, exist_ok=True)
     for sub in ["config", "storyboard", "story"]:
         src = root / sub
         if src.exists():
