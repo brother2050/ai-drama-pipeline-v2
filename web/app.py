@@ -26,6 +26,13 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI):
         logger.info("🎬 AI 短剧工作台 v2 已启动")
         yield
+        # 关闭数据库连接池
+        try:
+            from infra.database.pool import get_pool
+            pool = get_pool()
+            pool.close()
+        except Exception:
+            pass
         logger.info("🎬 工作台已关闭")
 
     app = FastAPI(title="AI 短剧工作台 v2", version="2.0", lifespan=lifespan)

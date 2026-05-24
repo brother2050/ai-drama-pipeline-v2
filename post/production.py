@@ -51,8 +51,12 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
     except Exception as e:
         logger.error(f"拼接失败: {e}")
         # 回退：简单拼接（无转场）
-        FFmpeg.concat([str(v) for v in videos], str(concat_out), transition="none")
-        logger.info(f"简单拼接完成: {concat_out}")
+        try:
+            FFmpeg.concat([str(v) for v in videos], str(concat_out), transition="none")
+            logger.info(f"简单拼接完成: {concat_out}")
+        except Exception as e2:
+            logger.error(f"简单拼接也失败: {e2}，跳过后期合成")
+            return
 
     # 添加字幕（如果有 SRT）
     srt_path = out_dir / f"episode_{episode:02d}.srt"

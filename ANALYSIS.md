@@ -59,6 +59,19 @@ Rate limit 定义了但从未调用、Rate limit 内存泄露、前端 XSS、add
 | 59 | portraits_task 不包裹异常 | ✅ try/except 返回 error dict |
 | 60 | _run_first_frame comfyui.generate 不包裹异常 | ✅ try/except 返回 error dict |
 
+### 第八轮（8项）— 前端 & 边界修复
+
+| # | 问题 | 修复 |
+|---|------|------|
+| 61 | addShot 缺少 outfit/action_en/dialogue_en 字段 | ✅ 补全字段 |
+| 62 | 分镜表内联输入框未转义 HTML（XSS 风险） | ✅ 使用 esc() 转义 |
+| 63 | editShot/editChar/editScene 编辑面板未转义 | ✅ 使用 esc() 转义 |
+| 64 | undo/redo 在分镜表页面不刷新视图 | ✅ 检测活跃页面并刷新 |
+| 65 | run_post 回退拼接未包裹异常 | ✅ try/except + 提前返回 |
+| 66 | web/app.py 关闭时未释放 DB 连接池 | ✅ lifespan 中关闭 |
+| 67 | saveCfg TTS/LipSync URL 不跟随后端切换 | ✅ 动态映射 + onchange |
+| 68 | loadSettings 未缓存配置 | ✅ 写入 _cache |
+
 ---
 
 ## 🟡 已知限制（非 bug，设计取舍）

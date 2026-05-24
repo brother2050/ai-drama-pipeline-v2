@@ -25,7 +25,10 @@ function undo() {
   invalidateCache(`storyboard/${ep}`);
   api(`/storyboard/${ep}`, { method:'POST', body:{shots} }).then(() => {
     toast(`↩ 撤销: ${entry.desc}`);
-    renderShotsGrid();
+    // 刷新当前活跃页面
+    const activePage = document.querySelector('.page.active');
+    if (activePage?.id === 'page-storyboard') loadStoryboard();
+    else renderShotsGrid();
   }).catch(e => toast(e.message, 'error'));
 }
 
@@ -37,7 +40,9 @@ function redo() {
   invalidateCache(`storyboard/${ep}`);
   api(`/storyboard/${ep}`, { method:'POST', body:{shots} }).then(() => {
     toast(`↪ 重做: ${entry.desc}`);
-    renderShotsGrid();
+    const activePage = document.querySelector('.page.active');
+    if (activePage?.id === 'page-storyboard') loadStoryboard();
+    else renderShotsGrid();
   }).catch(e => toast(e.message, 'error'));
 }
 
@@ -298,10 +303,10 @@ function editShot(idx) {
         <button class="btn btn-sm btn-outline" onclick="closeEdit()">✕</button>
       </div>
       <div class="edit-body">
-        <div class="edit-field"><label>场景</label><input id="ed-scene" value="${s.scene||''}"></div>
-        <div class="edit-field"><label>角色</label><input id="ed-chars" value="${s.characters||''}"></div>
-        <div class="edit-field"><label>动作</label><textarea id="ed-action" rows="2">${s.action||''}</textarea></div>
-        <div class="edit-field"><label>台词</label><textarea id="ed-dialogue" rows="2">${s.dialogue||''}</textarea></div>
+        <div class="edit-field"><label>场景</label><input id="ed-scene" value="${esc(s.scene||'')}"></div>
+        <div class="edit-field"><label>角色</label><input id="ed-chars" value="${esc(s.characters||'')}"></div>
+        <div class="edit-field"><label>动作</label><textarea id="ed-action" rows="2">${esc(s.action||'')}</textarea></div>
+        <div class="edit-field"><label>台词</label><textarea id="ed-dialogue" rows="2">${esc(s.dialogue||'')}</textarea></div>
         <div class="edit-field-row">
           <div class="edit-field"><label>运镜</label>
             <select id="ed-camera">${['固定','缓慢推近','跟随平移','手持晃动','环绕','俯视','仰视'].map(c=>`<option ${s.camera===c?'selected':''}>${c}</option>`).join('')}</select>
@@ -517,9 +522,9 @@ async function editChar(id) {
     <div class="edit-panel">
       <div class="edit-header"><h3>✏️ 编辑角色 ${id}</h3><button class="btn btn-sm btn-outline" onclick="document.getElementById('edit-char-overlay').remove()">✕</button></div>
       <div class="edit-body">
-        <div class="edit-field"><label>姓名</label><input id="ec-name" value="${c.name||''}"></div>
+        <div class="edit-field"><label>姓名</label><input id="ec-name" value="${esc(c.name||'')}"></div>
         <div class="edit-field"><label>性别</label><select id="ec-gender"><option value="">-</option><option value="male" ${c.gender==='male'?'selected':''}>男</option><option value="female" ${c.gender==='female'?'selected':''}>女</option></select></div>
-        <div class="edit-field"><label>外观</label><textarea id="ec-appearance" rows="3">${c.appearance||''}</textarea></div>
+        <div class="edit-field"><label>外观</label><textarea id="ec-appearance" rows="3">${esc(c.appearance||'')}</textarea></div>
       </div>
       <div class="edit-footer">
         <button class="btn btn-primary" onclick="saveCharEdit('${id}')">💾 保存</button>
@@ -601,9 +606,9 @@ async function editScene(id) {
     <div class="edit-panel">
       <div class="edit-header"><h3>✏️ 编辑场景 ${id}</h3><button class="btn btn-sm btn-outline" onclick="document.getElementById('edit-scene-overlay').remove()">✕</button></div>
       <div class="edit-body">
-        <div class="edit-field"><label>名称</label><input id="es-name" value="${s.name||''}"></div>
-        <div class="edit-field"><label>描述</label><textarea id="es-desc" rows="3">${s.description||''}</textarea></div>
-        <div class="edit-field"><label>光照</label><input id="es-lighting" value="${s.lighting||''}"></div>
+        <div class="edit-field"><label>名称</label><input id="es-name" value="${esc(s.name||'')}"></div>
+        <div class="edit-field"><label>描述</label><textarea id="es-desc" rows="3">${esc(s.description||'')}</textarea></div>
+        <div class="edit-field"><label>光照</label><input id="es-lighting" value="${esc(s.lighting||'')}"></div>
       </div>
       <div class="edit-footer">
         <button class="btn btn-primary" onclick="saveSceneEdit('${id}')">💾 保存</button>
@@ -651,10 +656,10 @@ async function loadStoryboard() {
       const sid = s.shot_id || String(i+1).padStart(3,'0');
       return `<tr>
         <td>${sid}</td>
-        <td><input class="sb-inline-input" value="${s.scene||''}" data-idx="${i}" data-field="scene" onchange="updateShotField(this)"></td>
-        <td><input class="sb-inline-input" value="${s.characters||''}" data-idx="${i}" data-field="characters" onchange="updateShotField(this)"></td>
-        <td><input class="sb-inline-input" value="${s.action||''}" data-idx="${i}" data-field="action" onchange="updateShotField(this)"></td>
-        <td><input class="sb-inline-input" value="${s.dialogue||''}" data-idx="${i}" data-field="dialogue" onchange="updateShotField(this)"></td>
+        <td><input class="sb-inline-input" value="${esc(s.scene||'')}" data-idx="${i}" data-field="scene" onchange="updateShotField(this)"></td>
+        <td><input class="sb-inline-input" value="${esc(s.characters||'')}" data-idx="${i}" data-field="characters" onchange="updateShotField(this)"></td>
+        <td><input class="sb-inline-input" value="${esc(s.action||'')}" data-idx="${i}" data-field="action" onchange="updateShotField(this)"></td>
+        <td><input class="sb-inline-input" value="${esc(s.dialogue||'')}" data-idx="${i}" data-field="dialogue" onchange="updateShotField(this)"></td>
         <td><select class="sb-inline-input" data-idx="${i}" data-field="camera" onchange="updateShotField(this)">
           ${['固定','缓慢推近','跟随平移','手持晃动','环绕','俯视','仰视'].map(c=>`<option ${s.camera===c?'selected':''}>${c}</option>`).join('')}
         </select></td>
@@ -725,7 +730,7 @@ async function addShot() {
     pushUndo(`添加镜头 ${newId}`);
     await api(`/storyboard/${ep}`, {method:'POST', body:{shots:[
       ...existing,
-      {episode:ep, shot_id:newId,scene:'',characters:'',action:'',dialogue:'......',camera:'固定',shot_type:'中景',duration:4,emotion:'neutral'}
+      {episode:ep, shot_id:newId,scene:'',characters:'',action:'',dialogue:'......',camera:'固定',shot_type:'中景',duration:4,emotion:'neutral',outfit:'',action_en:'',dialogue_en:''}
     ]}});
     invalidateCache(`storyboard/${ep}`);
     toast('已添加');
@@ -757,6 +762,7 @@ async function loadSettings() {
   const el = document.getElementById('page-settings');
   try {
     const [cfg,env,td] = await Promise.all([api('/config'),api('/system/env'),api('/tools')]);
+    _cache.set('config', {data: cfg, ts: Date.now()}); // 缓存配置供后端切换使用
     const t_tools = td.tools||{};
     const currentLang = localStorage.getItem('drama_lang') || 'zh';
     el.innerHTML = `
@@ -771,8 +777,8 @@ async function loadSettings() {
       <div class="card"><h2>💻 环境</h2><div class="info-grid"><div><span class="dim">OS:</span> ${env.os}</div><div><span class="dim">Python:</span> ${env.python}</div><div><span class="dim">GPU:</span> ${env.gpu.available?env.gpu.name+' ('+env.gpu.vram_mb+'MB)':'不可用'}</div></div></div>
       <div class="card"><h2>🔧 配置</h2>
         <div class="config-section"><h3>🎤 TTS</h3>
-          <div class="form-row"><label>后端</label><select id="cfg-tts">${['mimo-voicedesign','mimo-voiceclone','gpt-sovits','cosyvoice','fish-speech'].map(b=>`<option value="${b}" ${cfg.models?.tts_backend===b?'selected':''}>${b}</option>`).join('')}</select></div>
-          <div class="form-row"><label>地址</label><input id="cfg-tts-url" value="${cfg.models?.gpt_sovits?.api_url||''}"></div>
+          <div class="form-row"><label>后端</label><select id="cfg-tts" onchange="updateTtsUrl()">${['mimo-voicedesign','mimo-voiceclone','gpt-sovits','cosyvoice','fish-speech'].map(b=>`<option value="${b}" ${cfg.models?.tts_backend===b?'selected':''}>${b}</option>`).join('')}</select></div>
+          <div class="form-row"><label>地址</label><input id="cfg-tts-url" value="${cfg.models?.[document.getElementById('cfg-tts')?.value?.replace(/-/g,'_')]?.api_url||cfg.models?.gpt_sovits?.api_url||''}"></div>
           <div class="tool-status-inline"><span class="status-dot ${t_tools.tts?.available?'ok':'err'}"></span>${t_tools.tts?.available?'可用':t_tools.tts?.reason||'不可用'}</div>
         </div>
         <div class="config-section"><h3>🎨 ComfyUI</h3>
@@ -780,8 +786,8 @@ async function loadSettings() {
           <div class="tool-status-inline"><span class="status-dot ${t_tools.comfyui?.available?'ok':'err'}"></span>${t_tools.comfyui?.available?'可用':t_tools.comfyui?.reason||'不可用'}</div>
         </div>
         <div class="config-section"><h3>👄 LipSync</h3>
-          <div class="form-row"><label>后端</label><select id="cfg-lipsync">${['musetalk','sadtalker','wav2lip'].map(b=>`<option value="${b}" ${cfg.models?.lip_sync_backend===b?'selected':''}>${b}</option>`).join('')}</select></div>
-          <div class="form-row"><label>地址</label><input id="cfg-ls-url" value="${cfg.models?.musetalk?.api_url||''}"></div>
+          <div class="form-row"><label>后端</label><select id="cfg-lipsync" onchange="updateLsUrl()">${['musetalk','sadtalker','wav2lip'].map(b=>`<option value="${b}" ${cfg.models?.lip_sync_backend===b?'selected':''}>${b}</option>`).join('')}</select></div>
+          <div class="form-row"><label>地址</label><input id="cfg-ls-url" value="${cfg.models?.[document.getElementById('cfg-lipsync')?.value?.replace(/-/g,'_')]?.api_url||cfg.models?.musetalk?.api_url||''}"></div>
           <div class="tool-status-inline"><span class="status-dot ${t_tools.lipsync?.available?'ok':'err'}"></span>${t_tools.lipsync?.available?'可用':t_tools.lipsync?.reason||'不可用'}</div>
         </div>
         <button class="btn btn-primary" style="margin-top:1rem" onclick="saveCfg()">💾 保存</button>
@@ -791,13 +797,48 @@ async function loadSettings() {
 async function saveCfg() {
   try {
     const cfg = await api('/config');
-    cfg.models=cfg.models||{}; cfg.models.tts_backend=document.getElementById('cfg-tts')?.value;
+    cfg.models=cfg.models||{};
+    const ttsBackend = document.getElementById('cfg-tts')?.value;
+    cfg.models.tts_backend = ttsBackend;
     cfg.models.lip_sync_backend=document.getElementById('cfg-lipsync')?.value;
-    cfg.models.gpt_sovits=cfg.models.gpt_sovits||{}; cfg.models.gpt_sovits.api_url=document.getElementById('cfg-tts-url')?.value||'';
-    cfg.models.musetalk=cfg.models.musetalk||{}; cfg.models.musetalk.api_url=document.getElementById('cfg-ls-url')?.value||'';
+    // 保存 TTS URL 到对应后端配置
+    const ttsKey = ttsBackend?.replace(/-/g, '_');
+    if (ttsKey) {
+      cfg.models[ttsKey] = cfg.models[ttsKey]||{};
+      cfg.models[ttsKey].api_url = document.getElementById('cfg-tts-url')?.value||'';
+    }
+    const lsBackend = document.getElementById('cfg-lipsync')?.value;
+    const lsKey = lsBackend?.replace(/-/g, '_');
+    if (lsKey) {
+      cfg.models[lsKey] = cfg.models[lsKey]||{};
+      cfg.models[lsKey].api_url = document.getElementById('cfg-ls-url')?.value||'';
+    }
     cfg.comfyui=cfg.comfyui||{}; cfg.comfyui.url=document.getElementById('cfg-comfyui')?.value||'';
     await api('/config',{method:'POST',body:cfg}); toast('✅ 已保存');
   } catch(e) { toast(e.message, 'error'); }
+}
+
+// TTS 后端切换时更新 URL
+function updateTtsUrl() {
+  const backend = document.getElementById('cfg-tts')?.value;
+  const key = backend?.replace(/-/g, '_');
+  // 从缓存的配置中读取对应后端的 URL
+  const entry = _cache.get('config');
+  const cfg = entry?.data || {};
+  const url = cfg.models?.[key]?.api_url || '';
+  const urlInput = document.getElementById('cfg-tts-url');
+  if (urlInput) urlInput.value = url;
+}
+
+// LipSync 后端切换时更新 URL
+function updateLsUrl() {
+  const backend = document.getElementById('cfg-lipsync')?.value;
+  const key = backend?.replace(/-/g, '_');
+  const entry = _cache.get('config');
+  const cfg = entry?.data || {};
+  const url = cfg.models?.[key]?.api_url || '';
+  const urlInput = document.getElementById('cfg-ls-url');
+  if (urlInput) urlInput.value = url;
 }
 
 loadDashboard();
