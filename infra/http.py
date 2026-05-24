@@ -62,14 +62,17 @@ class ApiClient:
                        data: dict[str, str] | None = None, **kwargs) -> bytes:
         """上传文件并返回响应内容"""
         upload_files = {}
-        for field, filepath in files.items():
-            upload_files[field] = (Path(filepath).name, open(filepath, "rb"))
+        opened = []
         try:
+            for field, filepath in files.items():
+                fh = open(filepath, "rb")
+                opened.append(fh)
+                upload_files[field] = (Path(filepath).name, fh)
             r = self._client.post(path, files=upload_files, data=data, **kwargs)
             r.raise_for_status()
             return r.content
         finally:
-            for _, (_, fh) in upload_files.items():
+            for fh in opened:
                 fh.close()
 
     def download(self, url: str, output: str, **kwargs) -> str:

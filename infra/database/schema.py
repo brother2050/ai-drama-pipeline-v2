@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS episodes (
 );
 
 CREATE TABLE IF NOT EXISTS shots (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     episode INTEGER,
     shot_id TEXT,
     scene_id TEXT,
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS shots (
 );
 
 CREATE TABLE IF NOT EXISTS generation_status (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     episode INTEGER,
     shot_id TEXT,
     stage TEXT,

@@ -13,7 +13,7 @@ class TTLCache:
     def __init__(self, ttl: float = 300, maxsize: int = 128):
         self._ttl = ttl
         self._maxsize = maxsize
-        self._data: dict[str, tuple[float, any]] = {}
+        self._data: dict[str, tuple[float, object]] = {}
         self._lock = threading.Lock()
 
     def get(self, key: str, default=None):

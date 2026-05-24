@@ -38,9 +38,14 @@ def _extract_keyframes(video_path: str, max_frames: int = 5) -> list[str]:
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     if r.returncode != 0:
         logger.warning(f"关键帧抽取失败: {r.stderr[-200:]}")
+        import shutil as _shutil
+        _shutil.rmtree(tmp_dir, ignore_errors=True)
         return []
 
     frames = sorted(str(p) for p in Path(tmp_dir).glob("frame_*.png"))
+    if not frames:
+        import shutil as _shutil
+        _shutil.rmtree(tmp_dir, ignore_errors=True)
     return frames
 
 
@@ -172,7 +177,7 @@ def check_video_consistency(video_path: str, ref_images: list[str],
         return _check_with_hash(video_path, ref_images, frames)
 
 
-def _check_with_embeddings(frames: list[str], ref_embeddings: list[float],
+def _check_with_embeddings(frames: list[str], ref_embeddings: list[list[float]],
                             threshold: float, video_path: str) -> dict:
     """使用人脸嵌入进行一致性检查"""
     scores = []
