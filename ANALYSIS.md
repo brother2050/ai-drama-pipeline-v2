@@ -113,6 +113,14 @@ Rate limit 定义了但从未调用、Rate limit 内存泄露、前端 XSS、add
 |---|------|------|
 | 84 | project_dir.mkdir 无 exist_ok（竞态条件） | ✅ 添加 exist_ok=True |
 
+### 第十四轮（3项）— 向量相似度 & 配乐时长
+
+| # | 问题 | 修复 |
+|---|------|------|
+| 85 | _compute_similarity 纯 Python 回退不检查向量长度 | ✅ len 检查 |
+| 86 | video_consistency _cosine_similarity 同样问题 | ✅ len 检查 |
+| 87 | MusicGenerator duration <= 0 时 ffmpeg 挂起 | ✅ max(1, duration) 钳位 |
+
 ---
 
 ## ✅ 全部已修复（十三轮合计 84 项）

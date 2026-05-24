@@ -30,6 +30,7 @@ class MusicGenerator:
 
     def _template(self, duration: float, output: str, mood: str) -> str:
         """ffmpeg 模板配乐（最终回退）"""
+        duration = max(1, duration)  # 至少 1 秒
         freq = {"happy": 440, "sad": 330, "angry": 520, "romantic": 392}.get(mood, 400)
         ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
         cmd = [ffmpeg, "-y", "-f", "lavfi", "-i",

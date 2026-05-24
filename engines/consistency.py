@@ -210,6 +210,8 @@ class CharacterConsistency:
             return float(dot / norm)
         except ImportError:
             # 纯 Python 回退
+            if len(emb1) != len(emb2):
+                return 0.0
             dot = sum(x * y for x, y in zip(emb1, emb2))
             norm1 = sum(x * x for x in emb1) ** 0.5
             norm2 = sum(y * y for y in emb2) ** 0.5

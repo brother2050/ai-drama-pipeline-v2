@@ -124,6 +124,8 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
         norm = np.linalg.norm(va) * np.linalg.norm(vb)
         return float(dot / norm) if norm > 0 else 0.0
     except ImportError:
+        if len(a) != len(b):
+            return 0.0
         dot = sum(x * y for x, y in zip(a, b))
         n1 = sum(x * x for x in a) ** 0.5
         n2 = sum(y * y for y in b) ** 0.5
