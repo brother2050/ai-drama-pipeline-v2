@@ -1,0 +1,37 @@
+"""机位/景别规范化"""
+from __future__ import annotations
+
+CAMERA_ALIASES = {
+    "环绕摇镜头": "环绕", "俯冲推镜": "缓慢推近",
+    "横移跟拍": "跟随平移", "手持轻微晃动": "手持晃动",
+}
+
+VALID_CAMERAS = frozenset({
+    "固定", "缓慢推近", "跟随平移", "手持晃动", "环绕", "俯视", "仰视",
+})
+
+VALID_SHOT_TYPES = frozenset({
+    "特写", "近景", "中景", "过肩", "全身", "全景", "远景", "双人全景",
+})
+
+SHOT_KEYWORDS = ("特写", "近景", "中景", "过肩", "全身", "全景", "远景")
+
+
+def normalize_camera(raw: str) -> str:
+    raw = raw.strip().strip('"').strip("'")
+    if not raw or raw == "无":
+        return "固定"
+    first = raw.split(",")[0].strip()
+    return CAMERA_ALIASES.get(first, first)
+
+
+def normalize_shot_type(raw: str) -> str:
+    raw = raw.strip().strip('"').strip("'")
+    if not raw:
+        return "中景"
+    if raw in VALID_SHOT_TYPES:
+        return raw
+    for kw in SHOT_KEYWORDS:
+        if kw in raw:
+            return kw
+    return "中景"
