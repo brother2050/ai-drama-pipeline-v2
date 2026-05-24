@@ -38,8 +38,6 @@ pip install -e .
 # 含人脸检测（精确角色一致性检查）
 pip install -e ".[face]"
 
-# 含 GPU 加速
-pip install -e ".[gpu]"
 
 # 全量安装
 pip install -e ".[all]"
@@ -53,7 +51,6 @@ pip install -e ".[all]"
 | `.[face]` | numpy, insightface, onnxruntime | 精确人脸检测 | 回退到图片哈希 |
 | `.[face]` | face_recognition | 次选人脸检测 | 回退到哈希 |
 | `.[face]` | opencv-python-headless | 横转竖人脸定位 | 回退到模糊背景 |
-| `.[gpu]` | torch | GPU 检测加速 | CPU 模式运行 |
 
 不装可选包时，各功能自动降级，不会崩溃。
 
