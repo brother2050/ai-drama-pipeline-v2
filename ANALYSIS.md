@@ -121,6 +121,14 @@ Rate limit 定义了但从未调用、Rate limit 内存泄露、前端 XSS、add
 | 86 | video_consistency _cosine_similarity 同样问题 | ✅ len 检查 |
 | 87 | MusicGenerator duration <= 0 时 ffmpeg 挂起 | ✅ max(1, duration) 钳位 |
 
+### 第十五轮（3项）— 代码清理
+
+| # | 问题 | 修复 |
+|---|------|------|
+| 88 | infra/transitions.py accumulated_duration 未使用 | ✅ 删除 |
+| 89 | web/routers/api.py subprocess/BaseModel/Any 未使用 | ✅ 删除 |
+| 90 | engines/workflow_builder.py Any 未使用 | ✅ 删除 |
+
 ---
 
 ## ✅ 全部已修复（十三轮合计 84 项）

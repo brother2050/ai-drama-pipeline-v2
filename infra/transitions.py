@@ -88,9 +88,8 @@ def build_concat_filter(inputs: list[str], output: str, transition: str = "cross
         filter_parts.append(f"[0:v][1:v]xfade=transition={xfade}:duration={duration}:offset={offset}[v]")
     else:
         # 多段视频: 链式 xfade
-        # offset 计算: 每段转场的起始时间 = 前面所有视频总时长 - 已消耗的转场时长
+        # offset 计算: 每段转场的起始时间 = sum(durations[:i+1]) - duration * i
         prev_label = "0:v"
-        accumulated_duration = 0.0  # 累积已输出的视频时长
 
         for i in range(1, len(inputs)):
             # 当前转场开始时间 = 累积输出时长 + 当前视频时长 - 转场时长

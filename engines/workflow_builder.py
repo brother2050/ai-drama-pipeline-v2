@@ -12,7 +12,6 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any
 
 from engines.workflow import (
     find_character_load_image_nodes, find_first_node, find_load_image_nodes,
