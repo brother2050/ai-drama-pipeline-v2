@@ -1,7 +1,6 @@
-// AI 短剧工作台 v2 — 前端应用
+// AI 短剧工作台 v2 — 前端应用（人性化交互版）
 const API = '/api';
 
-// ── 工具函数 ──
 async function api(path, opts = {}) {
   const r = await fetch(API + path, {
     headers: { 'Content-Type': 'application/json', ...opts.headers },
@@ -9,9 +8,8 @@ async function api(path, opts = {}) {
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   if (!r.ok) {
-    const text = await r.text();
-    try { const j = JSON.parse(text); throw new Error(j.detail || text); }
-    catch(e) { if (e.message) throw e; throw new Error(text); }
+    const t = await r.text();
+    try { const j = JSON.parse(t); throw new Error(j.detail || t); } catch(e) { if(e.message) throw e; throw new Error(t); }
   }
   return r.json();
 }
@@ -24,31 +22,16 @@ function toast(msg, type = 'success') {
   setTimeout(() => el.remove(), 3500);
 }
 
-function h(tag, attrs = {}, ...children) {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'onclick') el.onclick = v;
-    else if (k === 'className') el.className = v;
-    else el.setAttribute(k, v);
-  }
-  for (const c of children) {
-    if (typeof c === 'string') el.appendChild(document.createTextNode(c));
-    else if (c) el.appendChild(c);
-  }
-  return el;
-}
-
-// ── 任务轮询 ──
 async function pollTask(taskId, onProgress) {
   while (true) {
     const info = await api(`/tasks/${taskId}`);
     if (onProgress) onProgress(info);
-    if (['success', 'failed', 'cancelled'].includes(info.status)) return info;
+    if (['success','failed','cancelled'].includes(info.status)) return info;
     await new Promise(r => setTimeout(r, 800));
   }
 }
 
-// ── 页面路由 ──
+// ── 路由 ──
 document.querySelectorAll('.nav-item').forEach(item => {
   item.onclick = () => {
     document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
@@ -58,580 +41,409 @@ document.querySelectorAll('.nav-item').forEach(item => {
     loadPage(item.dataset.page);
   };
 });
-
-function navTo(page) {
-  document.querySelector(`.nav-item[data-page="${page}"]`).click();
-}
-
-async function loadPage(page) {
-  const loaders = { dashboard: loadDashboard, characters: loadCharacters, scenes: loadScenes,
-                    storyboard: loadStoryboard, pipeline: loadPipeline, projects: loadProjects,
-                    settings: loadSettings };
-  if (loaders[page]) await loaders[page]();
-}
-
-// ══════════════════════════════════════════════════════════
-// 工具状态组件
-// ══════════════════════════════════════════════════════════
-
-const TOOL_META = {
-  redis:    { icon: '🔴', label: 'Redis',       desc: '任务队列（必选）', type: 'infra' },
-  celery:   { icon: '🔧', label: 'Celery Worker', desc: '异步任务处理（必选）', type: 'infra' },
-  tts:      { icon: '🎤', label: 'TTS 语音',     desc: '文字转语音', type: 'ai' },
-  comfyui:  { icon: '🎨', label: 'ComfyUI',      desc: '图片/视频生成（GPU）', type: 'gpu' },
-  lipsync:  { icon: '👄', label: '口型同步',      desc: 'LipSync（GPU）', type: 'gpu' },
-  llm:      { icon: '🧠', label: 'LLM 大模型',   desc: '文本生成/翻译', type: 'gpu' },
-  music:    { icon: '🎵', label: '配乐',          desc: '背景音乐生成', type: 'ai' },
-  ffmpeg:   { icon: '🎞️', label: 'FFmpeg',       desc: '音视频处理（必选）', type: 'infra' },
-};
-
-function renderToolCard(name, info) {
-  const meta = TOOL_META[name] || { icon: '❓', label: name, desc: '', type: 'other' };
-  const ok = info.available;
-  const statusClass = ok ? 'tool-ok' : (meta.type === 'infra' ? 'tool-err' : 'tool-off');
-  const statusText = ok ? '可用' : (info.reason || '不可用');
-  const typeBadge = { infra: 'badge-red', gpu: 'badge-purple', ai: 'badge-blue' }[meta.type] || 'badge-gray';
-
-  return `
-    <div class="tool-card ${statusClass}">
-      <div class="tool-header">
-        <span class="tool-icon">${meta.icon}</span>
-        <span class="tool-name">${meta.label}</span>
-        <span class="badge ${typeBadge}">${meta.type}</span>
-      </div>
-      <div class="tool-desc">${meta.desc}</div>
-      <div class="tool-status">
-        <span class="status-dot ${ok ? 'ok' : 'err'}"></span>
-        <span>${statusText}</span>
-        ${info.backend ? `<span class="tool-backend">[${info.backend}]</span>` : ''}
-      </div>
-      ${info.url ? `<div class="tool-url">${info.url}</div>` : ''}
-    </div>`;
-}
-
-async function loadToolStatus() {
-  try {
-    const data = await api('/tools');
-    return data.tools;
-  } catch {
-    return {};
-  }
+function navTo(p) { document.querySelector(`.nav-item[data-page="${p}"]`).click(); }
+async function loadPage(p) {
+  const m = { dashboard:loadDashboard, characters:loadCharacters, scenes:loadScenes,
+              storyboard:loadStoryboard, pipeline:loadPipeline, projects:loadProjects, settings:loadSettings };
+  if (m[p]) await m[p]();
 }
 
 // ══════════════════════════════════════════════════════════
 // 仪表盘
 // ══════════════════════════════════════════════════════════
 
+const TOOL_META = {
+  redis:{icon:'🔴',label:'Redis'}, celery:{icon:'🔧',label:'Celery'}, ffmpeg:{icon:'🎞️',label:'FFmpeg'},
+  tts:{icon:'🎤',label:'TTS'}, comfyui:{icon:'🎨',label:'ComfyUI'}, lipsync:{icon:'👄',label:'LipSync'},
+  llm:{icon:'🧠',label:'LLM'}, music:{icon:'🎵',label:'配乐'},
+};
+
 async function loadDashboard() {
   const el = document.getElementById('page-dashboard');
-  el.innerHTML = '<div class="card"><h2>⏳ 加载中...</h2></div>';
   try {
-    const status = await api('/system/status');
-    const tools = status.tools;
-    const infra = ['redis', 'celery', 'ffmpeg'];
-    const ai = ['tts', 'music'];
-    const gpu = ['comfyui', 'lipsync', 'llm'];
-
-    el.innerHTML = `
-      <div class="card">
-        <h2>📊 系统状态</h2>
-        <div class="section-label">基础设施（必选）</div>
-        <div class="tool-grid">${infra.map(n => renderToolCard(n, tools[n] || {})).join('')}</div>
-        <div class="section-label">AI 工具（按需开启）</div>
-        <div class="tool-grid">${ai.map(n => renderToolCard(n, tools[n] || {})).join('')}</div>
-        <div class="section-label">GPU 工具（昂贵，按需开启）</div>
-        <div class="tool-grid">${gpu.map(n => renderToolCard(n, tools[n] || {})).join('')}</div>
-      </div>
-      <div class="card">
-        <h2>🚀 快速操作</h2>
-        <div class="quick-actions">
-          <button class="btn btn-primary" onclick="navTo('storyboard')">📝 编辑分镜</button>
-          <button class="btn btn-success" onclick="navTo('pipeline')">🎬 生产管线</button>
-          <button class="btn btn-outline" onclick="navTo('settings')">⚙️ 配置工具</button>
-        </div>
-      </div>`;
-  } catch (e) {
-    el.innerHTML = `<div class="card"><h2>❌ 连接失败</h2><p>${e.message}</p></div>`;
-  }
+    const s = await api('/system/status');
+    const t = s.tools;
+    const groups = [
+      {label:'基础设施', keys:['redis','celery','ffmpeg']},
+      {label:'AI 工具', keys:['tts','music']},
+      {label:'GPU 工具', keys:['comfyui','lipsync','llm']},
+    ];
+    let html = '';
+    for (const g of groups) {
+      html += `<div class="section-label">${g.label}</div><div class="tool-grid">`;
+      for (const k of g.keys) {
+        const info = t[k]||{}; const meta = TOOL_META[k]||{};
+        html += `<div class="tool-card ${info.available?'tool-ok':'tool-off'}">
+          <span>${meta.icon} ${meta.label}</span>
+          <span class="status-dot ${info.available?'ok':'err'}"></span>
+          <span class="dim" style="font-size:0.75rem">${info.available?'可用':info.reason||'不可用'}</span>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    el.innerHTML = `<div class="card"><h2>📊 系统状态</h2>${html}</div>
+      <div class="card"><h2>🚀 开始</h2><p class="dim" style="margin-bottom:0.5rem">进入工作台，选择镜头逐步处理</p>
+      <button class="btn btn-primary" onclick="navTo('pipeline')">🎬 进入工作台</button></div>`;
+  } catch(e) { el.innerHTML = `<div class="card"><h2>❌ 连接失败</h2><p>${e.message}</p></div>`; }
 }
 
 // ══════════════════════════════════════════════════════════
-// 生产管线 — 每个步骤独立可执行
+// 生产工作台 — 核心
 // ══════════════════════════════════════════════════════════
+
+let ep = 1, shots = [], activeShot = 0;
 
 async function loadPipeline() {
   const el = document.getElementById('page-pipeline');
-  const tools = await loadToolStatus();
+  el.innerHTML = '<div class="card"><h2>⏳ 加载...</h2></div>';
+  try {
+    const d = await api(`/storyboard/${ep}`);
+    shots = d.shots || [];
+    if (!shots.length) {
+      el.innerHTML = `<div class="card"><h2>暂无分镜</h2><p class="dim">先在分镜表添加镜头</p>
+        <button class="btn btn-primary" style="margin-top:0.5rem" onclick="navTo('storyboard')">去编辑</button></div>`;
+      return;
+    }
+    renderWB();
+  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${e.message}</p></div>`; }
+}
 
-  const steps = [
-    { id: 'tts',        icon: '🎤', name: 'TTS 合成',   desc: '台词 → 音频',             need: ['tts'],     api: '/steps/tts' },
-    { id: 'firstframe', icon: '🎨', name: '首帧生成',   desc: '镜头描述 → 首帧图片',      need: ['comfyui'], api: '/steps/first-frame' },
-    { id: 'video',      icon: '🎬', name: '视频生成',   desc: '首帧 → 视频片段',          need: ['comfyui'], api: '/steps/video' },
-    { id: 'lipsync',    icon: '👄', name: '口型同步',   desc: '视频 + 音频 → 同步视频',   need: ['lipsync'], api: '/steps/lipsync' },
-    { id: 'subtitle',   icon: '📝', name: '字幕生成',   desc: '从分镜表生成 SRT 字幕',    need: ['ffmpeg'],  api: '/tools/subtitle' },
-    { id: 'music',      icon: '🎵', name: '配乐生成',   desc: '生成背景音乐',             need: ['music'],   api: '/tools/music' },
-    { id: 'post',       icon: '🎞️', name: '后期合成',   desc: '拼接 + 字幕 + BGM',        need: ['ffmpeg'],  api: '/tools/post' },
-  ];
-
-  // 一键流程
-  const fullSteps = [
-    { id: 'preview',  icon: '👁️', name: '快速预览',  desc: '低分辨率快速预览', need: ['tts', 'comfyui'] },
-    { id: 'produce',  icon: '🎬', name: '完整生产',  desc: '全分辨率全流程',   need: ['tts', 'comfyui', 'lipsync', 'ffmpeg'] },
-  ];
-
-  function canRun(needs) {
-    return needs.every(n => tools[n]?.available);
-  }
-
-  function renderStep(step, isFull = false) {
-    const available = canRun(step.need);
-    const missingDeps = step.need.filter(n => !tools[n]?.available);
-    const missing = missingDeps.map(n => TOOL_META[n]?.label || n).join(', ');
-    const action = isFull ? `runFull('${step.id}')` : `runStep('${step.api}', '${step.id}')`;
-
-    return `
-      <div class="step-card ${available ? 'step-ready' : 'step-blocked'}">
-        <div class="step-icon">${step.icon}</div>
-        <div class="step-info">
-          <div class="step-name">${step.name}</div>
-          <div class="step-desc">${step.desc}</div>
-          ${!available ? `<div class="step-missing">⚠ 缺少: ${missing}</div>` : ''}
-        </div>
-        <button class="btn ${available ? 'btn-primary' : 'btn-disabled'}"
-                ${available ? `onclick="${action}"` : 'disabled'}>
-          ${available ? '执行' : '不可用'}
-        </button>
-      </div>`;
-  }
-
+function renderWB() {
+  const el = document.getElementById('page-pipeline');
   el.innerHTML = `
-    <div class="card">
-      <h2>🔧 单步工具 — 按需执行，用哪个开哪个</h2>
-      <p class="dim">每个工具独立运行，不需要的 GPU 工具可以不开，节省成本</p>
-      <div class="step-list">${steps.map(s => renderStep(s)).join('')}</div>
+    <div class="wb-top-bar">
+      <h2>🎬 第${ep}集 · ${shots.length} 个镜头</h2>
+      <div class="wb-batch-btns">
+        <button class="btn btn-outline" onclick="batchRun('tts')">🎤 批量 TTS</button>
+        <button class="btn btn-outline" onclick="batchRun('first_frame')">🎨 批量首帧</button>
+        <button class="btn btn-outline" onclick="batchRun('video')">🎬 批量视频</button>
+        <button class="btn btn-outline" onclick="batchRun('lipsync')">👄 批量口型</button>
+      </div>
     </div>
-    <div class="card">
-      <h2>⚡ 一键流程 — 自动编排所有步骤</h2>
-      <div class="step-list">${fullSteps.map(s => renderStep(s, true)).join('')}</div>
-    </div>
-    <div class="card" id="task-monitor" style="display:none">
-      <h2>📡 任务进度</h2>
-      <div id="task-progress"></div>
+    <div id="wb-shots-grid" class="wb-shots-grid"></div>
+    <div id="wb-batch-status" class="wb-batch-status" style="display:none"></div>`;
+  renderShotsGrid();
+}
+
+function renderShotsGrid() {
+  const grid = document.getElementById('wb-shots-grid');
+  if (!grid) return;
+  grid.innerHTML = shots.map((s, i) => {
+    const sid = s.shot_id || String(i+1).padStart(3,'0');
+    const dlg = (s.dialogue||'').substring(0,20) || '...';
+    const act = (s.action||'').substring(0,20) || '...';
+    return `<div class="wb-shot-card" id="shot-${sid}">
+      <div class="wb-shot-head">
+        <span class="wb-shot-num">${sid}</span>
+        <span class="wb-shot-char">${s.characters||''}</span>
+        <span class="wb-shot-scene">${s.scene||''}</span>
+      </div>
+      <div class="wb-shot-body">
+        <div class="wb-shot-text">
+          <div class="wb-shot-action">${act}</div>
+          <div class="wb-shot-dialogue">"${dlg}"</div>
+        </div>
+        <div class="wb-shot-resources" id="res-${sid}"></div>
+      </div>
+      <div class="wb-shot-actions">
+        <button class="btn btn-xs" onclick="editShot(${i})" title="编辑">✏️</button>
+        <button class="btn btn-xs" onclick="runOne('tts',${i})" title="TTS">🎤</button>
+        <button class="btn btn-xs" onclick="runOne('first_frame',${i})" title="首帧">🎨</button>
+        <button class="btn btn-xs" onclick="runOne('video',${i})" title="视频">🎬</button>
+        <button class="btn btn-xs" onclick="runOne('lipsync',${i})" title="口型">👄</button>
+      </div>
     </div>`;
+  }).join('');
+
+  // 加载每个镜头的已有资源
+  shots.forEach((s, i) => loadResources(i));
 }
 
-async function runStep(apiPath, stepId) {
-  const monitor = document.getElementById('task-monitor');
-  const progressEl = document.getElementById('task-progress');
-  monitor.style.display = 'block';
-
-  // 按步骤构建请求参数
-  let body = {};
-  const perShotSteps = ['tts', 'firstframe', 'video', 'lipsync'];
-
-  if (perShotSteps.includes(stepId)) {
-    // 镜头级步骤：需要 episode + shot_id
-    const shotId = prompt('镜头 ID (如 001):', '001');
-    if (!shotId) return;
-    body = { episode: 1, shot_id: shotId };
-  } else if (stepId === 'subtitle') {
-    body = { episode: 1 };
-  } else if (stepId === 'music') {
-    const duration = parseFloat(prompt('时长（秒）:', '30'));
-    if (!duration) return;
-    body = { duration, mood: 'neutral' };
-  } else if (stepId === 'post') {
-    body = { episode: 1, vertical: false };
-  }
-
-  progressEl.innerHTML = `<div class="task-running">⏳ 提交中...</div>`;
+async function loadResources(idx) {
+  const s = shots[idx];
+  const sid = s.shot_id || String(idx+1).padStart(3,'0');
+  const el = document.getElementById(`res-${sid}`);
+  if (!el) return;
 
   try {
-    const r = await fetch(API + apiPath, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    const d = await api(`/shots/${ep}/${sid}/resources`);
+    const r = d.resources || {};
+    let html = '';
+    if (r.audio) html += `<div class="res-chip res-audio" onclick="previewRes('${sid}','audio','${r.audio}')">🎤 <audio src="/api/files/${ep}/${sid}/audio.wav" preload="none"></audio></div>`;
+    if (r.frame) html += `<div class="res-chip res-img" onclick="previewRes('${sid}','frame','${r.frame}')"><img src="/api/files/${ep}/${sid}/frame.png" loading="lazy"></div>`;
+    if (r.video) html += `<div class="res-chip res-video" onclick="previewRes('${sid}','video','${r.video}')">🎬</div>`;
+    if (r.synced) html += `<div class="res-chip res-video" onclick="previewRes('${sid}','synced','${r.synced}')">👄</div>`;
+    if (!html) html = '<span class="dim" style="font-size:0.7rem">暂无资源</span>';
+    el.innerHTML = html;
+  } catch {}
+}
+
+function previewRes(sid, type, path) {
+  const overlay = document.createElement('div');
+  overlay.className = 'res-overlay';
+  overlay.onclick = () => overlay.remove();
+
+  let content = '';
+  if (type === 'audio') {
+    content = `<audio controls src="/api/files/${ep}/${sid}/audio.wav" style="width:400px"></audio>`;
+  } else if (type === 'frame') {
+    content = `<img src="/api/files/${ep}/${sid}/frame.png" style="max-width:90vw;max-height:80vh;border-radius:8px">`;
+  } else {
+    content = `<video controls src="/api/files/${ep}/${sid}/${type === 'synced' ? 'synced.mp4' : 'video.mp4'}" style="max-width:90vw;max-height:80vh;border-radius:8px"></video>`;
+  }
+  overlay.innerHTML = `<div class="res-overlay-inner">${content}<div class="dim" style="margin-top:0.5rem">点击空白处关闭</div></div>`;
+  document.body.appendChild(overlay);
+}
+
+// ── 单镜头编辑 ──
+
+function editShot(idx) {
+  activeShot = idx;
+  const s = shots[idx];
+  const sid = s.shot_id || String(idx+1).padStart(3,'0');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'edit-overlay';
+  overlay.id = 'edit-overlay';
+
+  overlay.innerHTML = `
+    <div class="edit-panel">
+      <div class="edit-header">
+        <h3>✏️ 编辑镜头 ${sid}</h3>
+        <button class="btn btn-sm btn-outline" onclick="closeEdit()">✕</button>
+      </div>
+      <div class="edit-body">
+        <div class="edit-field"><label>场景</label><input id="ed-scene" value="${s.scene||''}"></div>
+        <div class="edit-field"><label>角色</label><input id="ed-chars" value="${s.characters||''}"></div>
+        <div class="edit-field"><label>动作</label><textarea id="ed-action" rows="2">${s.action||''}</textarea></div>
+        <div class="edit-field"><label>台词</label><textarea id="ed-dialogue" rows="2">${s.dialogue||''}</textarea></div>
+        <div class="edit-field-row">
+          <div class="edit-field"><label>运镜</label>
+            <select id="ed-camera">${['固定','缓慢推近','跟随平移','手持晃动','环绕','俯视','仰视'].map(c=>`<option ${s.camera===c?'selected':''}>${c}</option>`).join('')}</select>
+          </div>
+          <div class="edit-field"><label>景别</label>
+            <select id="ed-shottype">${['特写','近景','中景','过肩','全身','全景','远景'].map(c=>`<option ${s.shot_type===c?'selected':''}>${c}</option>`).join('')}</select>
+          </div>
+          <div class="edit-field"><label>时长</label><input id="ed-dur" type="number" value="${s.duration||4}" min="1" max="30"></div>
+          <div class="edit-field"><label>情绪</label>
+            <select id="ed-emo">${['neutral','happy','sad','angry','worried','surprised','calm','determined'].map(c=>`<option ${s.emotion===c?'selected':''}>${c}</option>`).join('')}</select>
+          </div>
+        </div>
+      </div>
+      <div class="edit-footer">
+        <button class="btn btn-primary" onclick="saveEdit(${idx})">💾 保存</button>
+        <button class="btn btn-outline" onclick="closeEdit()">取消</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function closeEdit() {
+  const o = document.getElementById('edit-overlay');
+  if (o) o.remove();
+}
+
+async function saveEdit(idx) {
+  const s = shots[idx];
+  s.scene = document.getElementById('ed-scene').value;
+  s.characters = document.getElementById('ed-chars').value;
+  s.action = document.getElementById('ed-action').value;
+  s.dialogue = document.getElementById('ed-dialogue').value;
+  s.camera = document.getElementById('ed-camera').value;
+  s.shot_type = document.getElementById('ed-shottype').value;
+  s.duration = document.getElementById('ed-dur').value;
+  s.emotion = document.getElementById('ed-emo').value;
+
+  try {
+    await api(`/storyboard/${ep}`, { method:'POST', body:{shots:shots} });
+    toast('✅ 已保存');
+    closeEdit();
+    renderShotsGrid();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── 单个执行 ──
+
+async function runOne(step, idx) {
+  const s = shots[idx];
+  const sid = s.shot_id || String(idx+1).padStart(3,'0');
+
+  // 找到镜头卡片，显示状态
+  const card = document.getElementById(`shot-${sid}`);
+  const actionsEl = card?.querySelector('.wb-shot-actions');
+  if (actionsEl) actionsEl.innerHTML = `<span class="run-indicator">⏳ ${step}...</span>`;
+
+  try {
+    const r = await fetch(`${API}/steps/${step}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({episode:ep, shot_id:sid}),
     });
-    if (!r.ok) {
-      const text = await r.text();
-      let msg = text;
-      try { const j = JSON.parse(text); msg = j.detail || text; } catch {}
-      throw new Error(msg);
-    }
+    if (!r.ok) { const t = await r.text(); throw new Error(t); }
     const data = await r.json();
-    progressEl.innerHTML = `<div class="task-running">⏳ 任务 ${data.task_id} 执行中...</div>`;
 
     const result = await pollTask(data.task_id, (info) => {
-      progressEl.innerHTML = `
-        <div class="task-info">
-          <div class="task-bar"><div class="task-fill" style="width:${info.progress}%"></div></div>
-          <div class="task-text">${info.message || info.stage || '处理中...'} (${info.progress}%)</div>
-        </div>`;
+      if (actionsEl) actionsEl.innerHTML = `<span class="run-indicator">⏳ ${info.message||step} (${info.progress||0}%)</span>`;
     });
 
     if (result.status === 'success') {
-      progressEl.innerHTML = `<div class="task-done">✅ 完成${result.result?.path ? ': ' + result.result.path : ''}</div>`;
-      toast('✅ 完成');
+      toast(`✅ ${sid} ${step} 完成`);
     } else {
-      progressEl.innerHTML = `<div class="task-fail">❌ 失败: ${result.error || '未知错误'}</div>`;
-      toast(result.error || '失败', 'error');
+      toast(`❌ ${sid} ${step}: ${result.error||'失败'}`, 'error');
     }
-  } catch (e) {
-    progressEl.innerHTML = `<div class="task-fail">❌ ${e.message}</div>`;
-    toast(e.message, 'error');
+  } catch(e) {
+    toast(`❌ ${sid}: ${e.message}`, 'error');
   }
+
+  // 恢复按钮 + 刷新资源
+  if (actionsEl) {
+    actionsEl.innerHTML = `
+      <button class="btn btn-xs" onclick="editShot(${idx})" title="编辑">✏️</button>
+      <button class="btn btn-xs" onclick="runOne('tts',${idx})" title="TTS">🎤</button>
+      <button class="btn btn-xs" onclick="runOne('first_frame',${idx})" title="首帧">🎨</button>
+      <button class="btn btn-xs" onclick="runOne('video',${idx})" title="视频">🎬</button>
+      <button class="btn btn-xs" onclick="runOne('lipsync',${idx})" title="口型">👄</button>`;
+  }
+  loadResources(idx);
 }
 
-async function runFull(cmd) {
-  const monitor = document.getElementById('task-monitor');
-  const progressEl = document.getElementById('task-progress');
-  monitor.style.display = 'block';
-  progressEl.innerHTML = `<div class="task-running">⏳ 提交 ${cmd}...</div>`;
+// ── 批量执行 ──
 
-  try {
-    const r = await fetch(API + '/pipeline/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ episode: 1, command: cmd }),
-    });
-    if (!r.ok) {
-      const text = await r.text();
-      let msg = text;
-      try { const j = JSON.parse(text); msg = j.detail || text; } catch {}
-      throw new Error(msg);
-    }
-    const data = await r.json();
-    progressEl.innerHTML = `<div class="task-running">⏳ 任务执行中...</div>`;
+async function batchRun(step) {
+  const names = {tts:'TTS',first_frame:'首帧',video:'视频',lipsync:'口型同步'};
+  if (!confirm(`批量执行 ${names[step]}？共 ${shots.length} 个镜头`)) return;
 
-    const result = await pollTask(data.task_id, (info) => {
-      progressEl.innerHTML = `
-        <div class="task-info">
-          <div class="task-bar"><div class="task-fill" style="width:${info.progress}%"></div></div>
-          <div class="task-text">${info.message || info.stage || '处理中...'} (${info.progress}%)</div>
-        </div>`;
-    });
+  const statusEl = document.getElementById('wb-batch-status');
+  statusEl.style.display = 'block';
 
-    if (result.status === 'success') {
-      progressEl.innerHTML = `<div class="task-done">✅ 完成</div>`;
-      toast('✅ 完成');
-    } else {
-      progressEl.innerHTML = `<div class="task-fail">❌ ${result.error || '失败'}</div>`;
-      toast(result.error || '失败', 'error');
-    }
-  } catch (e) {
-    progressEl.innerHTML = `<div class="task-fail">❌ ${e.message}</div>`;
-    toast(e.message, 'error');
+  let done = 0, fail = 0, skip = 0;
+  for (let i = 0; i < shots.length; i++) {
+    const s = shots[i];
+    const sid = s.shot_id || String(i+1).padStart(3,'0');
+
+    statusEl.innerHTML = `
+      <div class="batch-progress">
+        <div class="batch-bar"><div class="batch-fill" style="width:${(i/shots.length)*100}%"></div></div>
+        <div class="batch-text">[${i+1}/${shots.length}] ${sid} — ${names[step]}...</div>
+      </div>`;
+
+    try {
+      const r = await fetch(`${API}/steps/${step}`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({episode:ep, shot_id:sid}),
+      });
+      if (!r.ok) { fail++; continue; }
+      const data = await r.json();
+      const result = await pollTask(data.task_id);
+      if (result.status === 'success') { done++; loadResources(i); }
+      else if (result.result?.status === 'skipped') { skip++; }
+      else { fail++; }
+    } catch { fail++; }
   }
+
+  statusEl.innerHTML = `
+    <div class="batch-done">
+      ✅ 完成 ${done} · ⏭ 跳过 ${skip} · ❌ 失败 ${fail}
+      <button class="btn btn-sm btn-outline" style="margin-left:0.5rem" onclick="this.parentElement.parentElement.style.display='none'">关闭</button>
+    </div>`;
+  toast(`批量完成: ${done}成功 ${skip}跳过 ${fail}失败`);
 }
 
 // ══════════════════════════════════════════════════════════
-// 角色管理
+// 其他页面（角色/场景/分镜/项目/设置）
 // ══════════════════════════════════════════════════════════
 
 async function loadCharacters() {
   const el = document.getElementById('page-characters');
   try {
-    const data = await api('/characters');
-    const chars = data.characters || [];
-    let rows = chars.map(c => `
-      <tr>
-        <td>${c.id || ''}</td>
-        <td>${c.name || ''}</td>
-        <td>${c.gender || ''}</td>
-        <td>${(c.appearance || '').substring(0, 50)}</td>
-        <td><button class="btn btn-sm btn-primary" onclick="editChar('${c.id}')">编辑</button></td>
-      </tr>`).join('');
-    el.innerHTML = `
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-          <h2>👤 角色管理</h2>
-          <button class="btn btn-success" onclick="newChar()">+ 新建角色</button>
-        </div>
-        <table><thead><tr><th>ID</th><th>姓名</th><th>性别</th><th>外观</th><th>操作</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="5" class="dim" style="text-align:center">暂无角色</td></tr>'}</tbody></table>
-      </div>`;
-  } catch (e) {
-    el.innerHTML = `<div class="card"><h2>❌ 加载失败</h2><p>${e.message}</p></div>`;
-  }
+    const d = await api('/characters');
+    let rows = (d.characters||[]).map(c=>`<tr><td>${c.id}</td><td>${c.name}</td><td>${c.gender||''}</td><td>${(c.appearance||'').substring(0,40)}</td></tr>`).join('');
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>👤 角色</h2><button class="btn btn-success" onclick="newChar()">+ 新建</button></div>
+      <table><thead><tr><th>ID</th><th>姓名</th><th>性别</th><th>外观</th></tr></thead><tbody>${rows||'<tr><td colspan="4" class="dim" style="text-align:center">暂无</td></tr>'}</tbody></table></div>`;
+  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${e.message}</p></div>`; }
 }
-
 function newChar() {
-  const id = prompt('角色 ID (英文):');
-  if (!id) return;
-  const name = prompt('角色姓名:');
-  if (!name) return;
-  api('/characters', { method: 'POST', body: { id, name, gender: '', appearance: '', outfits: {}, voice: {} } })
-    .then(() => { toast('角色已创建'); loadCharacters(); })
-    .catch(e => toast(e.message, 'error'));
+  const id=prompt('ID:'); if(!id) return;
+  const name=prompt('姓名:'); if(!name) return;
+  api('/characters',{method:'POST',body:{id,name,gender:'',appearance:'',outfits:{},voice:{}}}).then(()=>{toast('已创建');loadCharacters();}).catch(e=>toast(e.message,'error'));
 }
-
-function editChar(id) { toast('编辑功能开发中', 'error'); }
-
-// ══════════════════════════════════════════════════════════
-// 场景管理
-// ══════════════════════════════════════════════════════════
 
 async function loadScenes() {
   const el = document.getElementById('page-scenes');
   try {
-    const data = await api('/scenes');
-    const scenes = data.scenes || [];
-    let rows = scenes.map(s => `
-      <tr>
-        <td>${s.id || ''}</td><td>${s.name || ''}</td>
-        <td>${(s.description || '').substring(0, 50)}</td><td>${s.lighting || ''}</td>
-      </tr>`).join('');
-    el.innerHTML = `
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-          <h2>🏔️ 场景管理</h2>
-          <button class="btn btn-success" onclick="newScene()">+ 新建场景</button>
-        </div>
-        <table><thead><tr><th>ID</th><th>名称</th><th>描述</th><th>灯光</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="4" class="dim" style="text-align:center">暂无场景</td></tr>'}</tbody></table>
-      </div>`;
-  } catch (e) {
-    el.innerHTML = `<div class="card"><h2>❌ 加载失败</h2><p>${e.message}</p></div>`;
-  }
+    const d = await api('/scenes');
+    let rows = (d.scenes||[]).map(s=>`<tr><td>${s.id}</td><td>${s.name}</td><td>${(s.description||'').substring(0,40)}</td></tr>`).join('');
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>🏔️ 场景</h2><button class="btn btn-success" onclick="newScene()">+ 新建</button></div>
+      <table><thead><tr><th>ID</th><th>名称</th><th>描述</th></tr></thead><tbody>${rows||'<tr><td colspan="3" class="dim" style="text-align:center">暂无</td></tr>'}</tbody></table></div>`;
+  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${e.message}</p></div>`; }
 }
-
 function newScene() {
-  const id = prompt('场景 ID (英文):');
-  if (!id) return;
-  const name = prompt('场景名称:');
-  if (!name) return;
-  api('/scenes', { method: 'POST', body: { id, name, description: '', lighting: '' } })
-    .then(() => { toast('场景已创建'); loadScenes(); })
-    .catch(e => toast(e.message, 'error'));
+  const id=prompt('ID:'); if(!id) return;
+  const name=prompt('名称:'); if(!name) return;
+  api('/scenes',{method:'POST',body:{id,name,description:'',lighting:''}}).then(()=>{toast('已创建');loadScenes();}).catch(e=>toast(e.message,'error'));
 }
-
-// ══════════════════════════════════════════════════════════
-// 分镜表
-// ══════════════════════════════════════════════════════════
 
 async function loadStoryboard() {
   const el = document.getElementById('page-storyboard');
   try {
-    const data = await api('/storyboard/1');
-    const shots = data.shots || [];
-    let rows = shots.map((s, i) => `
-      <tr>
-        <td>${s.shot_id || i + 1}</td><td>${s.scene || ''}</td><td>${s.characters || ''}</td>
-        <td>${(s.action || '').substring(0, 30)}</td><td>${(s.dialogue || '').substring(0, 30)}</td>
-        <td>${s.camera || ''}</td><td>${s.shot_type || ''}</td><td>${s.duration || ''}s</td>
-        <td>${s.emotion || ''}</td>
-      </tr>`).join('');
-    el.innerHTML = `
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-          <h2>📝 分镜表 — 第1集</h2>
-          <div>
-            <button class="btn btn-success" onclick="addShot()">+ 添加镜头</button>
-          </div>
-        </div>
-        <table><thead><tr><th>镜号</th><th>场景</th><th>角色</th><th>动作</th><th>台词</th><th>运镜</th><th>景别</th><th>时长</th><th>情绪</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="9" class="dim" style="text-align:center">暂无分镜</td></tr>'}</tbody></table>
-      </div>`;
-  } catch (e) {
-    el.innerHTML = `<div class="card"><h2>❌ 加载失败</h2><p>${e.message}</p></div>`;
-  }
+    const d = await api(`/storyboard/${ep}`);
+    let rows = (d.shots||[]).map((s,i)=>`<tr><td>${s.shot_id||i+1}</td><td>${s.scene||''}</td><td>${s.characters||''}</td><td>${(s.action||'').substring(0,25)}</td><td>${(s.dialogue||'').substring(0,25)}</td><td>${s.camera||''}</td><td>${s.shot_type||''}</td><td>${s.duration||''}s</td></tr>`).join('');
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>📝 分镜表</h2><div><button class="btn btn-primary" onclick="navTo('pipeline')">🎬 工作台</button><button class="btn btn-success" style="margin-left:0.5rem" onclick="addShot()">+ 添加</button></div></div>
+      <table><thead><tr><th>镜号</th><th>场景</th><th>角色</th><th>动作</th><th>台词</th><th>运镜</th><th>景别</th><th>时长</th></tr></thead><tbody>${rows||'<tr><td colspan="8" class="dim" style="text-align:center">暂无</td></tr>'}</tbody></table></div>`;
+  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${e.message}</p></div>`; }
 }
-
 function addShot() {
-  const shot = {
-    episode: 1, shot_id: String(document.querySelectorAll('#page-storyboard tbody tr').length + 1).padStart(3, '0'),
-    scene: prompt('场景:') || '', characters: prompt('角色:') || '',
-    action: prompt('动作:') || '', dialogue: prompt('台词:') || '......',
-    camera: '固定', shot_type: '中景', duration: 4, emotion: 'neutral',
-  };
-  api('/storyboard/1', { method: 'POST', body: { shots: [shot] } })
-    .then(() => { toast('镜头已添加'); loadStoryboard(); })
-    .catch(e => toast(e.message, 'error'));
+  const n = document.querySelectorAll('#page-storyboard tbody tr').length;
+  api(`/storyboard/${ep}`,{method:'POST',body:{shots:[{episode:ep,shot_id:String(n+1).padStart(3,'0'),scene:prompt('场景:')||'',characters:prompt('角色:')||'',action:prompt('动作:')||'',dialogue:prompt('台词:')||'......',camera:'固定',shot_type:'中景',duration:4,emotion:'neutral'}]}}).then(()=>{toast('已添加');loadStoryboard();}).catch(e=>toast(e.message,'error'));
 }
-
-// ══════════════════════════════════════════════════════════
-// 项目管理
-// ══════════════════════════════════════════════════════════
 
 async function loadProjects() {
   const el = document.getElementById('page-projects');
   try {
-    const data = await api('/projects');
-    const projects = data.projects || [];
-    let rows = projects.map(p => `
-      <tr>
-        <td>${p.active ? '→' : ''}</td><td>${p.name}</td>
-        <td class="dim" style="font-size:0.75rem">${p.path}</td>
-        <td>${p.active ? '<span class="badge badge-green">当前</span>' :
-            `<button class="btn btn-sm btn-primary" onclick="switchProj('${p.name}')">切换</button>`}</td>
-      </tr>`).join('');
-    el.innerHTML = `
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-          <h2>📂 项目管理</h2>
-          <button class="btn btn-success" onclick="newProj()">+ 新建项目</button>
-        </div>
-        <table><thead><tr><th></th><th>名称</th><th>路径</th><th>状态</th></tr></thead>
-        <tbody>${rows}</tbody></table>
-      </div>`;
-  } catch (e) {
-    el.innerHTML = `<div class="card"><h2>❌ 加载失败</h2><p>${e.message}</p></div>`;
-  }
+    const d = await api('/projects');
+    let rows = (d.projects||[]).map(p=>`<tr><td>${p.active?'→':''}</td><td>${p.name}</td><td class="dim" style="font-size:0.75rem">${p.path}</td><td>${p.active?'<span class="badge badge-green">当前</span>':`<button class="btn btn-sm btn-primary" onclick="switchProj('${p.name}')">切换</button>`}</td></tr>`).join('');
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>📂 项目</h2><button class="btn btn-success" onclick="newProj()">+ 新建</button></div>
+      <table><thead><tr><th></th><th>名称</th><th>路径</th><th>状态</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${e.message}</p></div>`; }
 }
-
-function newProj() {
-  const name = prompt('项目名称:');
-  if (!name) return;
-  api('/projects/new', { method: 'POST', body: { name } })
-    .then(() => { toast('项目已创建'); loadProjects(); })
-    .catch(e => toast(e.message, 'error'));
-}
-
-function switchProj(name) {
-  api('/projects/switch', { method: 'POST', body: { name } })
-    .then(() => { toast(`已切换到: ${name}`); loadProjects(); })
-    .catch(e => toast(e.message, 'error'));
-}
-
-// ══════════════════════════════════════════════════════════
-// 系统设置 — 工具管理
-// ══════════════════════════════════════════════════════════
+function newProj() { const n=prompt('名称:'); if(!n) return; api('/projects/new',{method:'POST',body:{name:n}}).then(()=>{toast('已创建');loadProjects();}).catch(e=>toast(e.message,'error')); }
+function switchProj(n) { api('/projects/switch',{method:'POST',body:{name:n}}).then(()=>{toast(`已切换: ${n}`);loadProjects();}).catch(e=>toast(e.message,'error')); }
 
 async function loadSettings() {
   const el = document.getElementById('page-settings');
   try {
-    const [cfg, env, toolsData] = await Promise.all([api('/config'), api('/system/env'), api('/tools')]);
-    const tools = toolsData.tools || {};
-
-    // 工具配置表单
-    const ttsBackends = ['mimo-voicedesign', 'mimo-voiceclone', 'gpt-sovits', 'cosyvoice', 'fish-speech'];
-    const lipsyncBackends = ['musetalk', 'sadtalker', 'wav2lip'];
-    const musicBackends = ['template', 'musicgen'];
-
+    const [cfg,env,td] = await Promise.all([api('/config'),api('/system/env'),api('/tools')]);
+    const t = td.tools||{};
     el.innerHTML = `
-      <div class="card">
-        <h2>💻 环境信息</h2>
-        <div class="info-grid">
-          <div><span class="dim">OS:</span> ${env.os}</div>
-          <div><span class="dim">Python:</span> ${env.python}</div>
-          <div><span class="dim">GPU:</span> ${env.gpu.available ? env.gpu.name + ' (' + env.gpu.vram_mb + 'MB)' : '不可用（API 模式不受影响）'}</div>
+      <div class="card"><h2>💻 环境</h2><div class="info-grid"><div><span class="dim">OS:</span> ${env.os}</div><div><span class="dim">Python:</span> ${env.python}</div><div><span class="dim">GPU:</span> ${env.gpu.available?env.gpu.name+' ('+env.gpu.vram_mb+'MB)':'不可用'}</div></div></div>
+      <div class="card"><h2>🔧 配置</h2>
+        <div class="config-section"><h3>🎤 TTS</h3>
+          <div class="form-row"><label>后端</label><select id="cfg-tts">${['mimo-voicedesign','mimo-voiceclone','gpt-sovits','cosyvoice','fish-speech'].map(b=>`<option value="${b}" ${cfg.models?.tts_backend===b?'selected':''}>${b}</option>`).join('')}</select></div>
+          <div class="form-row"><label>地址</label><input id="cfg-tts-url" value="${cfg.models?.gpt_sovits?.api_url||''}"></div>
+          <div class="tool-status-inline"><span class="status-dot ${t.tts?.available?'ok':'err'}"></span>${t.tts?.available?'可用':t.tts?.reason||'不可用'}</div>
         </div>
-      </div>
-
-      <div class="card">
-        <h2>🔧 工具配置 — 按需启用，不用的不花钱</h2>
-        <p class="dim">修改后保存，工具会自动检测可用性</p>
-
-        <div class="config-section">
-          <h3>🎤 TTS 语音合成</h3>
-          <div class="form-row">
-            <label>后端</label>
-            <select id="cfg-tts">${ttsBackends.map(b =>
-              `<option value="${b}" ${cfg.models?.tts_backend === b ? 'selected' : ''}>${b}</option>`).join('')}</select>
-          </div>
-          <div class="form-row">
-            <label>API 地址</label>
-            <input id="cfg-tts-url" value="${cfg.models?.gpt_sovits?.api_url || 'http://127.0.0.1:9880'}"
-                   placeholder="GPT-SoVITS/CosyVoice 等服务地址">
-          </div>
-          <div class="tool-status-inline">
-            <span class="status-dot ${tools.tts?.available ? 'ok' : 'err'}"></span>
-            ${tools.tts?.available ? '可用' : tools.tts?.reason || '不可用'}
-          </div>
+        <div class="config-section"><h3>🎨 ComfyUI</h3>
+          <div class="form-row"><label>地址</label><input id="cfg-comfyui" value="${cfg.comfyui?.url||''}"></div>
+          <div class="tool-status-inline"><span class="status-dot ${t.comfyui?.available?'ok':'err'}"></span>${t.comfyui?.available?'可用':t.comfyui?.reason||'不可用'}</div>
         </div>
-
-        <div class="config-section">
-          <h3>🎨 ComfyUI（图片/视频 — GPU）</h3>
-          <div class="form-row">
-            <label>地址</label>
-            <input id="cfg-comfyui" value="${cfg.comfyui?.url || 'http://127.0.0.1:8188'}">
-          </div>
-          <div class="form-row">
-            <label>API Key</label>
-            <input id="cfg-comfyui-key" type="password" value="${cfg.comfyui?.api_key || ''}" placeholder="可选">
-          </div>
-          <div class="tool-status-inline">
-            <span class="status-dot ${tools.comfyui?.available ? 'ok' : 'err'}"></span>
-            ${tools.comfyui?.available ? '可用' : tools.comfyui?.reason || '不可用'}
-          </div>
+        <div class="config-section"><h3>👄 LipSync</h3>
+          <div class="form-row"><label>后端</label><select id="cfg-lipsync">${['musetalk','sadtalker','wav2lip'].map(b=>`<option value="${b}" ${cfg.models?.lip_sync_backend===b?'selected':''}>${b}</option>`).join('')}</select></div>
+          <div class="form-row"><label>地址</label><input id="cfg-ls-url" value="${cfg.models?.musetalk?.api_url||''}"></div>
+          <div class="tool-status-inline"><span class="status-dot ${t.lipsync?.available?'ok':'err'}"></span>${t.lipsync?.available?'可用':t.lipsync?.reason||'不可用'}</div>
         </div>
-
-        <div class="config-section">
-          <h3>👄 口型同步（GPU）</h3>
-          <div class="form-row">
-            <label>后端</label>
-            <select id="cfg-lipsync">${lipsyncBackends.map(b =>
-              `<option value="${b}" ${cfg.models?.lip_sync_backend === b ? 'selected' : ''}>${b}</option>`).join('')}</select>
-          </div>
-          <div class="form-row">
-            <label>API 地址</label>
-            <input id="cfg-lipsync-url" value="${cfg.models?.musetalk?.api_url || 'http://127.0.0.1:8080'}">
-          </div>
-          <div class="tool-status-inline">
-            <span class="status-dot ${tools.lipsync?.available ? 'ok' : 'err'}"></span>
-            ${tools.lipsync?.available ? '可用' : tools.lipsync?.reason || '不可用'}
-          </div>
-        </div>
-
-        <div class="config-section">
-          <h3>🧠 LLM 大模型（可选）</h3>
-          <div class="form-row">
-            <label>启用</label>
-            <select id="cfg-llm-enabled">
-              <option value="false" ${!cfg.llm?.enabled ? 'selected' : ''}>关闭</option>
-              <option value="true" ${cfg.llm?.enabled ? 'selected' : ''}>开启</option>
-            </select>
-          </div>
-          <div class="form-row">
-            <label>地址</label>
-            <input id="cfg-llm-url" value="${cfg.llm?.base_url || 'http://localhost:11434'}">
-          </div>
-          <div class="form-row">
-            <label>模型</label>
-            <input id="cfg-llm-model" value="${cfg.llm?.model || 'qwen3:8b'}">
-          </div>
-        </div>
-
-        <div class="config-section">
-          <h3>🎵 配乐</h3>
-          <div class="form-row">
-            <label>后端</label>
-            <select id="cfg-music">${musicBackends.map(b =>
-              `<option value="${b}" ${cfg.models?.music_backend === b ? 'selected' : ''}>${b}</option>`).join('')}</select>
-          </div>
-        </div>
-
-        <button class="btn btn-primary" style="margin-top:1rem" onclick="saveCfg()">💾 保存配置</button>
+        <button class="btn btn-primary" style="margin-top:1rem" onclick="saveCfg()">💾 保存</button>
       </div>`;
-  } catch (e) {
-    el.innerHTML = `<div class="card"><h2>❌ 加载失败</h2><p>${e.message}</p></div>`;
-  }
+  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${e.message}</p></div>`; }
 }
-
 async function saveCfg() {
   try {
     const cfg = await api('/config');
-    cfg.models = cfg.models || {};
-    cfg.models.tts_backend = document.getElementById('cfg-tts')?.value || cfg.models.tts_backend;
-    cfg.models.lip_sync_backend = document.getElementById('cfg-lipsync')?.value || cfg.models.lip_sync_backend;
-    cfg.models.music_backend = document.getElementById('cfg-music')?.value || cfg.models.music_backend;
-    cfg.models.gpt_sovits = cfg.models.gpt_sovits || {};
-    cfg.models.gpt_sovits.api_url = document.getElementById('cfg-tts-url')?.value || '';
-    cfg.models.musetalk = cfg.models.musetalk || {};
-    cfg.models.musetalk.api_url = document.getElementById('cfg-lipsync-url')?.value || '';
-    cfg.comfyui = cfg.comfyui || {};
-    cfg.comfyui.url = document.getElementById('cfg-comfyui')?.value || cfg.comfyui.url;
-    cfg.comfyui.api_key = document.getElementById('cfg-comfyui-key')?.value || '';
-    cfg.llm = cfg.llm || {};
-    cfg.llm.enabled = document.getElementById('cfg-llm-enabled')?.value === 'true';
-    cfg.llm.base_url = document.getElementById('cfg-llm-url')?.value || '';
-    cfg.llm.model = document.getElementById('cfg-llm-model')?.value || '';
-    await api('/config', { method: 'POST', body: cfg });
-    toast('✅ 配置已保存');
-  } catch (e) {
-    toast(e.message, 'error');
-  }
+    cfg.models=cfg.models||{}; cfg.models.tts_backend=document.getElementById('cfg-tts')?.value;
+    cfg.models.lip_sync_backend=document.getElementById('cfg-lipsync')?.value;
+    cfg.models.gpt_sovits=cfg.models.gpt_sovits||{}; cfg.models.gpt_sovits.api_url=document.getElementById('cfg-tts-url')?.value||'';
+    cfg.models.musetalk=cfg.models.musetalk||{}; cfg.models.musetalk.api_url=document.getElementById('cfg-ls-url')?.value||'';
+    cfg.comfyui=cfg.comfyui||{}; cfg.comfyui.url=document.getElementById('cfg-comfyui')?.value||'';
+    await api('/config',{method:'POST',body:cfg}); toast('✅ 已保存');
+  } catch(e) { toast(e.message,'error'); }
 }
 
-// ── 初始化 ──
 loadDashboard();

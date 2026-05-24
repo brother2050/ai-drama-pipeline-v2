@@ -526,3 +526,45 @@ def run_pipeline(req: PipelineRequest):
 def pipeline_status(episode: int):
     from flow.episode import get_episode_status
     return get_episode_status(str(ROOT), episode)
+
+
+# ══════════════════════════════════════════════════════════
+# 镜头资源查询 + 文件预览
+# ══════════════════════════════════════════════════════════
+
+@router.get("/shots/{episode}/{shot_id}/resources")
+def get_shot_resources(episode: int, shot_id: str):
+    """查询镜头已生成的资源"""
+    out_dir = ROOT / "output" / f"e{episode:02d}" / f"s{shot_id}"
+    if not out_dir.exists():
+        return {"shot_id": shot_id, "resources": {}}
+
+    resources = {}
+    if (out_dir / "audio.wav").exists():
+        resources["audio"] = "audio.wav"
+    if (out_dir / "frame.png").exists():
+        resources["frame"] = "frame.png"
+    if (out_dir / "video.mp4").exists():
+        resources["video"] = "video.mp4"
+    if (out_dir / "synced.mp4").exists():
+        resources["synced"] = "synced.mp4"
+
+    return {"shot_id": shot_id, "resources": resources}
+
+
+@router.get("/files/{episode}/{shot_id}/{filename}")
+def get_shot_file(episode: int, shot_id: str, filename: str):
+    """预览镜头资源文件"""
+    from fastapi.responses import FileResponse
+    file_path = ROOT / "output" / f"e{episode:02d}" / f"s{shot_id}" / filename
+    if not file_path.exists():
+        raise HTTPException(404, f"文件不存在: {filename}")
+
+    # 根据扩展名设置 content-type
+    ext = file_path.suffix.lower()
+    media_types = {
+        ".wav": "audio/wav", ".mp3": "audio/mpeg",
+        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".mp4": "video/mp4", ".webm": "video/webm",
+    }
+    return FileResponse(str(file_path), media_type=media_types.get(ext, "application/octet-stream"))
