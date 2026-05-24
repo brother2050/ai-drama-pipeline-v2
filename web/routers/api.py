@@ -1,4 +1,4 @@
-"""API 路由 — Celery 异步任务 + 进度轮询"""
+"""API 路由 — 独立工具 + 按需启停"""
 from __future__ import annotations
 
 import csv
@@ -39,57 +39,116 @@ def _port_ok(port: int) -> bool:
         return False
 
 
-def _url_ok(url: str) -> bool:
+def _url_ok(url: str, path: str = "/") -> bool:
     try:
         import httpx
-        return httpx.get(f"{url}/system_stats", timeout=3).status_code == 200
+        return httpx.get(f"{url}{path}", timeout=3).status_code == 200
     except Exception:
         return False
 
 
-def _celery_inspect():
-    """检查 Celery worker 状态"""
-    try:
-        from pipeline.celery_app import app
-        insp = app.control.inspect(timeout=2)
-        active = insp.active()
-        return bool(active)
-    except Exception:
-        return False
+def _check_tool(name: str, cfg: dict) -> dict:
+    """检测单个工具的可用性"""
+    if name == "tts":
+        backend = cfg.get("models", {}).get("tts_backend", "mimo-voicedesign")
+        if "mimo" in backend:
+            import os
+            ok = bool(os.environ.get("MIMO_API_KEY"))
+            return {"available": ok, "backend": backend, "type": "cloud",
+                    "reason": "" if ok else "MIMO_API_KEY 未配置"}
+        else:
+            # 其他 TTS 需要 API 服务
+            api_url = cfg.get("models", {}).get(backend.replace("-", "_"), {}).get("api_url", "")
+            ok = _url_ok(api_url) if api_url else False
+            return {"available": ok, "backend": backend, "type": "api",
+                    "url": api_url, "reason": "" if ok else f"{backend} 服务不可达"}
+
+    elif name == "comfyui":
+        url = cfg.get("comfyui", {}).get("url", "http://127.0.0.1:8188")
+        ok = _url_ok(url, "/system_stats")
+        return {"available": ok, "backend": "comfyui", "type": "gpu",
+                "url": url, "reason": "" if ok else "ComfyUI 不可达"}
+
+    elif name == "lipsync":
+        backend = cfg.get("models", {}).get("lip_sync_backend", "musetalk")
+        api_url = cfg.get("models", {}).get(backend.replace("-", "_"), {}).get("api_url", "")
+        ok = _url_ok(api_url) if api_url else False
+        return {"available": ok, "backend": backend, "type": "gpu",
+                "url": api_url, "reason": "" if ok else f"{backend} 服务不可达"}
+
+    elif name == "llm":
+        llm_cfg = cfg.get("llm", {})
+        if not llm_cfg.get("enabled"):
+            return {"available": False, "backend": "disabled", "type": "cloud",
+                    "reason": "LLM 未启用"}
+        base_url = llm_cfg.get("base_url", "http://localhost:11434")
+        ok = _url_ok(base_url, "/api/tags")
+        return {"available": ok, "backend": llm_cfg.get("backend", "ollama"), "type": "gpu",
+                "url": base_url, "reason": "" if ok else "LLM 服务不可达"}
+
+    elif name == "music":
+        backend = cfg.get("models", {}).get("music_backend", "template")
+        if backend == "template":
+            import shutil
+            ok = bool(shutil.which("ffmpeg"))
+            return {"available": ok, "backend": "template", "type": "local",
+                    "reason": "" if ok else "ffmpeg 未安装"}
+        else:
+            api_url = cfg.get("models", {}).get(backend, {}).get("api_url", "")
+            ok = _url_ok(api_url) if api_url else False
+            return {"available": ok, "backend": backend, "type": "gpu",
+                    "reason": "" if ok else f"{backend} 服务不可达"}
+
+    elif name == "ffmpeg":
+        import shutil
+        ok = bool(shutil.which("ffmpeg"))
+        return {"available": ok, "backend": "ffmpeg", "type": "local",
+                "reason": "" if ok else "ffmpeg 未安装"}
+
+    elif name == "redis":
+        ok = _port_ok(6379)
+        return {"available": ok, "backend": "redis", "type": "infra",
+                "reason": "" if ok else "Redis 未运行"}
+
+    elif name == "celery":
+        if not _port_ok(6379):
+            return {"available": False, "backend": "celery", "type": "infra",
+                    "reason": "Redis 未运行（Celery 依赖 Redis）"}
+        try:
+            from pipeline.celery_app import app
+            insp = app.control.inspect(timeout=2)
+            ok = bool(insp.active())
+            return {"available": ok, "backend": "celery", "type": "infra",
+                    "reason": "" if ok else "Celery Worker 未启动"}
+        except Exception:
+            return {"available": False, "backend": "celery", "type": "infra",
+                    "reason": "Celery 连接失败"}
+
+    return {"available": False, "backend": "unknown", "type": "unknown", "reason": "未知工具"}
 
 
 def _submit_task(task, *args) -> dict:
-    """提交 Celery 任务，返回标准化响应"""
     try:
         result = task.delay(*args)
-        return {
-            "status": "submitted",
-            "task_id": result.id,
-            "poll_url": f"/api/tasks/{result.id}",
-        }
+        return {"status": "submitted", "task_id": result.id,
+                "poll_url": f"/api/tasks/{result.id}"}
     except Exception as e:
-        raise HTTPException(503, f"任务提交失败（Redis/Celery 不可用）: {e}")
+        raise HTTPException(503, f"任务提交失败: {e}")
 
 
-# ── 系统 ──
+# ══════════════════════════════════════════════════════════
+# 系统
+# ══════════════════════════════════════════════════════════
 
 @router.get("/system/status")
 def system_status():
+    """全量服务状态"""
     cfg = _cfg()
-    redis_ok = _port_ok(6379)
-    celery_ok = _celery_inspect() if redis_ok else False
-    return {
-        "version": "2.0.0",
-        "services": {
-            "redis": redis_ok,
-            "celery_worker": celery_ok,
-            "comfyui": _url_ok(cfg.get("comfyui", {}).get("url", "http://127.0.0.1:8188")),
-        },
-        "config": {
-            "tts": cfg.get("models", {}).get("tts_backend", "mimo-voicedesign"),
-            "lipsync": cfg.get("models", {}).get("lip_sync_backend", "musetalk"),
-        },
-    }
+    tools = {}
+    for name in ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg"]:
+        tools[name] = _check_tool(name, cfg)
+
+    return {"version": "2.0.0", "tools": tools}
 
 
 @router.get("/system/env")
@@ -97,14 +156,229 @@ def system_env():
     from infra.gpu import detect_gpu
     import platform
     gpu = detect_gpu()
-    return {
-        "os": f"{platform.system()} {platform.release()}",
-        "python": platform.python_version(),
-        "gpu": gpu,
+    return {"os": f"{platform.system()} {platform.release()}",
+            "python": platform.python_version(), "gpu": gpu}
+
+
+# ══════════════════════════════════════════════════════════
+# 工具管理 — 独立检测 / 独立使用
+# ══════════════════════════════════════════════════════════
+
+@router.get("/tools")
+def list_tools():
+    """列出所有工具及其可用状态"""
+    cfg = _cfg()
+    tools = {}
+    for name in ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg"]:
+        tools[name] = _check_tool(name, cfg)
+    return {"tools": tools}
+
+
+@router.get("/tools/{name}")
+def check_tool(name: str):
+    """检测单个工具状态"""
+    cfg = _cfg()
+    result = _check_tool(name, cfg)
+    return {"name": name, **result}
+
+
+# ── TTS 独立使用 ──
+
+class TTSRequest(BaseModel):
+    text: str
+    voice_config: dict | None = None
+    emotion: str = "neutral"
+    language: str = "zh"
+    output: str = ""
+
+
+@router.post("/tools/tts")
+def run_tts(req: TTSRequest):
+    """单独执行 TTS（不依赖 GPU/ComfyUI）"""
+    cfg = _cfg()
+    status = _check_tool("tts", cfg)
+    if not status["available"]:
+        raise HTTPException(503, f"TTS 不可用: {status['reason']}")
+
+    from pipeline.tasks import tts_single_task
+    return _submit_task(tts_single_task, _cfg_path(), req.text,
+                        req.voice_config, req.emotion, req.language)
+
+
+# ── 定妆照独立使用 ──
+
+@router.post("/tools/portraits")
+def gen_portraits():
+    """单独生成定妆照（需要 ComfyUI）"""
+    cfg = _cfg()
+    status = _check_tool("comfyui", cfg)
+    if not status["available"]:
+        raise HTTPException(503, f"ComfyUI 不可用: {status['reason']}")
+
+    from pipeline.tasks import portraits_task
+    return _submit_task(portraits_task, _cfg_path())
+
+
+# ── 首帧独立使用 ──
+
+class FirstFrameRequest(BaseModel):
+    episode: int
+    shot_id: str
+
+
+@router.post("/tools/first-frame")
+def run_first_frame(req: FirstFrameRequest):
+    """单独生成首帧（需要 ComfyUI）"""
+    cfg = _cfg()
+    status = _check_tool("comfyui", cfg)
+    if not status["available"]:
+        raise HTTPException(503, f"ComfyUI 不可用: {status['reason']}")
+
+    from pipeline.tasks import first_frame_by_id_task
+    return _submit_task(first_frame_by_id_task, _cfg_path(), req.episode, req.shot_id)
+
+
+# ── 视频独立使用 ──
+
+class VideoRequest(BaseModel):
+    episode: int
+    shot_id: str
+
+
+@router.post("/tools/video")
+def run_video(req: VideoRequest):
+    """单独生成视频（需要 ComfyUI）"""
+    cfg = _cfg()
+    status = _check_tool("comfyui", cfg)
+    if not status["available"]:
+        raise HTTPException(503, f"ComfyUI 不可用: {status['reason']}")
+
+    from pipeline.tasks import video_by_id_task
+    return _submit_task(video_by_id_task, _cfg_path(), req.episode, req.shot_id)
+
+
+# ── 口型同步独立使用 ──
+
+class LipSyncRequest(BaseModel):
+    episode: int
+    shot_id: str
+
+
+@router.post("/tools/lipsync")
+def run_lipsync(req: LipSyncRequest):
+    """单独执行口型同步（需要 LipSync 服务 + 已有视频/音频）"""
+    cfg = _cfg()
+    status = _check_tool("lipsync", cfg)
+    if not status["available"]:
+        raise HTTPException(503, f"LipSync 不可用: {status['reason']}")
+
+    from pipeline.tasks import lipsync_by_id_task
+    return _submit_task(lipsync_by_id_task, _cfg_path(), req.episode, req.shot_id)
+
+
+# ── 后期合成独立使用 ──
+
+class PostRequest(BaseModel):
+    episode: int
+    vertical: bool = False
+
+
+@router.post("/tools/post")
+def run_post(req: PostRequest):
+    """单独执行后期合成（只需要 ffmpeg）"""
+    cfg = _cfg()
+    status = _check_tool("ffmpeg", cfg)
+    if not status["available"]:
+        raise HTTPException(503, f"ffmpeg 不可用: {status['reason']}")
+
+    from pipeline.tasks import post_task
+    return _submit_task(post_task, _cfg_path(), req.episode, req.vertical)
+
+
+# ── 配乐独立使用 ──
+
+class MusicRequest(BaseModel):
+    duration: float
+    mood: str = "neutral"
+
+
+@router.post("/tools/music")
+def run_music(req: MusicRequest):
+    """单独生成配乐（模板模式只需 ffmpeg）"""
+    cfg = _cfg()
+    status = _check_tool("music", cfg)
+    if not status["available"]:
+        raise HTTPException(503, f"配乐工具不可用: {status['reason']}")
+
+    from pipeline.tasks import music_task
+    output = str(ROOT / "output" / "bgm.wav")
+    return _submit_task(music_task, _cfg_path(), req.duration, req.mood, output)
+
+
+# ── 字幕独立使用 ──
+
+class SubtitleRequest(BaseModel):
+    episode: int
+
+
+@router.post("/tools/subtitle")
+def run_subtitle(req: SubtitleRequest):
+    """单独生成字幕（纯本地，零依赖）"""
+    from pipeline.tasks import subtitle_task
+    return _submit_task(subtitle_task, _cfg_path(), req.episode)
+
+
+# ══════════════════════════════════════════════════════════
+# Celery 任务查询
+# ══════════════════════════════════════════════════════════
+
+@router.get("/tasks/{task_id}")
+def get_task(task_id: str):
+    from pipeline.celery_app import app
+    result = app.AsyncResult(task_id)
+    info = result.info if result.info else {}
+    state_map = {"PENDING": "pending", "STARTED": "running", "PROGRESS": "running",
+                 "SUCCESS": "success", "FAILURE": "failed", "REVOKED": "cancelled"}
+    status = state_map.get(result.state, result.state.lower())
+    task_info = {
+        "task_id": task_id, "status": status,
+        "progress": info.get("progress", 0) if isinstance(info, dict) else 0,
+        "stage": info.get("stage", "") if isinstance(info, dict) else "",
+        "message": info.get("message", "") if isinstance(info, dict) else "",
     }
+    if result.state == "SUCCESS":
+        task_info["result"] = result.result
+    elif result.state == "FAILURE":
+        task_info["error"] = str(result.result) if result.result else ""
+    return task_info
 
 
-# ── 配置 ──
+@router.get("/tasks")
+def list_tasks():
+    from pipeline.celery_app import app
+    try:
+        insp = app.control.inspect(timeout=2)
+        active = insp.active() or {}
+        tasks = []
+        for worker, tl in active.items():
+            for t in tl:
+                tasks.append({"task_id": t.get("id"), "name": t.get("name"),
+                              "status": "running", "worker": worker})
+        return {"tasks": tasks}
+    except Exception:
+        return {"tasks": []}
+
+
+@router.post("/tasks/{task_id}/cancel")
+def cancel_task(task_id: str):
+    from pipeline.celery_app import app
+    app.control.revoke(task_id, terminate=True)
+    return {"status": "cancelled", "task_id": task_id}
+
+
+# ══════════════════════════════════════════════════════════
+# 配置 / 项目 / 角色 / 场景 / 分镜（不变）
+# ══════════════════════════════════════════════════════════
 
 @router.get("/config")
 def get_config():
@@ -117,8 +391,6 @@ def update_config(data: dict):
         yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
     return {"status": "ok"}
 
-
-# ── 项目 ──
 
 @router.get("/projects")
 def list_projects():
@@ -165,8 +437,6 @@ def switch_project(data: dict):
     return {"status": "ok"}
 
 
-# ── 角色 ──
-
 @router.get("/characters")
 def list_characters():
     chars_dir = ROOT / "config" / "characters"
@@ -194,8 +464,6 @@ def save_character(data: dict):
         yaml.dump({"character": data}, f, allow_unicode=True, default_flow_style=False)
     return {"status": "ok", "id": char_id}
 
-
-# ── 场景 ──
 
 @router.get("/scenes")
 def list_scenes():
@@ -225,8 +493,6 @@ def save_scene(data: dict):
     return {"status": "ok", "id": scene_id}
 
 
-# ── 分镜 ──
-
 @router.get("/storyboard/{episode}")
 def get_storyboard(episode: int):
     sb_path = ROOT / "storyboard" / "episodes.csv"
@@ -245,14 +511,12 @@ def save_storyboard(episode: int, data: dict):
     shots = data.get("shots", [])
     sb_path = ROOT / "storyboard" / "episodes.csv"
     sb_path.parent.mkdir(parents=True, exist_ok=True)
-
     existing = []
     if sb_path.exists():
         with open(sb_path, encoding="utf-8") as f:
             for row in csv.DictReader(f):
                 if int(row.get("episode", 0)) != episode:
                     existing.append(row)
-
     fieldnames = ["episode", "shot_id", "scene", "characters", "action", "dialogue",
                   "camera", "shot_type", "duration", "outfit", "emotion",
                   "action_en", "dialogue_en"]
@@ -263,7 +527,9 @@ def save_storyboard(episode: int, data: dict):
     return {"status": "ok", "count": len(shots)}
 
 
-# ── 管线任务（Celery 异步） ──
+# ══════════════════════════════════════════════════════════
+# 管线（完整流程，通过 Celery）
+# ══════════════════════════════════════════════════════════
 
 class PipelineRequest(BaseModel):
     episode: int
@@ -273,128 +539,20 @@ class PipelineRequest(BaseModel):
 
 @router.post("/pipeline/run")
 def run_pipeline(req: PipelineRequest):
-    """提交管线任务到 Celery，立即返回 task_id"""
     from pipeline.tasks import preview_task, produce_task, post_task
-
     task_map = {
         "preview": (preview_task, [req.episode, req.level]),
         "produce": (produce_task, [req.episode]),
         "post": (post_task, [req.episode]),
     }
-
     entry = task_map.get(req.command)
     if not entry:
         raise HTTPException(400, f"未知命令: {req.command}")
-
     task_func, extra_args = entry
     return _submit_task(task_func, _cfg_path(), *extra_args)
-
-
-@router.post("/pipeline/run-sync")
-def run_pipeline_sync(req: PipelineRequest):
-    """同步执行（兼容旧模式，仅用于调试/短任务）"""
-    module = {"preview": "pipeline.preview", "produce": "pipeline.producer",
-              "post": "post.production"}.get(req.command)
-    if not module:
-        raise HTTPException(400, f"未知命令: {req.command}")
-    cmd = [sys.executable, "-m", module, "-c", _cfg_path(), "-e", str(req.episode)]
-    if req.command == "preview":
-        cmd.extend(["-p", req.level])
-    r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=600)
-    return {"status": "ok" if r.returncode == 0 else "error",
-            "stdout": r.stdout[-5000:], "stderr": r.stderr[-2000:]}
 
 
 @router.get("/pipeline/status/{episode}")
 def pipeline_status(episode: int):
     from flow.episode import get_episode_status
     return get_episode_status(str(ROOT), episode)
-
-
-# ── 任务查询（Celery 结果） ──
-
-@router.get("/tasks/{task_id}")
-def get_task(task_id: str):
-    """查询 Celery 任务状态（前端轮询）"""
-    from pipeline.celery_app import app
-    result = app.AsyncResult(task_id)
-
-    info = result.info if result.info else {}
-
-    # Celery 状态映射
-    state_map = {
-        "PENDING": "pending",
-        "STARTED": "running",
-        "PROGRESS": "running",
-        "SUCCESS": "success",
-        "FAILURE": "failed",
-        "REVOKED": "cancelled",
-    }
-
-    status = state_map.get(result.state, result.state.lower())
-    progress = info.get("progress", 0) if isinstance(info, dict) else 0
-    message = info.get("message", "") if isinstance(info, dict) else ""
-    stage = info.get("stage", "") if isinstance(info, dict) else ""
-
-    task_info = {
-        "task_id": task_id,
-        "status": status,
-        "progress": progress,
-        "stage": stage,
-        "message": message,
-    }
-
-    if result.state == "SUCCESS":
-        task_info["result"] = result.result
-    elif result.state == "FAILURE":
-        task_info["error"] = str(result.result) if result.result else ""
-        task_info["traceback"] = str(result.traceback or "")[-2000:]
-
-    return task_info
-
-
-@router.get("/tasks")
-def list_tasks():
-    """列出活跃任务"""
-    from pipeline.celery_app import app
-    try:
-        insp = app.control.inspect(timeout=2)
-        active = insp.active() or {}
-        scheduled = insp.scheduled() or {}
-        tasks = []
-        for worker, task_list in active.items():
-            for t in task_list:
-                tasks.append({
-                    "task_id": t.get("id"),
-                    "name": t.get("name"),
-                    "status": "running",
-                    "worker": worker,
-                })
-        for worker, task_list in scheduled.items():
-            for t in task_list:
-                tasks.append({
-                    "task_id": t.get("id", {}).get("id") if isinstance(t.get("id"), dict) else t.get("id"),
-                    "name": t.get("name"),
-                    "status": "scheduled",
-                    "worker": worker,
-                })
-        return {"tasks": tasks}
-    except Exception as e:
-        return {"tasks": [], "error": str(e)}
-
-
-@router.post("/tasks/{task_id}/cancel")
-def cancel_task(task_id: str):
-    """取消任务"""
-    from pipeline.celery_app import app
-    app.control.revoke(task_id, terminate=True)
-    return {"status": "cancelled", "task_id": task_id}
-
-
-# ── 工具 ──
-
-@router.post("/tools/portraits")
-def gen_portraits():
-    """生成定妆照（异步）"""
-    from pipeline.tasks import portraits_task
-    return _submit_task(portraits_task, _cfg_path())

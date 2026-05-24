@@ -316,3 +316,201 @@ def portraits_task(self, config_path: str):
     from pipeline.portraits import run_portraits
     run_portraits(config_path)
     return {"status": "done"}
+
+
+# ══════════════════════════════════════════════════════════
+# 独立工具任务 — 每个工具可单独调用，不依赖其他工具
+# ══════════════════════════════════════════════════════════
+
+@app.task(bind=True, name="pipeline.tts_single", soft_time_limit=120)
+def tts_single_task(self, config_path: str, text: str,
+                    voice_config: dict | None = None,
+                    emotion: str = "neutral", language: str = "zh"):
+    """独立 TTS — 只需要 TTS 服务，不需要 GPU/ComfyUI"""
+    _ensure_path()
+    from infra.config import Config
+    from api.registry import Container
+    import api  # noqa: F401
+
+    cfg = Config(config_path)
+    cont = Container(cfg.data)
+
+    self.update_state(state="PROGRESS", meta={"stage": "tts", "progress": 20, "message": "TTS 合成中..."})
+    tts = cont.get("tts")
+
+    import tempfile
+    output = tempfile.mktemp(suffix=".wav", prefix="tts_")
+    result = tts.synthesize(text, output, voice_config=voice_config or {},
+                            emotion=emotion, language=language)
+    self.update_state(state="PROGRESS", meta={"stage": "tts", "progress": 100, "message": "完成"})
+    return {"path": result, "text": text}
+
+
+@app.task(bind=True, name="pipeline.first_frame_by_id", soft_time_limit=300)
+def first_frame_by_id_task(self, config_path: str, episode: int, shot_id: str):
+    """独立首帧 — 只需要 ComfyUI，不需要 TTS/LipSync"""
+    _ensure_path()
+    from infra.config import Config
+    from api.registry import Container
+    from engines.prompt import build_prompt, translate_to_english
+    from engines.shot_manager import ShotManager
+    import api  # noqa: F401
+
+    cfg = Config(config_path)
+    cont = Container(cfg.data)
+    out_dir = Path(cfg.project_dir) / "output" / f"e{episode:02d}" / f"s{shot_id}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # 从分镜表加载镜头数据
+    shot_data = _find_shot(config_path, episode, shot_id)
+    if not shot_data:
+        return {"error": f"镜头 {shot_id} 不存在"}
+
+    self.update_state(state="PROGRESS", meta={
+        "stage": "first_frame", "shot_id": shot_id, "progress": 20, "message": "首帧生成中..."})
+
+    char_ids = [c.strip() for c in shot_data.get("characters", "").split("+") if c.strip()]
+    sm = ShotManager("", str(Path(cfg.project_dir) / "config"))
+    char_descs = []
+    for cid in char_ids:
+        c = sm.get_character(cid)
+        if c:
+            char_descs.append(translate_to_english(c.get("appearance", "")))
+    scene = sm.get_scene(shot_data.get("scene", ""))
+    scene_desc = translate_to_english(scene.get("description", "")) if scene else ""
+    action_en = translate_to_english(shot_data.get("action", ""))
+
+    prompt = build_prompt({**shot_data, "action_en": action_en},
+                          character_desc=", ".join(char_descs),
+                          scene_desc=scene_desc,
+                          style=cfg.get("project.style", "cinematic"),
+                          genre=cfg.get("project.genre", "urban"))
+
+    comfyui = cont.get("image")
+    files = comfyui.generate({"prompt": {"positive": prompt}}, str(out_dir))
+    frame_path = str(out_dir / "frame.png")
+    if files:
+        Path(files[0]).rename(frame_path)
+
+    return {"shot_id": shot_id, "path": frame_path, "prompt": prompt}
+
+
+@app.task(bind=True, name="pipeline.video_by_id", soft_time_limit=600)
+def video_by_id_task(self, config_path: str, episode: int, shot_id: str):
+    """独立视频生成 — 只需要 ComfyUI，首帧必须已存在"""
+    _ensure_path()
+    from infra.config import Config
+    from api.registry import Container
+    import api  # noqa: F401
+
+    cfg = Config(config_path)
+    cont = Container(cfg.data)
+    out_dir = Path(cfg.project_dir) / "output" / f"e{episode:02d}" / f"s{shot_id}"
+    frame_path = out_dir / "frame.png"
+
+    if not frame_path.exists():
+        return {"error": f"首帧不存在: {frame_path}，请先生成首帧"}
+
+    self.update_state(state="PROGRESS", meta={
+        "stage": "video", "shot_id": shot_id, "progress": 20, "message": "视频生成中..."})
+
+    from engines.workflow_builder import WorkflowBuilder
+    models = cfg.get("models", {})
+    wb = WorkflowBuilder(cfg.data, models, cfg.project_dir)
+    wb.load_workflows()
+    video_wf = wb.build_video(str(frame_path))
+
+    if not video_wf:
+        return {"error": "视频工作流为空"}
+
+    video_backend = cont.get("video")
+    files = video_backend.generate(video_wf, str(out_dir))
+    video_path = str(out_dir / "video.mp4")
+    if files:
+        Path(files[0]).rename(video_path)
+
+    return {"shot_id": shot_id, "path": video_path}
+
+
+@app.task(bind=True, name="pipeline.lipsync_by_id", soft_time_limit=300)
+def lipsync_by_id_task(self, config_path: str, episode: int, shot_id: str):
+    """独立口型同步 — 需要 LipSync 服务 + 已有视频和音频"""
+    _ensure_path()
+    from infra.config import Config
+    from api.registry import Container
+    import api  # noqa: F401
+
+    cfg = Config(config_path)
+    cont = Container(cfg.data)
+    out_dir = Path(cfg.project_dir) / "output" / f"e{episode:02d}" / f"s{shot_id}"
+    video_path = out_dir / "video.mp4"
+    audio_path = out_dir / "audio.wav"
+
+    if not video_path.exists():
+        return {"error": f"视频不存在: {video_path}，请先生成视频"}
+    if not audio_path.exists():
+        return {"error": f"音频不存在: {audio_path}，请先生成 TTS"}
+
+    self.update_state(state="PROGRESS", meta={
+        "stage": "lipsync", "shot_id": shot_id, "progress": 20, "message": "口型同步中..."})
+
+    lipsync = cont.get("lipsync")
+    synced_path = str(out_dir / "synced.mp4")
+    lipsync.sync(str(video_path), str(audio_path), synced_path)
+
+    return {"shot_id": shot_id, "path": synced_path}
+
+
+@app.task(bind=True, name="pipeline.music", soft_time_limit=120)
+def music_task(self, config_path: str, duration: float, mood: str, output: str):
+    """独立配乐 — 只需要 ffmpeg（模板模式）"""
+    _ensure_path()
+    from post.music import MusicGenerator
+    from infra.config import Config
+
+    cfg = Config(config_path)
+    backend = cfg.get("models", {}).get("music_backend", "template")
+    gen = MusicGenerator(backend=backend, config=cfg.data)
+    result = gen.generate(duration, output, mood=mood)
+    return {"path": result, "mood": mood, "duration": duration}
+
+
+@app.task(bind=True, name="pipeline.subtitle", soft_time_limit=60)
+def subtitle_task(self, config_path: str, episode: int):
+    """独立字幕 — 零外部依赖，纯本地"""
+    _ensure_path()
+    from post.subtitle import generate_srt
+    from infra.config import Config
+
+    cfg = Config(config_path)
+    sb_path = Path(cfg.project_dir) / "storyboard" / "episodes.csv"
+    if not sb_path.exists():
+        return {"error": "分镜表不存在"}
+
+    shots = []
+    with open(sb_path, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if int(row.get("episode", 0)) == episode:
+                shots.append(row)
+
+    if not shots:
+        return {"error": f"第{episode}集没有镜头"}
+
+    out_dir = Path(cfg.project_dir) / "output" / f"e{episode:02d}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    srt_path = str(out_dir / f"episode_{episode:02d}.srt")
+    generate_srt(shots, srt_path)
+    return {"path": srt_path, "count": len(shots)}
+
+
+def _find_shot(config_path: str, episode: int, shot_id: str) -> dict | None:
+    """从分镜表查找指定镜头"""
+    cfg_dir = Path(config_path).resolve().parent.parent
+    sb_path = cfg_dir / "storyboard" / "episodes.csv"
+    if not sb_path.exists():
+        return None
+    with open(sb_path, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if int(row.get("episode", 0)) == episode and row.get("shot_id") == shot_id:
+                return dict(row)
+    return None
