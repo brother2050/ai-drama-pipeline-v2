@@ -424,7 +424,8 @@ def tts_single_task(self, config_path: str, text: str, voice_config: dict | None
     cont = Container(cfg.data)
     self.update_state(state="PROGRESS", meta={"step": "tts", "progress": 20, "message": "TTS..."})
     import tempfile
-    output = tempfile.mktemp(suffix=".wav", prefix="tts_")
+    with tempfile.NamedTemporaryFile(suffix=".wav", prefix="tts_", delete=False) as tmp_f:
+        output = tmp_f.name
     try:
         result = cont.get("tts").synthesize(text, output, voice_config=voice_config or {}, emotion=emotion, language=language)
     except Exception as e:
