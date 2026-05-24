@@ -10,8 +10,8 @@
 |------|------|
 | **纯 Python** | 零 Shell 脚本，Windows/macOS/Linux 通用 |
 | **API 优先** | 所有三方工具通过 HTTP API 调用，无需本地 GPU |
-| **一键启动** | `python cli.py serve` 启动一切 |
-| **自动依赖** | 启动时自动检测/启动 PostgreSQL、Redis |
+| **Celery 异步** | Redis + Celery 任务队列，前端实时进度反馈 |
+| **一键启动** | `python cli.py serve` + `python cli.py worker` |
 | **DI 容器** | 后端自注册 + 按需创建 + 热重载 |
 | **Rich CLI** | 彩色终端输出，表格化状态展示 |
 
@@ -31,10 +31,23 @@ cd ai-drama-pipeline-v2
 ```bash
 pip install -e .
 # 或最小安装
-pip install fastapi uvicorn pyyaml python-dotenv httpx click rich Pillow
+pip install fastapi uvicorn pyyaml python-dotenv httpx click rich Pillow celery redis
 ```
 
-### 3. 配置
+### 3. 启动 Redis（必选）
+
+```bash
+# Ubuntu
+sudo apt install redis-server && sudo systemctl start redis
+
+# macOS
+brew install redis && brew services start redis
+
+# Docker
+docker run -d -p 6379:6379 redis:7-alpine
+```
+
+### 4. 配置
 
 ```bash
 cp .env.example .env
@@ -42,7 +55,73 @@ cp .env.example .env
 # 获取: https://api.xiaomimimo.com
 ```
 
-### 4. 配置远程服务
+### 5. 启动
+
+```bash
+# 终端 1: 启动 Celery Worker（处理异步任务）
+python cli.py worker
+
+# 终端 2: 启动 Web 工作台
+python cli.py serve
+
+# 浏览器打开 http://localhost:8888
+```
+
+---
+
+## 📖 CLI 命令
+
+```bash
+# 服务
+python cli.py serve                    # 启动 Web 工作台
+python cli.py worker                   # 启动 Celery Worker
+python cli.py status                   # 服务状态（Redis + Celery + ComfyUI）
+python cli.py setup                    # 环境检测
+
+# 管线（通过 Celery 异步执行）
+python cli.py preview 1 draft          # 快速预览
+python cli.py produce 1                # 完整生产
+python cli.py post 1 --vertical        # 后期合成+横转竖
+python cli.py all 1                    # 一键全流程
+python cli.py portraits                # 定妆照
+
+# 项目
+python cli.py project list             # 列出项目
+python cli.py project new love_story   # 创建项目
+python cli.py project switch love_story # 切换项目
+python cli.py project current          # 当前项目
+```
+
+---
+
+## 🏗️ 异步架构
+
+```
+┌─────────────┐     POST /api/pipeline/run     ┌──────────────┐
+│   Web 前端   │ ──────────────────────────────→ │   FastAPI    │
+│             │ ←────────────────────────────── │   (提交任务)  │
+│             │     { task_id, poll_url }        └──────┬───────┘
+│             │                                         │
+│   轮询       │     GET /api/tasks/{id}                 │ .delay()
+│   进度       │ ──────────────────────→                 ▼
+│             │ ←──────────────┐              ┌──────────────────┐
+└─────────────┘   { progress } │              │  Celery + Redis  │
+                               │              │  (任务队列)       │
+                               │              └────────┬─────────┘
+                               │                       │
+                               │              ┌────────▼─────────┐
+                               └──────────────│  Celery Worker   │
+                                              │  (AI 任务执行)    │
+                                              │  TTS / ComfyUI   │
+                                              │  LipSync / FFmpeg│
+                                              └──────────────────┘
+```
+
+**流程**: Web 提交 → Redis 队列 → Worker 执行 → 实时更新进度 → 前端轮询展示
+
+---
+
+## ⚙️ 配置说明
 
 编辑 `config/project.yaml`：
 
@@ -57,96 +136,32 @@ models:
     api_url: "http://your-musetalk-server:8080"
 ```
 
-### 5. 启动
+---
 
-```bash
-python cli.py serve
-# 浏览器打开 http://localhost:8888
+## 📁 项目结构
+
+```
+ai-drama-pipeline-v2/
+├── cli.py                 # 统一 CLI 入口
+├── api/                   # 后端自注册 + DI 容器
+│   ├── registry.py        # 服务注册表
+│   └── backends/          # TTS / LipSync / Image / Video / LLM / Music
+├── pipeline/              # Celery 异步任务
+│   ├── celery_app.py      # Celery 配置
+│   └── tasks.py           # 所有异步任务定义
+├── engines/               # 引擎层（Prompt / 工作流 / 一致性）
+├── post/                  # 后期（字幕 / 转场 / 配乐 / 横转竖）
+├── flow/                  # 编排器 / 批量调度
+├── infra/                 # 基础设施（Config / HTTP / FFmpeg / DB）
+├── web/                   # FastAPI Web 工作台
+│   ├── app.py             # 应用工厂
+│   └── routers/api.py     # API 路由
+├── config/                # 配置文件
+└── storyboard/            # 分镜表
 ```
 
 ---
 
-## 📖 CLI 命令
+## 📝 License
 
-```bash
-# 服务
-python cli.py serve                    # 启动 Web 工作台
-python cli.py status                   # 服务状态
-python cli.py setup                    # 环境检测
-python cli.py worker                   # Celery Worker
-
-# 管线
-python cli.py preview 1 draft          # 快速预览
-python cli.py produce 1                # 完整生产
-python cli.py post 1                   # 后期合成
-python cli.py post 1 --vertical        # 横转竖
-python cli.py all 1                    # 一键全流程
-python cli.py portraits                # 定妆照
-
-# 项目
-python cli.py project list             # 列出项目
-python cli.py project new love_story   # 创建项目
-python cli.py project switch love_story # 切换项目
-python cli.py project current          # 当前项目
-
-# 其他
-python cli.py env                      # 环境信息
-python cli.py clean --logs             # 清理日志
-```
-
-安装后可使用 `drama` 命令代替 `python cli.py`。
-
----
-
-## 🏗️ 架构
-
-```
-cli.py (CLI 入口)
-  │
-  ├── api/                    # 后端服务层
-  │   ├── registry.py         #   注册表 + DI 容器
-  │   └── backends/           #   后端实现（纯 API 调用）
-  │       ├── tts/            #     MiMo / GPT-SoVITS / CosyVoice
-  │       ├── lipsync/        #     MuseTalk / SadTalker
-  │       ├── image/          #     ComfyUI
-  │       ├── llm/            #     Ollama / OpenAI
-  │       └── music/          #     Template / MusicGen
-  │
-  ├── infra/                  # 基础设施
-  │   ├── config.py           #     配置管理
-  │   ├── http.py             #     HTTP 客户端
-  │   ├── ffmpeg.py           #     FFmpeg 封装
-  │   └── gpu.py              #     GPU 检测
-  │
-  ├── pipeline/               # 生产管线
-  │   ├── preview.py          #     快速预览
-  │   ├── producer.py         #     完整生产
-  │   └── portraits.py        #     定妆照生成
-  │
-  ├── post/                   # 后期处理
-  │   └── production.py       #     合成/字幕/转场/竖屏
-  │
-  └── web/                    # Web 工作台
-      ├── app.py              #     FastAPI 工厂
-      └── routers/api.py      #     API 路由
-```
-
----
-
-## 🔧 系统要求
-
-| 模式 | GPU | 磁盘 | 适用 |
-|------|-----|------|------|
-| **API 模式**（推荐） | ❌ 不需要 | 2GB+ | 无 GPU 用户 |
-| GPU 模式 | ✅ NVIDIA 16GB+ | 50GB+ | 有 GPU 用户 |
-
-- Python 3.10+
-- ffmpeg（音视频处理）
-- PostgreSQL（可选，不配则跳过）
-- Redis（可选，Celery 需要）
-
----
-
-## 📄 许可证
-
-MIT License
+MIT

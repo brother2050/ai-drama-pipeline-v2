@@ -417,6 +417,36 @@ def test_web_app():
     print("✅ Web 应用正常")
 
 
+# ── pipeline/celery_app.py ──
+
+def test_celery_app():
+    """测试 Celery 应用配置"""
+    from pipeline.celery_app import app
+
+    assert app.main == "drama"
+    assert "redis" in app.conf.broker_url
+    assert app.conf.task_track_started is True
+    assert app.conf.task_acks_late is True
+    assert app.conf.worker_prefetch_multiplier == 1
+    print("✅ Celery 配置正常")
+
+
+def test_celery_tasks_registered():
+    """测试 Celery 任务注册"""
+    from pipeline.celery_app import app
+    import pipeline.tasks  # noqa: F401 触发注册
+
+    expected_tasks = [
+        "pipeline.tts", "pipeline.first_frame", "pipeline.video_gen",
+        "pipeline.lipsync", "pipeline.shot", "pipeline.preview",
+        "pipeline.produce", "pipeline.post", "pipeline.portraits",
+    ]
+    registered = set(app.tasks.keys())
+    for task_name in expected_tasks:
+        assert task_name in registered, f"任务未注册: {task_name}"
+    print(f"✅ Celery 任务注册正常 ({len(expected_tasks)} 个)")
+
+
 # ── 运行所有测试 ──
 
 def run_all():
@@ -443,6 +473,8 @@ def run_all():
         test_registry,
         test_model_registry,
         test_web_app,
+        test_celery_app,
+        test_celery_tasks_registered,
     ]
 
     passed = 0

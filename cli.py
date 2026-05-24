@@ -2,20 +2,11 @@
 """
 AI 短剧管线 v2 — 统一 CLI 入口
 
-用法:
-    drama serve                    启动 Web 工作台
-    drama status                   检查服务状态
-    drama setup                    环境检测
-    drama preview 1 draft          快速预览
-    drama produce 1                完整生产
-    drama post 1 --vertical        后期合成+横转竖
-    drama all 1                    一键全流程
-    drama project list             项目管理
-    drama portraits                生成定妆照
-
-无需 pip install，直接运行: python cli.py serve
+依赖: Redis + Celery（必选）
+启动: python cli.py serve        → Web 工作台
+      python cli.py worker       → Celery Worker
+      python cli.py all 1        → 一键全流程
 """
-
 from __future__ import annotations
 
 import os
@@ -32,7 +23,6 @@ from rich.table import Table
 console = Console()
 ROOT = Path(__file__).resolve().parent
 
-# 确保项目根在 sys.path
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -77,34 +67,42 @@ def _resolve_config(config_path: str | None = None) -> str:
     sys.exit(1)
 
 
-def _run_module(module: str, *args, config_path: str | None = None):
-    cfg = _resolve_config(config_path)
-    cmd = [sys.executable, "-m", module, "-c", cfg, *args]
-    r = subprocess.run(cmd, cwd=str(ROOT))
-    if r.returncode != 0:
-        console.print(f"[red]❌ 执行失败 (exit {r.returncode})[/red]")
-        sys.exit(r.returncode)
+def _ensure_redis():
+    """确保 Redis 运行（必选依赖）"""
+    if _port_open(6379):
+        return True
+
+    console.print("[yellow]⚠ Redis 未运行，尝试启动...[/yellow]")
+    redis = shutil.which("redis-server")
+    if redis:
+        subprocess.Popen([redis, "--daemonize", "yes"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        import time; time.sleep(1)
+        if _port_open(6379):
+            console.print("[green]✅ Redis 已启动[/green]")
+            return True
+
+    # macOS Homebrew
+    if shutil.which("brew"):
+        subprocess.run(["brew", "services", "start", "redis"],
+                       capture_output=True, timeout=30)
+        import time; time.sleep(1)
+        if _port_open(6379):
+            return True
+
+    console.print("[red]❌ Redis 启动失败。请手动安装并启动 Redis[/red]")
+    console.print("  Ubuntu: sudo apt install redis-server && sudo systemctl start redis")
+    console.print("  macOS:  brew install redis && brew services start redis")
+    return False
 
 
 def _ensure_deps():
-    """自动启动 PostgreSQL/Redis（如需要）"""
+    """启动前检查"""
     _load_env()
-    # 检查是否需要 DB
-    cfg_path = _resolve_config()
-    import yaml
-    with open(cfg_path) as f:
-        cfg = yaml.safe_load(f) or {}
-
-    # Redis（Celery 需要）
-    if cfg.get("celery", {}).get("enabled", False) and not _port_open(6379):
-        console.print("[yellow]⚠ Redis 未运行，尝试启动...[/yellow]")
-        redis = shutil.which("redis-server")
-        if redis:
-            subprocess.Popen([redis, "--daemonize", "yes"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            import time; time.sleep(1)
+    _ensure_redis()
 
 
-# ── CLI 命令 ──
+# ── CLI ──
 
 @click.group()
 @click.version_option("2.0.0", prog_name="drama")
@@ -120,10 +118,34 @@ def cli():
 def serve(port, host, reload):
     """启动 Web 工作台"""
     _load_env()
-    _ensure_deps()
+    if not _ensure_redis():
+        sys.exit(1)
     console.print(f"\n[bold green]🎬 Web 工作台启动中 — http://localhost:{port}[/bold green]\n")
+    console.print("[dim]需要同时启动 worker: python cli.py worker[/dim]\n")
     import uvicorn
     uvicorn.run("web.app:create_app", factory=True, host=host, port=port, reload=reload, log_level="info")
+
+
+@cli.command()
+@click.option("--concurrency", "-c", default=2, help="并发数")
+def worker(concurrency):
+    """启动 Celery Worker（处理异步任务）"""
+    _load_env()
+    if not _ensure_redis():
+        sys.exit(1)
+
+    celery = shutil.which("celery")
+    if not celery:
+        console.print("[red]❌ celery 未安装。pip install celery redis[/red]")
+        sys.exit(1)
+
+    console.print(f"\n[bold cyan]🔧 Celery Worker 启动中 (并发: {concurrency})[/bold cyan]\n")
+    os.execvp(celery, [
+        celery, "-A", "pipeline.celery_app", "worker",
+        "--loglevel=info", f"--concurrency={concurrency}",
+        "-Q", "drama",
+        "--pool=threads",  # AI 任务 IO 密集，用线程池
+    ])
 
 
 @cli.command()
@@ -136,13 +158,23 @@ def status():
     table.add_column("端口/地址", justify="center")
     table.add_column("说明")
 
-    # PostgreSQL
-    pg = _port_open(5432)
-    table.add_row("PostgreSQL", "[green]✅[/green]" if pg else "[yellow]⚠[/yellow]", "5432", "数据存储（可选）")
-
-    # Redis
+    # Redis（必选）
     redis = _port_open(6379)
-    table.add_row("Redis", "[green]✅[/green]" if redis else "[yellow]⚠[/yellow]", "6379", "任务队列（可选）")
+    table.add_row("Redis", "[green]✅[/green]" if redis else "[red]❌ 必选[/red]",
+                   "6379", "任务队列（必选）")
+
+    # Celery Worker
+    celery_ok = False
+    if redis:
+        try:
+            from pipeline.celery_app import app
+            insp = app.control.inspect(timeout=2)
+            active = insp.active()
+            celery_ok = bool(active)
+        except Exception:
+            pass
+    table.add_row("Celery Worker", "[green]✅[/green]" if celery_ok else "[red]❌ 未启动[/red]",
+                   "-", "异步任务处理（必选）")
 
     # ComfyUI
     import yaml
@@ -166,64 +198,11 @@ def status():
         table.add_row("MiMo TTS", "[green]✅[/green]" if key else "[yellow]⚠ 未配置[/yellow]",
                        "云 API", "语音合成（免费）")
 
-    # Web
-    web_port = cfg.get("server", {}).get("port", 8888)
-    web = _port_open(web_port)
-    table.add_row("Web 工作台", "[green]✅[/green]" if web else "[yellow]⚠[/yellow]", str(web_port), "操作界面")
-
     console.print(table)
-    if not web:
-        console.print("\n[yellow]💡 运行 `drama serve` 启动工作台[/yellow]")
-
-
-@cli.command()
-@click.option("--check-only", is_flag=True, help="仅检测不安装")
-def setup(check_only):
-    """环境检测与初始化"""
-    _load_env()
-    console.print("\n[bold cyan]🔍 环境检测[/bold cyan]\n")
-
-    import platform
-    import json
-
-    # 系统
-    t = Table(title="💻 系统")
-    t.add_column("项目", style="cyan"); t.add_column("值")
-    t.add_row("OS", f"{platform.system()} {platform.release()} ({platform.machine()})")
-    t.add_row("Python", f"{platform.python_version()} ({sys.executable})")
-    console.print(t)
-
-    # GPU
-    from infra.gpu import detect_gpu
-    gpu = detect_gpu()
-    gt = Table(title="🎮 GPU")
-    gt.add_column("项目", style="cyan"); gt.add_column("值")
-    gt.add_row("GPU", gpu["name"])
-    gt.add_row("显存", f"{gpu['vram_mb']} MB" if gpu["vram_mb"] else "N/A")
-    gt.add_row("状态", "[green]✅ 可用[/green]" if gpu["available"] else "[yellow]⚠ 不可用（API 模式不受影响）[/yellow]")
-    console.print(gt)
-
-    # 依赖
-    deps = [("yaml", "PyYAML"), ("fastapi", "FastAPI"), ("uvicorn", "Uvicorn"),
-            ("httpx", "HTTPX"), ("click", "Click"), ("rich", "Rich"), ("PIL", "Pillow")]
-    dt = Table(title="📦 依赖")
-    dt.add_column("包", style="cyan"); dt.add_column("状态")
-    missing = []
-    for mod, name in deps:
-        try:
-            m = __import__(mod.replace("-", "_"))
-            v = getattr(m, "__version__", "installed")
-            dt.add_row(name, f"[green]✅ {v}[/green]")
-        except ImportError:
-            dt.add_row(name, "[red]❌ 缺失[/red]")
-            missing.append(name)
-    console.print(dt)
-
-    if missing and not check_only:
-        console.print(f"[yellow]安装缺失依赖: {', '.join(missing)}[/yellow]")
-        subprocess.run([sys.executable, "-m", "pip", "install", *missing], check=False)
-    elif not missing:
-        console.print("[green]✅ 所有依赖已就绪[/green]")
+    if not redis or not celery_ok:
+        console.print("\n[red]⚠ Redis 和 Celery Worker 是必选依赖[/red]")
+        console.print("  1. 启动 Redis: redis-server --daemonize yes")
+        console.print("  2. 启动 Worker: python cli.py worker")
 
 
 @cli.command()
@@ -231,20 +210,22 @@ def setup(check_only):
 @click.argument("level", type=click.Choice(["draft", "standard", "high"]), default="draft")
 @click.option("-c", "--config", "config_path", default=None)
 def preview(episode, level, config_path):
-    """快速预览"""
+    """快速预览（通过 Celery 异步执行）"""
     _ensure_deps()
+    cfg = _resolve_config(config_path)
     console.print(f"\n[bold cyan]🎬 预览 第{episode}集 ({level})[/bold cyan]\n")
-    _run_module("pipeline.preview", "-e", str(episode), "-p", level, config_path=config_path)
+    _run_via_celery("pipeline.preview", cfg, episode, level)
 
 
 @cli.command()
 @click.argument("episode", type=int)
 @click.option("-c", "--config", "config_path", default=None)
 def produce(episode, config_path):
-    """完整生产"""
+    """完整生产（通过 Celery 异步执行）"""
     _ensure_deps()
+    cfg = _resolve_config(config_path)
     console.print(f"\n[bold cyan]🎬 生产 第{episode}集[/bold cyan]\n")
-    _run_module("pipeline.producer", "-e", str(episode), config_path=config_path)
+    _run_via_celery("pipeline.produce", cfg, episode)
 
 
 @cli.command()
@@ -254,38 +235,81 @@ def produce(episode, config_path):
 def post(episode, vertical, config_path):
     """后期合成"""
     _ensure_deps()
-    args = ["-e", str(episode)]
-    if vertical:
-        args.append("--vertical")
+    cfg = _resolve_config(config_path)
     console.print(f"\n[bold cyan]🎬 后期合成 第{episode}集[/bold cyan]\n")
-    _run_module("post.production", *args, config_path=config_path)
+    _run_via_celery("pipeline.post", cfg, episode, vertical=vertical)
 
 
 @cli.command("all")
 @click.argument("episode", type=int, default=1)
 @click.option("-c", "--config", "config_path", default=None)
 def run_all(episode, config_path):
-    """一键全流程"""
+    """一键全流程（preview → produce → post）"""
     _ensure_deps()
     cfg = _resolve_config(config_path)
     console.print(f"\n[bold cyan]━━━ 全流程 第{episode}集 ━━━[/bold cyan]\n")
-    for i, (label, module) in enumerate([
+    for i, (label, task_name) in enumerate([
         ("预览", "pipeline.preview"),
-        ("生产", "pipeline.producer"),
-        ("后期", "post.production"),
+        ("生产", "pipeline.produce"),
+        ("后期", "pipeline.post"),
     ], 1):
         console.print(f"[bold][{i}/3] {label}[/bold]")
-        subprocess.run([sys.executable, "-m", module, "-c", cfg, "-e", str(episode)], cwd=str(ROOT))
+        _run_via_celery(task_name, cfg, episode)
     console.print("\n[bold green]✅ 全流程完成！[/bold green]")
+
+
+def _run_via_celery(task_name: str, config_path: str, *args, **kwargs):
+    """通过 Celery 提交任务并等待完成"""
+    from pipeline.celery_app import app
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+
+    # 导入任务模块以注册
+    import pipeline.tasks  # noqa: F401
+
+    task = app.send_task(task_name, args=[config_path, *args], kwargs=kwargs)
+
+    console.print(f"[dim]任务已提交: {task.id}[/dim]")
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        ptask = progress.add_task("等待中...", total=100)
+
+        while not task.ready():
+            try:
+                info = task.info if task.info else {}
+                if isinstance(info, dict):
+                    pct = info.get("progress", 0)
+                    msg = info.get("message", "")
+                    progress.update(ptask, completed=pct, description=msg or "处理中...")
+            except Exception:
+                pass
+            import time; time.sleep(0.5)
+
+        # 最终结果
+        if task.successful():
+            result = task.result
+            progress.update(ptask, completed=100, description="[green]✅ 完成[/green]")
+            if isinstance(result, dict):
+                console.print(f"[dim]结果: {result}[/dim]")
+        else:
+            progress.update(ptask, description="[red]❌ 失败[/red]")
+            console.print(f"[red]任务失败: {task.result}[/red]")
 
 
 @cli.command()
 @click.option("-c", "--config", "config_path", default=None)
 def portraits(config_path):
-    """生成定妆照"""
+    """生成定妆照（通过 Celery）"""
     _ensure_deps()
+    cfg = _resolve_config(config_path)
     console.print("\n[bold cyan]🎨 生成定妆照[/bold cyan]\n")
-    _run_module("pipeline.portraits", config_path=config_path)
+    _run_via_celery("pipeline.portraits", cfg)
 
 
 # ── 项目管理 ──
@@ -339,6 +363,7 @@ def env():
     console.print(f"[cyan]OS:[/cyan]     {platform.system()} {platform.release()}")
     console.print(f"[cyan]Python:[/cyan] {platform.python_version()}")
     console.print(f"[cyan]GPU:[/cyan]    {gpu['name']} ({gpu['vram_mb']}MB)" if gpu["available"] else "[cyan]GPU:[/cyan]    不可用（API 模式不受影响）")
+    console.print(f"[cyan]Redis:[/cyan]  {'✅ 运行中' if _port_open(6379) else '❌ 未运行'}")
 
 
 @cli.command()
@@ -359,23 +384,6 @@ def clean(logs, cache):
         console.print("[green]✅ 缓存已清理[/green]")
     if not logs and not cache:
         console.print("[yellow]请指定: --logs 或 --cache[/yellow]")
-
-
-@cli.command()
-@click.option("--concurrency", "-c", default=2, help="并发数（≥2）")
-def worker(concurrency):
-    """启动 Celery Worker"""
-    _load_env()
-    _ensure_deps()
-    if concurrency < 2:
-        console.print("[yellow]⚠ concurrency 必须 ≥2[/yellow]")
-        concurrency = 2
-    celery = shutil.which("celery")
-    if not celery:
-        console.print("[red]❌ celery 未安装。pip install celery redis[/red]")
-        sys.exit(1)
-    os.execvp(celery, [celery, "-A", "pipeline.celery_app", "worker",
-                       "--loglevel=info", f"--concurrency={concurrency}"])
 
 
 if __name__ == "__main__":
