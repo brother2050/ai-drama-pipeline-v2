@@ -30,14 +30,18 @@ def generate_srt(shots: list[dict], output: str, *,
 
         # 非首段镜头: 实际时长减去转场重叠
         if i > 0 and transition_duration > 0:
-            current_time += duration - transition_duration
+            current_time += max(0, duration - transition_duration)
         else:
             current_time += duration
 
         if not dialogue or dialogue == "......":
             continue
 
-        end = start + duration
+        # 字幕结束时间 = 下一段画面开始时间（即当前段的可见结束时间）
+        if i > 0 and transition_duration > 0:
+            end = start + max(0, duration - transition_duration)
+        else:
+            end = start + duration
         start_str = _format_srt_time(start)
         end_str = _format_srt_time(end)
         lines.append(f"{idx}\n{start_str} --> {end_str}\n{dialogue}\n")

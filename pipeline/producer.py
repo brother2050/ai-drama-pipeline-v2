@@ -108,16 +108,24 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path):
         from engines.workflow_builder import WorkflowBuilder
         from engines.multi_char import MultiCharacterHandler
 
+        # 获取 LLM 后端用于翻译（可选）
+        llm = None
+        try:
+            if cfg.get("llm", {}).get("enabled"):
+                llm = container.get("llm")
+        except Exception:
+            pass
+
         char_descs = []
         for cid in char_ids:
             char = sm.get_character(cid)
             if char:
-                desc = translate_to_english(char.get("appearance", ""), llm=None)
+                desc = translate_to_english(char.get("appearance", ""), llm=llm)
                 char_descs.append(desc)
 
         scene_id = shot.get("scene", "")
         scene = sm.get_scene(scene_id)
-        scene_desc = translate_to_english(scene.get("description", ""), llm=None) if scene else ""
+        scene_desc = translate_to_english(scene.get("description", ""), llm=llm) if scene else ""
 
         # 多角色 prompt
         multi_char_prompt = ""

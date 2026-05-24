@@ -703,10 +703,11 @@ function updateShotField(el) {
 }
 
 async function deleteShotFromSB(idx) {
-  if (!confirm('确认删除此镜头？')) return;
   try {
     const d = await api(`/storyboard/${ep}`);
     const currentShots = d.shots || [];
+    const sid = currentShots[idx]?.shot_id || idx+1;
+    if (!confirm(t('confirm.delete_shot', {id: sid}))) return;
     pushUndo(`删除镜头 ${currentShots[idx]?.shot_id || idx+1}`);
     currentShots.splice(idx, 1);
     await api(`/storyboard/${ep}`, { method:'POST', body:{shots:currentShots} });

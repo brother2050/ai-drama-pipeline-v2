@@ -72,6 +72,15 @@ Rate limit 定义了但从未调用、Rate limit 内存泄露、前端 XSS、add
 | 67 | saveCfg TTS/LipSync URL 不跟随后端切换 | ✅ 动态映射 + onchange |
 | 68 | loadSettings 未缓存配置 | ✅ 写入 _cache |
 
+### 第九轮（4项）— 字幕 & 翻译 & i18n
+
+| # | 问题 | 修复 |
+|---|------|------|
+| 69 | pipeline/producer.py translate_to_english 无 LLM | ✅ 传入 LLM |
+| 70 | generate_srt 字幕结束时间延伸到下一段画面 | ✅ end = start + 可见时长 |
+| 71 | generate_srt transition_duration > duration 时 current_time 为负 | ✅ max(0, ...) 保护 |
+| 72 | deleteShotFromSB 硬编码中文确认框 | ✅ 改用 t() i18n |
+
 ---
 
 ## 🟡 已知限制（非 bug，设计取舍）
