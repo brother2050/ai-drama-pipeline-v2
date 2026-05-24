@@ -41,6 +41,18 @@ llm:
   base_url: "http://localhost:11434"
   model: "qwen3:8b"
 
+# LoRA 训练（FluxGym 远程训练）
+training:
+  enabled: false
+  backend: "fluxgym"
+  api_url: "http://127.0.0.1:7860"    # FluxGym Gradio 服务地址
+  poll_interval: 10                    # 轮询间隔（秒）
+  defaults:
+    steps: 1000
+    learning_rate: 0.0001
+    rank: 16
+    resolution: "512x768"
+
 # Web 服务器
 server:
   port: 8888

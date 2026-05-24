@@ -137,12 +137,28 @@ class WorkflowBuilder:
         img_backend = self.models.get("image_backend", "sd15")
         set_clip_text_prompts(wf, positive, negative, img_backend)
 
-        # 注入角色参考图（IP-Adapter）
+        # 注入角色参考图（IP-Adapter）或 LoRA
         char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
         ip_config = self.models.get("ip_adapter", {})
 
         if char_ids:
-            wf = self._inject_character_refs(wf, char_ids, ip_config)
+            # 优先使用已训练的 LoRA，无 LoRA 时回退到 IP-Adapter
+            lora_path = self._find_character_lora(char_ids[0])
+            if lora_path:
+                lora_strength = self.models.get("character_lora_strength", 0.7)
+                wf = self._inject_lora(wf, lora_path, strength=lora_strength)
+                logger.info(f"使用角色 LoRA: {char_ids[0]} → {lora_path}")
+            else:
+                wf = self._inject_character_refs(wf, char_ids, ip_config)
+
+        # 注入风格 LoRA
+        genre = self.config.get("project", {}).get("genre", "")
+        if genre:
+            style_lora = self._find_style_lora(genre)
+            if style_lora:
+                style_strength = self.models.get("style_lora_strength", 0.6)
+                wf = self._inject_lora(wf, style_lora, strength=style_strength)
+                logger.info(f"使用风格 LoRA: {genre} → {style_lora}")
 
         return prompt, wf
 
@@ -246,6 +262,78 @@ class WorkflowBuilder:
         logger.info(f"添加第二角色 IP-Adapter: {char_id} (weight={secondary_weight:.2f})")
         return wf
 
+    # ── LoRA 查找与注入 ────────────────────────────────────
+
+    def _find_character_lora(self, char_id: str) -> str | None:
+        """查找已训练的角色 LoRA 文件"""
+        lora_dir = Path(self.project_dir) / "assets" / "loras"
+        candidates = [
+            lora_dir / f"{char_id}_lora.safetensors",
+            lora_dir / f"{char_id}.safetensors",
+        ]
+        # 也检查角色目录下的 lora 子目录
+        char_dir = Path(self.project_dir) / "assets" / "characters" / char_id / "lora"
+        if char_dir.exists():
+            for f in char_dir.glob("*.safetensors"):
+                candidates.append(f)
+
+        for p in candidates:
+            if p.exists():
+                return str(p)
+        return None
+
+    def _find_style_lora(self, genre: str) -> str | None:
+        """查找已训练的风格 LoRA 文件"""
+        lora_dir = Path(self.project_dir) / "assets" / "loras"
+        candidates = [
+            lora_dir / f"style_{genre}_lora.safetensors",
+            lora_dir / f"style_{genre}.safetensors",
+        ]
+        for p in candidates:
+            if p.exists():
+                return str(p)
+        return None
+
+    def _inject_lora(self, wf: dict, lora_path: str, strength: float = 0.7) -> dict:
+        """向工作流注入 LoRA 加载节点
+
+        在 UNETLoader/CheckpointLoader 之后、KSampler 之前插入 LoraLoader 节点。
+        """
+        wf = copy.deepcopy(wf)
+
+        # 找模型加载节点（UNETLoader 或 CheckpointLoaderSimple）
+        model_source = find_first_node(wf, "UNETLoader") or find_first_node(wf, "CheckpointLoaderSimple")
+        if not model_source:
+            logger.warning("未找到模型加载节点，无法注入 LoRA")
+            return wf
+
+        # 找 KSampler，将 model 输入从 model_source 重接到 LoRA 节点
+        ksampler = find_first_node(wf, "KSampler")
+        if not ksampler:
+            logger.warning("未找到 KSampler 节点，无法注入 LoRA")
+            return wf
+
+        # 创建 LoraLoader 节点
+        lora_node_id = f"lora_{Path(lora_path).stem}"
+        lora_name = os.path.basename(lora_path)
+
+        wf[lora_node_id] = {
+            "class_type": "LoraLoader",
+            "inputs": {
+                "lora_name": lora_name,
+                "strength_model": strength,
+                "strength_clip": strength,
+                "model": [model_source, 0],
+                "clip": [model_source, 1] if len(wf[model_source].get("outputs", [])) > 1 else [model_source, 0],
+            }
+        }
+
+        # 将 KSampler 的 model 输入指向 LoRA 节点
+        wf[ksampler]["inputs"]["model"] = [lora_node_id, 0]
+
+        logger.info(f"注入 LoRA 节点: {lora_node_id} (strength={strength})")
+        return wf
+
     # ── 构建视频工作流 ──────────────────────────────────────
 
     def build_video(self, frame_path: str) -> dict:
@@ -258,6 +346,14 @@ class WorkflowBuilder:
         load_nodes = find_load_image_nodes(wf)
         if load_nodes:
             wf[load_nodes[0]]["inputs"]["image"] = os.path.basename(frame_path)
+
+        # 注入风格 LoRA（视频生成也受益于风格一致性）
+        genre = self.config.get("project", {}).get("genre", "")
+        if genre:
+            style_lora = self._find_style_lora(genre)
+            if style_lora:
+                style_strength = self.models.get("style_lora_strength", 0.6)
+                wf = self._inject_lora(wf, style_lora, strength=style_strength)
 
         return wf
 

@@ -79,6 +79,7 @@ class Container:
         "tts": "tts_backend", "lipsync": "lip_sync_backend",
         "image": "image_backend", "video": "video_backend",
         "music": "music_backend", "llm": "llm_backend",
+        "training": "training_backend",
     }
 
     def __init__(self, config: dict):
