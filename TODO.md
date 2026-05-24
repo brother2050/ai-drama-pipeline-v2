@@ -47,7 +47,7 @@
 - [x] 批量执行"取消"按钮
 - [x] 移动端响应式布局完善（侧边栏横滑、卡片单列、编辑面板全屏）
 - [x] pollTask 最大 300 次轮询限制（约 4 分钟超时）
-- [ ] 没有撤销/重做操作
+- [x] 撤销/重做操作（历史栈 + Ctrl+Z/Y 快捷键 + 按钮）
 
 ### 15. 日志系统 — 已修复 ✅
 - [x] `cli.py` 添加 logger
@@ -57,7 +57,7 @@
 - [x] `infra/cache.py` 添加 logger
 - [x] `scripts/project_mgr.py` 添加 logger
 - [x] `web/services/__init__.py` 统一日志配置服务
-- [ ] 没有日志文件输出（可通过 setup_logging(log_file=...) 启用）
+- [x] 日志文件输出（logs/app.log）
 
 ### 16. 文档 — 已修复 ✅
 （上轮已完成）
@@ -80,11 +80,11 @@
 ### 21. 性能优化 — 已修复 ✅
 - [x] 前端缓存层（`cachedFetch` + `invalidateCache`，30s TTL）
 - [x] 系统状态缓存（10s TTL，避免频繁刷新）
-- [ ] `api/__init__.py` 懒加载（影响小，暂不做）
+- [x] `api/__init__.py` 懒加载（按需 import，缺依赖跳过不崩溃）
 
 ### 22. 国际化
-- [ ] 前端硬编码中文
-- [ ] 错误信息中英文混杂
+- [x] 前端 i18n（i18n.js 字典 + t() 函数 + 语言切换器）
+- [x] 错误信息统一中文（Pydantic 校验 + API 错误）
 
 ---
 
