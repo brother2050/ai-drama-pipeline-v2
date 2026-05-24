@@ -437,12 +437,10 @@ def test_celery_tasks_registered():
     import pipeline.tasks  # noqa: F401 触发注册
 
     expected_tasks = [
-        "pipeline.tts", "pipeline.first_frame", "pipeline.video_gen",
-        "pipeline.lipsync", "pipeline.shot", "pipeline.preview",
+        "pipeline.step.tts", "pipeline.step.first_frame", "pipeline.step.video",
+        "pipeline.step.lipsync", "pipeline.shot", "pipeline.preview",
         "pipeline.produce", "pipeline.post", "pipeline.portraits",
-        "pipeline.tts_single", "pipeline.first_frame_by_id",
-        "pipeline.video_by_id", "pipeline.lipsync_by_id",
-        "pipeline.music", "pipeline.subtitle",
+        "pipeline.tts_single", "pipeline.music", "pipeline.subtitle",
     ]
     registered = set(app.tasks.keys())
     for task_name in expected_tasks:

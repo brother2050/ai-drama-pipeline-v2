@@ -164,13 +164,13 @@ async function loadPipeline() {
   const tools = await loadToolStatus();
 
   const steps = [
-    { id: 'subtitle',   icon: '📝', name: '字幕生成',   desc: '从分镜表生成 SRT 字幕', need: ['ffmpeg'],        api: '/tools/subtitle' },
-    { id: 'tts',        icon: '🎤', name: '语音合成',   desc: '台词 → 语音 WAV',       need: ['tts'],           api: '/tools/tts' },
-    { id: 'firstframe', icon: '🎨', name: '首帧生成',   desc: '镜头描述 → 首帧图片',    need: ['comfyui'],       api: '/tools/first-frame' },
-    { id: 'video',      icon: '🎬', name: '视频生成',   desc: '首帧 → 视频片段',        need: ['comfyui'],       api: '/tools/video' },
-    { id: 'lipsync',    icon: '👄', name: '口型同步',   desc: '视频 + 音频 → 同步视频', need: ['lipsync'],       api: '/tools/lipsync' },
-    { id: 'music',      icon: '🎵', name: '配乐生成',   desc: '生成背景音乐',           need: ['music'],         api: '/tools/music' },
-    { id: 'post',       icon: '🎞️', name: '后期合成',   desc: '拼接 + 字幕 + BGM',      need: ['ffmpeg'],        api: '/tools/post' },
+    { id: 'tts',        icon: '🎤', name: 'TTS 合成',   desc: '台词 → 音频',             need: ['tts'],     api: '/steps/tts' },
+    { id: 'firstframe', icon: '🎨', name: '首帧生成',   desc: '镜头描述 → 首帧图片',      need: ['comfyui'], api: '/steps/first-frame' },
+    { id: 'video',      icon: '🎬', name: '视频生成',   desc: '首帧 → 视频片段',          need: ['comfyui'], api: '/steps/video' },
+    { id: 'lipsync',    icon: '👄', name: '口型同步',   desc: '视频 + 音频 → 同步视频',   need: ['lipsync'], api: '/steps/lipsync' },
+    { id: 'subtitle',   icon: '📝', name: '字幕生成',   desc: '从分镜表生成 SRT 字幕',    need: ['ffmpeg'],  api: '/tools/subtitle' },
+    { id: 'music',      icon: '🎵', name: '配乐生成',   desc: '生成背景音乐',             need: ['music'],   api: '/tools/music' },
+    { id: 'post',       icon: '🎞️', name: '后期合成',   desc: '拼接 + 字幕 + BGM',        need: ['ffmpeg'],  api: '/tools/post' },
   ];
 
   // 一键流程
@@ -225,20 +225,23 @@ async function runStep(apiPath, stepId) {
   const progressEl = document.getElementById('task-progress');
   monitor.style.display = 'block';
 
-  // 构建请求参数
+  // 按步骤构建请求参数
   let body = {};
-  if (apiPath === '/tools/tts') {
-    const text = prompt('输入台词:');
-    if (!text) return;
-    body = { text };
-  } else if (apiPath === '/tools/music') {
+  const perShotSteps = ['tts', 'firstframe', 'video', 'lipsync'];
+
+  if (perShotSteps.includes(stepId)) {
+    // 镜头级步骤：需要 episode + shot_id
+    const shotId = prompt('镜头 ID (如 001):', '001');
+    if (!shotId) return;
+    body = { episode: 1, shot_id: shotId };
+  } else if (stepId === 'subtitle') {
+    body = { episode: 1 };
+  } else if (stepId === 'music') {
     const duration = parseFloat(prompt('时长（秒）:', '30'));
     if (!duration) return;
     body = { duration, mood: 'neutral' };
-  } else if (apiPath === '/tools/post') {
+  } else if (stepId === 'post') {
     body = { episode: 1, vertical: false };
-  } else {
-    body = { episode: 1, shot_id: '001' };
   }
 
   progressEl.innerHTML = `<div class="task-running">⏳ 提交中...</div>`;

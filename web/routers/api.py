@@ -182,101 +182,85 @@ def check_tool(name: str):
     return {"name": name, **result}
 
 
-# ── TTS 独立使用 ──
+# ── 单步执行（每步独立，能跑哪步跑哪步）──
+
+class StepRequest(BaseModel):
+    episode: int
+    shot_id: str
+
+
+@router.post("/steps/tts")
+def run_step_tts(req: StepRequest):
+    """Step 1: TTS — 只需要 TTS 服务"""
+    from pipeline.tasks import step_tts
+    return _submit_task(step_tts, _cfg_path(), req.episode, req.shot_id)
+
+
+@router.post("/steps/first-frame")
+def run_step_first_frame(req: StepRequest):
+    """Step 2: 首帧 — 只需要 ComfyUI"""
+    from pipeline.tasks import step_first_frame
+    return _submit_task(step_first_frame, _cfg_path(), req.episode, req.shot_id)
+
+
+@router.post("/steps/video")
+def run_step_video(req: StepRequest):
+    """Step 3: 视频 — 需要 ComfyUI + 首帧已存在"""
+    from pipeline.tasks import step_video
+    return _submit_task(step_video, _cfg_path(), req.episode, req.shot_id)
+
+
+@router.post("/steps/lipsync")
+def run_step_lipsync(req: StepRequest):
+    """Step 4: 口型同步 — 需要 LipSync + 视频 + 音频"""
+    from pipeline.tasks import step_lipsync
+    return _submit_task(step_lipsync, _cfg_path(), req.episode, req.shot_id)
+
+
+@router.post("/steps/shot")
+def run_step_shot(req: StepRequest):
+    """单镜头编排 — 逐步尝试，跳过不可用的步骤"""
+    from pipeline.tasks import shot_task
+    shot = _find_shot_for_api(req.episode, req.shot_id)
+    if not shot:
+        raise HTTPException(404, f"镜头 {req.shot_id} 不存在")
+    return _submit_task(shot_task, _cfg_path(), req.episode, shot)
+
+
+def _find_shot_for_api(episode: int, shot_id: str) -> dict | None:
+    sb_path = ROOT / "storyboard" / "episodes.csv"
+    if not sb_path.exists():
+        return None
+    with open(sb_path, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if int(row.get("episode", 0)) == episode and row.get("shot_id") == shot_id:
+                return dict(row)
+    return None
+
+
+# ── 独立工具（直接调用，不走编排）──
 
 class TTSRequest(BaseModel):
     text: str
     voice_config: dict | None = None
     emotion: str = "neutral"
     language: str = "zh"
-    output: str = ""
 
 
 @router.post("/tools/tts")
 def run_tts(req: TTSRequest):
-    """单独执行 TTS（不依赖 GPU/ComfyUI）"""
-    cfg = _cfg()
-    status = _check_tool("tts", cfg)
-    if not status["available"]:
-        raise HTTPException(503, f"TTS 不可用: {status['reason']}")
-
+    """独立 TTS — 直接合成"""
     from pipeline.tasks import tts_single_task
     return _submit_task(tts_single_task, _cfg_path(), req.text,
                         req.voice_config, req.emotion, req.language)
 
 
-# ── 定妆照独立使用 ──
-
 @router.post("/tools/portraits")
 def gen_portraits():
-    """单独生成定妆照（需要 ComfyUI）"""
-    cfg = _cfg()
-    status = _check_tool("comfyui", cfg)
-    if not status["available"]:
-        raise HTTPException(503, f"ComfyUI 不可用: {status['reason']}")
-
+    """生成定妆照"""
     from pipeline.tasks import portraits_task
     return _submit_task(portraits_task, _cfg_path())
 
-
-# ── 首帧独立使用 ──
-
-class FirstFrameRequest(BaseModel):
-    episode: int
-    shot_id: str
-
-
-@router.post("/tools/first-frame")
-def run_first_frame(req: FirstFrameRequest):
-    """单独生成首帧（需要 ComfyUI）"""
-    cfg = _cfg()
-    status = _check_tool("comfyui", cfg)
-    if not status["available"]:
-        raise HTTPException(503, f"ComfyUI 不可用: {status['reason']}")
-
-    from pipeline.tasks import first_frame_by_id_task
-    return _submit_task(first_frame_by_id_task, _cfg_path(), req.episode, req.shot_id)
-
-
-# ── 视频独立使用 ──
-
-class VideoRequest(BaseModel):
-    episode: int
-    shot_id: str
-
-
-@router.post("/tools/video")
-def run_video(req: VideoRequest):
-    """单独生成视频（需要 ComfyUI）"""
-    cfg = _cfg()
-    status = _check_tool("comfyui", cfg)
-    if not status["available"]:
-        raise HTTPException(503, f"ComfyUI 不可用: {status['reason']}")
-
-    from pipeline.tasks import video_by_id_task
-    return _submit_task(video_by_id_task, _cfg_path(), req.episode, req.shot_id)
-
-
-# ── 口型同步独立使用 ──
-
-class LipSyncRequest(BaseModel):
-    episode: int
-    shot_id: str
-
-
-@router.post("/tools/lipsync")
-def run_lipsync(req: LipSyncRequest):
-    """单独执行口型同步（需要 LipSync 服务 + 已有视频/音频）"""
-    cfg = _cfg()
-    status = _check_tool("lipsync", cfg)
-    if not status["available"]:
-        raise HTTPException(503, f"LipSync 不可用: {status['reason']}")
-
-    from pipeline.tasks import lipsync_by_id_task
-    return _submit_task(lipsync_by_id_task, _cfg_path(), req.episode, req.shot_id)
-
-
-# ── 后期合成独立使用 ──
 
 class PostRequest(BaseModel):
     episode: int
@@ -285,17 +269,10 @@ class PostRequest(BaseModel):
 
 @router.post("/tools/post")
 def run_post(req: PostRequest):
-    """单独执行后期合成（只需要 ffmpeg）"""
-    cfg = _cfg()
-    status = _check_tool("ffmpeg", cfg)
-    if not status["available"]:
-        raise HTTPException(503, f"ffmpeg 不可用: {status['reason']}")
-
+    """后期合成"""
     from pipeline.tasks import post_task
     return _submit_task(post_task, _cfg_path(), req.episode, req.vertical)
 
-
-# ── 配乐独立使用 ──
 
 class MusicRequest(BaseModel):
     duration: float
@@ -304,18 +281,11 @@ class MusicRequest(BaseModel):
 
 @router.post("/tools/music")
 def run_music(req: MusicRequest):
-    """单独生成配乐（模板模式只需 ffmpeg）"""
-    cfg = _cfg()
-    status = _check_tool("music", cfg)
-    if not status["available"]:
-        raise HTTPException(503, f"配乐工具不可用: {status['reason']}")
-
+    """配乐生成"""
     from pipeline.tasks import music_task
     output = str(ROOT / "output" / "bgm.wav")
     return _submit_task(music_task, _cfg_path(), req.duration, req.mood, output)
 
-
-# ── 字幕独立使用 ──
 
 class SubtitleRequest(BaseModel):
     episode: int
@@ -323,7 +293,7 @@ class SubtitleRequest(BaseModel):
 
 @router.post("/tools/subtitle")
 def run_subtitle(req: SubtitleRequest):
-    """单独生成字幕（纯本地，零依赖）"""
+    """字幕生成"""
     from pipeline.tasks import subtitle_task
     return _submit_task(subtitle_task, _cfg_path(), req.episode)
 

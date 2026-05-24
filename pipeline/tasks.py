@@ -1,6 +1,10 @@
-"""Celery 任务定义 — 所有异步管线任务
+"""Celery 任务定义 — 每步独立，按需执行
 
-每个任务通过 self.update_state() 报告进度，前端轮询 /api/tasks/{id} 获取状态。
+设计原则：
+- 每步是独立的 Celery 任务，只依赖自己需要的工具
+- 每步完成后保存结果到磁盘，下一步从磁盘读取
+- 缺工具 = 跳过该步，不报错，不影响其他步
+- 前端可按步调用，也可以一键编排全部
 """
 from __future__ import annotations
 
@@ -22,7 +26,6 @@ def _ensure_path():
 
 
 def _load_shots(config_path: str, episode: int) -> list[dict]:
-    """加载分镜表"""
     cfg_dir = Path(config_path).resolve().parent.parent
     sb_path = cfg_dir / "storyboard" / "episodes.csv"
     if not sb_path.exists():
@@ -35,321 +38,107 @@ def _load_shots(config_path: str, episode: int) -> list[dict]:
     return shots
 
 
-# ── 单步任务（可被 shot_task 编排调用） ──
+def _find_shot(config_path: str, episode: int, shot_id: str) -> dict | None:
+    cfg_dir = Path(config_path).resolve().parent.parent
+    sb_path = cfg_dir / "storyboard" / "episodes.csv"
+    if not sb_path.exists():
+        return None
+    with open(sb_path, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if int(row.get("episode", 0)) == episode and row.get("shot_id") == shot_id:
+                return dict(row)
+    return None
 
-@app.task(bind=True, name="pipeline.tts", soft_time_limit=120)
-def tts_task(self, config_path: str, episode: int, shot_id: str,
-             text: str, voice_config: dict | None = None, output: str = ""):
-    """TTS 语音合成"""
-    _ensure_path()
+
+def _shot_dir(config_path: str, episode: int, shot_id: str) -> Path:
     from infra.config import Config
-    from api.registry import Container
-    import api  # noqa: F401 触发自注册
-
     cfg = Config(config_path)
-    cont = Container(cfg.data)
-    tts = cont.get("tts")
-
-    self.update_state(state="PROGRESS", meta={"stage": "tts", "shot_id": shot_id, "progress": 10})
-    result = tts.synthesize(text, output, voice_config=voice_config or {})
-    return {"shot_id": shot_id, "stage": "tts", "path": result}
+    return Path(cfg.project_dir) / "output" / f"e{episode:02d}" / f"s{shot_id}"
 
 
-@app.task(bind=True, name="pipeline.first_frame", soft_time_limit=300)
-def first_frame_task(self, config_path: str, episode: int, shot_id: str,
-                     prompt: str, output_dir: str):
-    """首帧图片生成"""
-    _ensure_path()
+def _check_available(tool_name: str, config_path: str) -> tuple[bool, str]:
+    """检测工具是否可用"""
     from infra.config import Config
-    from api.registry import Container
-    import api  # noqa: F401
-
     cfg = Config(config_path)
-    cont = Container(cfg.data)
-
-    self.update_state(state="PROGRESS", meta={"stage": "first_frame", "shot_id": shot_id, "progress": 20})
-    comfyui = cont.get("image")
-    files = comfyui.generate({"prompt": {"positive": prompt}}, output_dir)
-    return {"shot_id": shot_id, "stage": "first_frame", "files": files}
+    from web.routers.api import _check_tool
+    result = _check_tool(tool_name, cfg.data)
+    return result["available"], result.get("reason", "")
 
 
-@app.task(bind=True, name="pipeline.video_gen", soft_time_limit=600)
-def video_gen_task(self, config_path: str, episode: int, shot_id: str,
-                   workflow: dict, output_dir: str):
-    """视频生成"""
+# ══════════════════════════════════════════════════════════
+#  Step 1: TTS 语音合成 — 只需要 TTS 服务
+# ══════════════════════════════════════════════════════════
+
+@app.task(bind=True, name="pipeline.step.tts", soft_time_limit=120)
+def step_tts(self, config_path: str, episode: int, shot_id: str):
+    """Step 1: TTS — 将台词合成为音频"""
     _ensure_path()
-    from infra.config import Config
-    from api.registry import Container
-    import api  # noqa: F401
 
-    cfg = Config(config_path)
-    cont = Container(cfg.data)
+    # 检测工具
+    ok, reason = _check_available("tts", config_path)
+    if not ok:
+        return {"shot_id": shot_id, "step": "tts", "status": "skipped", "reason": f"TTS 不可用: {reason}"}
 
-    self.update_state(state="PROGRESS", meta={"stage": "video", "shot_id": shot_id, "progress": 40})
-    video_backend = cont.get("video")
-    files = video_backend.generate(workflow, output_dir)
-    return {"shot_id": shot_id, "stage": "video", "files": files}
+    shot = _find_shot(config_path, episode, shot_id)
+    if not shot:
+        return {"shot_id": shot_id, "step": "tts", "status": "error", "reason": "镜头不存在"}
 
+    dialogue = shot.get("dialogue", "").strip()
+    if not dialogue or dialogue == "......":
+        return {"shot_id": shot_id, "step": "tts", "status": "skipped", "reason": "无台词"}
 
-@app.task(bind=True, name="pipeline.lipsync", soft_time_limit=300)
-def lipsync_task(self, config_path: str, episode: int, shot_id: str,
-                 video_path: str, audio_path: str, output: str):
-    """口型同步"""
-    _ensure_path()
+    self.update_state(state="PROGRESS", meta={
+        "step": "tts", "shot_id": shot_id, "progress": 20,
+        "message": f"[{shot_id}] TTS: {dialogue[:20]}..."})
+
     from infra.config import Config
     from api.registry import Container
     import api  # noqa: F401
 
     cfg = Config(config_path)
     cont = Container(cfg.data)
-
-    self.update_state(state="PROGRESS", meta={"stage": "lipsync", "shot_id": shot_id, "progress": 70})
-    lipsync = cont.get("lipsync")
-    result = lipsync.sync(video_path, audio_path, output)
-    return {"shot_id": shot_id, "stage": "lipsync", "path": result}
-
-
-# ── 单镜头全流程 ──
-
-@app.task(bind=True, name="pipeline.shot", soft_time_limit=1800)
-def shot_task(self, config_path: str, episode: int, shot_data: dict):
-    """单镜头全流程：TTS → 首帧 → 视频 → 口型同步"""
-    _ensure_path()
-    from infra.config import Config
-    from api.registry import Container
-    from engines.prompt import build_prompt, translate_to_english
-    from engines.shot_manager import ShotManager
-    import api  # noqa: F401
-
-    shot_id = shot_data.get("shot_id", "001")
-    cfg = Config(config_path)
-    cont = Container(cfg.data)
-    out_dir = Path(cfg.project_dir) / "output" / f"e{episode:02d}" / f"s{shot_id}"
+    out_dir = _shot_dir(config_path, episode, shot_id)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    char_ids = [c.strip() for c in shot_data.get("characters", "").split("+") if c.strip()]
-    dialogue = shot_data.get("dialogue", "").strip()
-
-    # ── 1. TTS ──
     audio_path = str(out_dir / "audio.wav")
-    if dialogue and dialogue != "......":
-        try:
-            self.update_state(state="PROGRESS", meta={
-                "stage": "tts", "shot_id": shot_id, "progress": 5,
-                "message": f"[{shot_id}] TTS 合成中..."})
-            tts = cont.get("tts")
-            sm = ShotManager("", str(Path(cfg.project_dir) / "config"))
-            char = sm.get_character(char_ids[0]) if char_ids else {}
-            tts.synthesize(dialogue, audio_path, voice_config=char.get("voice", {}))
-        except Exception as e:
-            logger.error(f"[{shot_id}] TTS 失败: {e}")
-
-    # ── 2. 首帧 ──
-    frame_path = str(out_dir / "frame.png")
-    try:
-        self.update_state(state="PROGRESS", meta={
-            "stage": "first_frame", "shot_id": shot_id, "progress": 25,
-            "message": f"[{shot_id}] 首帧生成中..."})
-        sm = ShotManager("", str(Path(cfg.project_dir) / "config"))
-        char_descs = []
-        for cid in char_ids:
-            c = sm.get_character(cid)
-            if c:
-                char_descs.append(translate_to_english(c.get("appearance", "")))
-        scene = sm.get_scene(shot_data.get("scene", ""))
-        scene_desc = translate_to_english(scene.get("description", "")) if scene else ""
-        action_en = translate_to_english(shot_data.get("action", ""))
-
-        prompt = build_prompt({**shot_data, "action_en": action_en},
-                              character_desc=", ".join(char_descs),
-                              scene_desc=scene_desc,
-                              style=cfg.get("project.style", "cinematic"),
-                              genre=cfg.get("project.genre", "urban"))
-        comfyui = cont.get("image")
-        files = comfyui.generate({"prompt": {"positive": prompt}}, str(out_dir))
-        if files:
-            Path(files[0]).rename(frame_path)
-    except Exception as e:
-        logger.error(f"[{shot_id}] 首帧失败: {e}")
-
-    # ── 3. 视频 ──
-    video_path = str(out_dir / "video.mp4")
-    if Path(frame_path).exists():
-        try:
-            self.update_state(state="PROGRESS", meta={
-                "stage": "video", "shot_id": shot_id, "progress": 45,
-                "message": f"[{shot_id}] 视频生成中..."})
-            from engines.workflow_builder import WorkflowBuilder
-            models = cfg.get("models", {})
-            wb = WorkflowBuilder(cfg.data, models, cfg.project_dir)
-            wb.load_workflows()
-            video_wf = wb.build_video(frame_path)
-            if video_wf:
-                video_backend = cont.get("video")
-                files = video_backend.generate(video_wf, str(out_dir))
-                if files:
-                    Path(files[0]).rename(video_path)
-        except Exception as e:
-            logger.error(f"[{shot_id}] 视频失败: {e}")
-
-    # ── 4. 口型同步 ──
-    synced_path = str(out_dir / "synced.mp4")
-    if Path(video_path).exists() and Path(audio_path).exists():
-        try:
-            self.update_state(state="PROGRESS", meta={
-                "stage": "lipsync", "shot_id": shot_id, "progress": 75,
-                "message": f"[{shot_id}] 口型同步中..."})
-            lipsync = cont.get("lipsync")
-            lipsync.sync(video_path, audio_path, synced_path)
-        except Exception as e:
-            logger.error(f"[{shot_id}] 口型同步失败: {e}")
-
-    self.update_state(state="PROGRESS", meta={
-        "stage": "done", "shot_id": shot_id, "progress": 100,
-        "message": f"[{shot_id}] 完成"})
-
-    return {
-        "shot_id": shot_id,
-        "audio": audio_path if Path(audio_path).exists() else None,
-        "frame": frame_path if Path(frame_path).exists() else None,
-        "video": video_path if Path(video_path).exists() else None,
-        "synced": synced_path if Path(synced_path).exists() else None,
-    }
-
-
-# ── 集级任务（编排所有镜头） ──
-
-@app.task(bind=True, name="pipeline.preview", soft_time_limit=1800)
-def preview_task(self, config_path: str, episode: int, preset: str = "draft"):
-    """快速预览 — 串行执行所有镜头"""
-    _ensure_path()
-    shots = _load_shots(config_path, episode)
-    if not shots:
-        return {"status": "empty", "message": f"第{episode}集没有镜头"}
-
-    total = len(shots)
-    results = []
-    for i, shot in enumerate(shots):
-        shot_id = shot.get("shot_id", f"{i+1:03d}")
-        self.update_state(state="PROGRESS", meta={
-            "stage": "shot", "shot_id": shot_id,
-            "progress": int(i / total * 100),
-            "current": i + 1, "total": total,
-            "message": f"预览 [{i+1}/{total}] 镜头 {shot_id}"})
-        try:
-            result = shot_task.apply(args=[config_path, episode, shot]).get()
-            results.append(result)
-        except Exception as e:
-            results.append({"shot_id": shot_id, "error": str(e)})
-
-    return {"status": "done", "episode": episode, "preset": preset, "shots": results}
-
-
-@app.task(bind=True, name="pipeline.produce", soft_time_limit=7200)
-def produce_task(self, config_path: str, episode: int):
-    """完整生产 — 串行执行镜头 + 后期合成"""
-    _ensure_path()
-    shots = _load_shots(config_path, episode)
-    if not shots:
-        return {"status": "empty", "message": f"第{episode}集没有镜头"}
-
-    total = len(shots)
-    results = []
-
-    # 生成字幕
-    try:
-        from post.subtitle import generate_srt
-        cfg_dir = Path(config_path).resolve().parent.parent
-        out_dir = cfg_dir / "output" / f"e{episode:02d}"
-        out_dir.mkdir(parents=True, exist_ok=True)
-        srt_path = out_dir / f"episode_{episode:02d}.srt"
-        generate_srt(shots, str(srt_path))
-    except Exception as e:
-        logger.warning(f"字幕生成失败: {e}")
-
-    # 逐镜头处理
-    for i, shot in enumerate(shots):
-        shot_id = shot.get("shot_id", f"{i+1:03d}")
-        self.update_state(state="PROGRESS", meta={
-            "stage": "shot", "shot_id": shot_id,
-            "progress": int(i / total * 80),
-            "current": i + 1, "total": total,
-            "message": f"生产 [{i+1}/{total}] 镜头 {shot_id}"})
-        try:
-            result = shot_task.apply(args=[config_path, episode, shot]).get()
-            results.append(result)
-        except Exception as e:
-            results.append({"shot_id": shot_id, "error": str(e)})
-
-    # 后期合成
-    self.update_state(state="PROGRESS", meta={
-        "stage": "post", "progress": 85,
-        "message": "后期合成中..."})
-    try:
-        from post.production import run_post
-        run_post(config_path, episode)
-    except Exception as e:
-        logger.error(f"后期合成失败: {e}")
-
-    self.update_state(state="PROGRESS", meta={
-        "stage": "done", "progress": 100,
-        "message": "完成"})
-
-    return {"status": "done", "episode": episode, "shots": results}
-
-
-@app.task(bind=True, name="pipeline.post", soft_time_limit=1200)
-def post_task(self, config_path: str, episode: int, vertical: bool = False):
-    """后期合成"""
-    _ensure_path()
-    self.update_state(state="PROGRESS", meta={"stage": "post", "progress": 10})
-    from post.production import run_post
-    run_post(config_path, episode, vertical)
-    return {"status": "done", "episode": episode, "vertical": vertical}
-
-
-@app.task(bind=True, name="pipeline.portraits", soft_time_limit=1800)
-def portraits_task(self, config_path: str):
-    """定妆照生成"""
-    _ensure_path()
-    self.update_state(state="PROGRESS", meta={"stage": "portraits", "progress": 10})
-    from pipeline.portraits import run_portraits
-    run_portraits(config_path)
-    return {"status": "done"}
-
-
-# ══════════════════════════════════════════════════════════
-# 独立工具任务 — 每个工具可单独调用，不依赖其他工具
-# ══════════════════════════════════════════════════════════
-
-@app.task(bind=True, name="pipeline.tts_single", soft_time_limit=120)
-def tts_single_task(self, config_path: str, text: str,
-                    voice_config: dict | None = None,
-                    emotion: str = "neutral", language: str = "zh"):
-    """独立 TTS — 只需要 TTS 服务，不需要 GPU/ComfyUI"""
-    _ensure_path()
-    from infra.config import Config
-    from api.registry import Container
-    import api  # noqa: F401
-
-    cfg = Config(config_path)
-    cont = Container(cfg.data)
-
-    self.update_state(state="PROGRESS", meta={"stage": "tts", "progress": 20, "message": "TTS 合成中..."})
     tts = cont.get("tts")
 
-    import tempfile
-    output = tempfile.mktemp(suffix=".wav", prefix="tts_")
-    result = tts.synthesize(text, output, voice_config=voice_config or {},
-                            emotion=emotion, language=language)
-    self.update_state(state="PROGRESS", meta={"stage": "tts", "progress": 100, "message": "完成"})
-    return {"path": result, "text": text}
+    # 获取角色语音配置
+    char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
+    from engines.shot_manager import ShotManager
+    sm = ShotManager("", str(Path(cfg.project_dir) / "config"))
+    char = sm.get_character(char_ids[0]) if char_ids else {}
+    voice_config = char.get("voice", {})
+
+    tts.synthesize(dialogue, audio_path, voice_config=voice_config)
+
+    self.update_state(state="PROGRESS", meta={
+        "step": "tts", "shot_id": shot_id, "progress": 100, "message": f"[{shot_id}] TTS 完成"})
+    return {"shot_id": shot_id, "step": "tts", "status": "done", "path": audio_path}
 
 
-@app.task(bind=True, name="pipeline.first_frame_by_id", soft_time_limit=300)
-def first_frame_by_id_task(self, config_path: str, episode: int, shot_id: str):
-    """独立首帧 — 只需要 ComfyUI，不需要 TTS/LipSync"""
+# ══════════════════════════════════════════════════════════
+#  Step 2: 首帧生成 — 只需要 ComfyUI
+# ══════════════════════════════════════════════════════════
+
+@app.task(bind=True, name="pipeline.step.first_frame", soft_time_limit=300)
+def step_first_frame(self, config_path: str, episode: int, shot_id: str):
+    """Step 2: 首帧 — 生成镜头第一帧图片"""
     _ensure_path()
+
+    ok, reason = _check_available("comfyui", config_path)
+    if not ok:
+        return {"shot_id": shot_id, "step": "first_frame", "status": "skipped",
+                "reason": f"ComfyUI 不可用: {reason}"}
+
+    shot = _find_shot(config_path, episode, shot_id)
+    if not shot:
+        return {"shot_id": shot_id, "step": "first_frame", "status": "error", "reason": "镜头不存在"}
+
+    self.update_state(state="PROGRESS", meta={
+        "step": "first_frame", "shot_id": shot_id, "progress": 20,
+        "message": f"[{shot_id}] 首帧生成中..."})
+
     from infra.config import Config
     from api.registry import Container
     from engines.prompt import build_prompt, translate_to_english
@@ -358,29 +147,22 @@ def first_frame_by_id_task(self, config_path: str, episode: int, shot_id: str):
 
     cfg = Config(config_path)
     cont = Container(cfg.data)
-    out_dir = Path(cfg.project_dir) / "output" / f"e{episode:02d}" / f"s{shot_id}"
+    out_dir = _shot_dir(config_path, episode, shot_id)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # 从分镜表加载镜头数据
-    shot_data = _find_shot(config_path, episode, shot_id)
-    if not shot_data:
-        return {"error": f"镜头 {shot_id} 不存在"}
-
-    self.update_state(state="PROGRESS", meta={
-        "stage": "first_frame", "shot_id": shot_id, "progress": 20, "message": "首帧生成中..."})
-
-    char_ids = [c.strip() for c in shot_data.get("characters", "").split("+") if c.strip()]
+    # 构建 prompt
+    char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
     sm = ShotManager("", str(Path(cfg.project_dir) / "config"))
     char_descs = []
     for cid in char_ids:
         c = sm.get_character(cid)
         if c:
             char_descs.append(translate_to_english(c.get("appearance", "")))
-    scene = sm.get_scene(shot_data.get("scene", ""))
+    scene = sm.get_scene(shot.get("scene", ""))
     scene_desc = translate_to_english(scene.get("description", "")) if scene else ""
-    action_en = translate_to_english(shot_data.get("action", ""))
+    action_en = translate_to_english(shot.get("action", ""))
 
-    prompt = build_prompt({**shot_data, "action_en": action_en},
+    prompt = build_prompt({**shot, "action_en": action_en},
                           character_desc=", ".join(char_descs),
                           scene_desc=scene_desc,
                           style=cfg.get("project.style", "cinematic"),
@@ -392,36 +174,53 @@ def first_frame_by_id_task(self, config_path: str, episode: int, shot_id: str):
     if files:
         Path(files[0]).rename(frame_path)
 
-    return {"shot_id": shot_id, "path": frame_path, "prompt": prompt}
+    self.update_state(state="PROGRESS", meta={
+        "step": "first_frame", "shot_id": shot_id, "progress": 100,
+        "message": f"[{shot_id}] 首帧完成"})
+    return {"shot_id": shot_id, "step": "first_frame", "status": "done",
+            "path": frame_path, "prompt": prompt}
 
 
-@app.task(bind=True, name="pipeline.video_by_id", soft_time_limit=600)
-def video_by_id_task(self, config_path: str, episode: int, shot_id: str):
-    """独立视频生成 — 只需要 ComfyUI，首帧必须已存在"""
+# ══════════════════════════════════════════════════════════
+#  Step 3: 视频生成 — 只需要 ComfyUI + 首帧已存在
+# ══════════════════════════════════════════════════════════
+
+@app.task(bind=True, name="pipeline.step.video", soft_time_limit=600)
+def step_video(self, config_path: str, episode: int, shot_id: str):
+    """Step 3: 视频 — 从首帧生成视频片段"""
     _ensure_path()
+
+    ok, reason = _check_available("comfyui", config_path)
+    if not ok:
+        return {"shot_id": shot_id, "step": "video", "status": "skipped",
+                "reason": f"ComfyUI 不可用: {reason}"}
+
+    out_dir = _shot_dir(config_path, episode, shot_id)
+    frame_path = out_dir / "frame.png"
+    if not frame_path.exists():
+        return {"shot_id": shot_id, "step": "video", "status": "skipped",
+                "reason": "首帧不存在，请先执行 Step 2"}
+
+    self.update_state(state="PROGRESS", meta={
+        "step": "video", "shot_id": shot_id, "progress": 20,
+        "message": f"[{shot_id}] 视频生成中..."})
+
     from infra.config import Config
     from api.registry import Container
+    from engines.workflow_builder import WorkflowBuilder
     import api  # noqa: F401
 
     cfg = Config(config_path)
     cont = Container(cfg.data)
-    out_dir = Path(cfg.project_dir) / "output" / f"e{episode:02d}" / f"s{shot_id}"
-    frame_path = out_dir / "frame.png"
 
-    if not frame_path.exists():
-        return {"error": f"首帧不存在: {frame_path}，请先生成首帧"}
-
-    self.update_state(state="PROGRESS", meta={
-        "stage": "video", "shot_id": shot_id, "progress": 20, "message": "视频生成中..."})
-
-    from engines.workflow_builder import WorkflowBuilder
     models = cfg.get("models", {})
     wb = WorkflowBuilder(cfg.data, models, cfg.project_dir)
     wb.load_workflows()
     video_wf = wb.build_video(str(frame_path))
 
     if not video_wf:
-        return {"error": "视频工作流为空"}
+        return {"shot_id": shot_id, "step": "video", "status": "error",
+                "reason": "视频工作流为空（缺少模板）"}
 
     video_backend = cont.get("video")
     files = video_backend.generate(video_wf, str(out_dir))
@@ -429,12 +228,219 @@ def video_by_id_task(self, config_path: str, episode: int, shot_id: str):
     if files:
         Path(files[0]).rename(video_path)
 
-    return {"shot_id": shot_id, "path": video_path}
+    self.update_state(state="PROGRESS", meta={
+        "step": "video", "shot_id": shot_id, "progress": 100,
+        "message": f"[{shot_id}] 视频完成"})
+    return {"shot_id": shot_id, "step": "video", "status": "done", "path": video_path}
 
 
-@app.task(bind=True, name="pipeline.lipsync_by_id", soft_time_limit=300)
-def lipsync_by_id_task(self, config_path: str, episode: int, shot_id: str):
-    """独立口型同步 — 需要 LipSync 服务 + 已有视频和音频"""
+# ══════════════════════════════════════════════════════════
+#  Step 4: 口型同步 — 只需要 LipSync + 视频 + 音频
+# ══════════════════════════════════════════════════════════
+
+@app.task(bind=True, name="pipeline.step.lipsync", soft_time_limit=300)
+def step_lipsync(self, config_path: str, episode: int, shot_id: str):
+    """Step 4: 口型同步 — 视频+音频→口型同步视频"""
+    _ensure_path()
+
+    ok, reason = _check_available("lipsync", config_path)
+    if not ok:
+        return {"shot_id": shot_id, "step": "lipsync", "status": "skipped",
+                "reason": f"LipSync 不可用: {reason}"}
+
+    out_dir = _shot_dir(config_path, episode, shot_id)
+    video_path = out_dir / "video.mp4"
+    audio_path = out_dir / "audio.wav"
+
+    if not video_path.exists():
+        return {"shot_id": shot_id, "step": "lipsync", "status": "skipped",
+                "reason": "视频不存在，请先执行 Step 3"}
+    if not audio_path.exists():
+        return {"shot_id": shot_id, "step": "lipsync", "status": "skipped",
+                "reason": "音频不存在，请先执行 Step 1"}
+
+    self.update_state(state="PROGRESS", meta={
+        "step": "lipsync", "shot_id": shot_id, "progress": 20,
+        "message": f"[{shot_id}] 口型同步中..."})
+
+    from infra.config import Config
+    from api.registry import Container
+    import api  # noqa: F401
+
+    cfg = Config(config_path)
+    cont = Container(cfg.data)
+
+    lipsync = cont.get("lipsync")
+    synced_path = str(out_dir / "synced.mp4")
+    lipsync.sync(str(video_path), str(audio_path), synced_path)
+
+    self.update_state(state="PROGRESS", meta={
+        "step": "lipsync", "shot_id": shot_id, "progress": 100,
+        "message": f"[{shot_id}] 口型同步完成"})
+    return {"shot_id": shot_id, "step": "lipsync", "status": "done", "path": synced_path}
+
+
+# ══════════════════════════════════════════════════════════
+#  编排器 — 逐步尝试，能跑哪步跑哪步
+# ══════════════════════════════════════════════════════════
+
+@app.task(bind=True, name="pipeline.shot", soft_time_limit=1800)
+def shot_task(self, config_path: str, episode: int, shot_data: dict):
+    """单镜头编排：逐步尝试，跳过不可用的步骤
+
+    不会因为缺工具而失败，只执行当前可用的步骤。
+    """
+    shot_id = shot_data.get("shot_id", "001")
+    steps = [
+        ("tts",         step_tts),
+        ("first_frame", step_first_frame),
+        ("video",       step_video),
+        ("lipsync",     step_lipsync),
+    ]
+
+    results = {}
+    for i, (step_name, step_fn) in enumerate(steps):
+        pct = int((i + 1) / len(steps) * 100)
+        self.update_state(state="PROGRESS", meta={
+            "step": step_name, "shot_id": shot_id,
+            "progress": pct,
+            "message": f"[{shot_id}] {step_name} ({i+1}/{len(steps)})"})
+
+        try:
+            # 同步调用子任务（在当前 Worker 线程内执行）
+            result = step_fn.apply(args=[config_path, episode, shot_id]).get()
+            results[step_name] = result
+
+            status = result.get("status", "")
+            if status == "skipped":
+                logger.info(f"[{shot_id}] {step_name}: 跳过 — {result.get('reason', '')}")
+            elif status == "error":
+                logger.warning(f"[{shot_id}] {step_name}: 错误 — {result.get('reason', '')}")
+            else:
+                logger.info(f"[{shot_id}] {step_name}: 完成")
+
+        except Exception as e:
+            logger.error(f"[{shot_id}] {step_name}: 异常 — {e}")
+            results[step_name] = {"status": "error", "reason": str(e)}
+
+    # 汇总
+    done = [k for k, v in results.items() if v.get("status") == "done"]
+    skipped = [k for k, v in results.items() if v.get("status") == "skipped"]
+    errors = [k for k, v in results.items() if v.get("status") == "error"]
+
+    return {
+        "shot_id": shot_id,
+        "done": done,
+        "skipped": skipped,
+        "errors": errors,
+        "details": results,
+    }
+
+
+# ══════════════════════════════════════════════════════════
+#  集级任务
+# ══════════════════════════════════════════════════════════
+
+@app.task(bind=True, name="pipeline.preview", soft_time_limit=1800)
+def preview_task(self, config_path: str, episode: int, preset: str = "draft"):
+    """快速预览 — 逐镜头执行可用步骤"""
+    _ensure_path()
+    shots = _load_shots(config_path, episode)
+    if not shots:
+        return {"status": "empty", "message": f"第{episode}集没有镜头"}
+
+    total = len(shots)
+    results = []
+    for i, shot in enumerate(shots):
+        shot_id = shot.get("shot_id", f"{i+1:03d}")
+        self.update_state(state="PROGRESS", meta={
+            "step": "shot", "shot_id": shot_id,
+            "progress": int(i / total * 100),
+            "current": i + 1, "total": total,
+            "message": f"[{i+1}/{total}] 镜头 {shot_id}"})
+        try:
+            result = shot_task.apply(args=[config_path, episode, shot]).get()
+            results.append(result)
+        except Exception as e:
+            results.append({"shot_id": shot_id, "error": str(e)})
+
+    return {"status": "done", "episode": episode, "preset": preset, "shots": results}
+
+
+@app.task(bind=True, name="pipeline.produce", soft_time_limit=7200)
+def produce_task(self, config_path: str, episode: int):
+    """完整生产 — 逐镜头 + 后期"""
+    _ensure_path()
+    shots = _load_shots(config_path, episode)
+    if not shots:
+        return {"status": "empty", "message": f"第{episode}集没有镜头"}
+
+    total = len(shots)
+
+    # 字幕
+    try:
+        self.update_state(state="PROGRESS", meta={
+            "step": "subtitle", "progress": 2,
+            "message": "生成字幕..."})
+        subtitle_task.apply(args=[config_path, episode]).get()
+    except Exception as e:
+        logger.warning(f"字幕失败: {e}")
+
+    # 逐镜头
+    results = []
+    for i, shot in enumerate(shots):
+        shot_id = shot.get("shot_id", f"{i+1:03d}")
+        self.update_state(state="PROGRESS", meta={
+            "step": "shot", "shot_id": shot_id,
+            "progress": int(5 + i / total * 80),
+            "current": i + 1, "total": total,
+            "message": f"[{i+1}/{total}] 镜头 {shot_id}"})
+        try:
+            result = shot_task.apply(args=[config_path, episode, shot]).get()
+            results.append(result)
+        except Exception as e:
+            results.append({"shot_id": shot_id, "error": str(e)})
+
+    # 后期
+    self.update_state(state="PROGRESS", meta={
+        "step": "post", "progress": 90, "message": "后期合成..."})
+    try:
+        post_task.apply(args=[config_path, episode]).get()
+    except Exception as e:
+        logger.error(f"后期失败: {e}")
+
+    return {"status": "done", "episode": episode, "shots": results}
+
+
+@app.task(bind=True, name="pipeline.post", soft_time_limit=1200)
+def post_task(self, config_path: str, episode: int, vertical: bool = False):
+    """后期合成"""
+    _ensure_path()
+    self.update_state(state="PROGRESS", meta={"step": "post", "progress": 10})
+    from post.production import run_post
+    run_post(config_path, episode, vertical)
+    return {"status": "done", "episode": episode, "vertical": vertical}
+
+
+@app.task(bind=True, name="pipeline.portraits", soft_time_limit=1800)
+def portraits_task(self, config_path: str):
+    """定妆照"""
+    _ensure_path()
+    self.update_state(state="PROGRESS", meta={"step": "portraits", "progress": 10})
+    from pipeline.portraits import run_portraits
+    run_portraits(config_path)
+    return {"status": "done"}
+
+
+# ══════════════════════════════════════════════════════════
+#  独立工具任务（直接调用，不走编排）
+# ══════════════════════════════════════════════════════════
+
+@app.task(bind=True, name="pipeline.tts_single", soft_time_limit=120)
+def tts_single_task(self, config_path: str, text: str,
+                    voice_config: dict | None = None,
+                    emotion: str = "neutral", language: str = "zh"):
+    """独立 TTS"""
     _ensure_path()
     from infra.config import Config
     from api.registry import Container
@@ -442,28 +448,19 @@ def lipsync_by_id_task(self, config_path: str, episode: int, shot_id: str):
 
     cfg = Config(config_path)
     cont = Container(cfg.data)
-    out_dir = Path(cfg.project_dir) / "output" / f"e{episode:02d}" / f"s{shot_id}"
-    video_path = out_dir / "video.mp4"
-    audio_path = out_dir / "audio.wav"
+    self.update_state(state="PROGRESS", meta={"step": "tts", "progress": 20, "message": "TTS..."})
+    tts = cont.get("tts")
 
-    if not video_path.exists():
-        return {"error": f"视频不存在: {video_path}，请先生成视频"}
-    if not audio_path.exists():
-        return {"error": f"音频不存在: {audio_path}，请先生成 TTS"}
-
-    self.update_state(state="PROGRESS", meta={
-        "stage": "lipsync", "shot_id": shot_id, "progress": 20, "message": "口型同步中..."})
-
-    lipsync = cont.get("lipsync")
-    synced_path = str(out_dir / "synced.mp4")
-    lipsync.sync(str(video_path), str(audio_path), synced_path)
-
-    return {"shot_id": shot_id, "path": synced_path}
+    import tempfile
+    output = tempfile.mktemp(suffix=".wav", prefix="tts_")
+    result = tts.synthesize(text, output, voice_config=voice_config or {},
+                            emotion=emotion, language=language)
+    return {"path": result, "text": text}
 
 
 @app.task(bind=True, name="pipeline.music", soft_time_limit=120)
 def music_task(self, config_path: str, duration: float, mood: str, output: str):
-    """独立配乐 — 只需要 ffmpeg（模板模式）"""
+    """独立配乐"""
     _ensure_path()
     from post.music import MusicGenerator
     from infra.config import Config
@@ -477,7 +474,7 @@ def music_task(self, config_path: str, duration: float, mood: str, output: str):
 
 @app.task(bind=True, name="pipeline.subtitle", soft_time_limit=60)
 def subtitle_task(self, config_path: str, episode: int):
-    """独立字幕 — 零外部依赖，纯本地"""
+    """独立字幕"""
     _ensure_path()
     from post.subtitle import generate_srt
     from infra.config import Config
@@ -492,7 +489,6 @@ def subtitle_task(self, config_path: str, episode: int):
         for row in csv.DictReader(f):
             if int(row.get("episode", 0)) == episode:
                 shots.append(row)
-
     if not shots:
         return {"error": f"第{episode}集没有镜头"}
 
@@ -501,16 +497,3 @@ def subtitle_task(self, config_path: str, episode: int):
     srt_path = str(out_dir / f"episode_{episode:02d}.srt")
     generate_srt(shots, srt_path)
     return {"path": srt_path, "count": len(shots)}
-
-
-def _find_shot(config_path: str, episode: int, shot_id: str) -> dict | None:
-    """从分镜表查找指定镜头"""
-    cfg_dir = Path(config_path).resolve().parent.parent
-    sb_path = cfg_dir / "storyboard" / "episodes.csv"
-    if not sb_path.exists():
-        return None
-    with open(sb_path, encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            if int(row.get("episode", 0)) == episode and row.get("shot_id") == shot_id:
-                return dict(row)
-    return None
