@@ -466,40 +466,69 @@ def switch_project(req: ProjectSwitch):
     return {"status": "ok"}
 
 
-@router.get("/characters")
-def list_characters():
-    chars_dir = ROOT / "config" / "characters"
+# ── 通用 YAML CRUD 工厂 ──
+
+def _yaml_list(yaml_dir: str, entity_key: str) -> list[dict]:
+    """通用 YAML 实体列表读取"""
+    d = ROOT / "config" / yaml_dir
+    if not d.exists():
+        return []
     result = []
-    if chars_dir.exists():
-        for f in chars_dir.glob("*.yaml"):
-            if f.stem.endswith(".example"):
-                continue
+    for f in d.glob("*.yaml"):
+        if f.stem.endswith(".example"):
+            continue
+        try:
             with open(f, encoding="utf-8") as fh:
                 data = yaml.safe_load(fh) or {}
-            char = data.get("character", {})
-            if char.get("id"):
-                result.append(char)
-    return {"characters": result}
+            entity = data.get(entity_key, {})
+            if entity.get("id"):
+                result.append(entity)
+        except Exception:
+            continue
+    return result
+
+
+def _yaml_save(yaml_dir: str, entity_key: str, entity_id: str, data: dict,
+               db_upsert=None) -> None:
+    """通用 YAML 实体保存（YAML + DB 双写）"""
+    d = ROOT / "config" / yaml_dir
+    d.mkdir(parents=True, exist_ok=True)
+    with open(d / f"{entity_id}.yaml", "w") as f:
+        yaml.dump({entity_key: {**data, "id": entity_id}}, f,
+                  allow_unicode=True, default_flow_style=False)
+    if db_upsert:
+        try:
+            from infra.database.pool import get_pool
+            db_upsert(get_pool(), entity_id, data)
+        except Exception as e:
+            logger.debug(f"数据库同步跳过: {e}")
+
+
+def _yaml_delete(yaml_dir: str, entity_id: str, label: str, db_delete=None) -> None:
+    """通用 YAML 实体删除（文件 + DB）"""
+    path = ROOT / "config" / yaml_dir / f"{entity_id}.yaml"
+    if not path.exists():
+        raise HTTPException(404, f"{label} {entity_id} 不存在")
+    path.unlink()
+    if db_delete:
+        try:
+            from infra.database.pool import get_pool
+            db_delete(get_pool(), entity_id)
+        except Exception as e:
+            logger.debug(f"数据库同步跳过: {e}")
+
+
+@router.get("/characters")
+def list_characters():
+    return {"characters": _yaml_list("characters", "character")}
 
 
 @router.post("/characters")
 def save_character(req: CharacterData):
-    chars_dir = ROOT / "config" / "characters"
-    chars_dir.mkdir(parents=True, exist_ok=True)
     data = req.model_dump(exclude_none=True)
     char_id = data.pop("id")
-    with open(chars_dir / f"{char_id}.yaml", "w") as f:
-        yaml.dump({"character": {**data, "id": char_id}}, f, allow_unicode=True, default_flow_style=False)
-
-    # 同步更新数据库
-    try:
-        from infra.database.pool import get_pool
-        from infra.database.characters import upsert as db_upsert_char
-        pool = get_pool()
-        db_upsert_char(pool, char_id, data)
-    except Exception as e:
-        logger.debug(f"数据库同步跳过: {e}")
-
+    from infra.database.characters import upsert as db_up
+    _yaml_save("characters", "character", char_id, data, db_upsert=db_up)
     return {"status": "ok", "id": char_id}
 
 
@@ -507,57 +536,22 @@ def save_character(req: CharacterData):
 def delete_character(char_id: str):
     if not re.match(r"^[a-zA-Z0-9_-]+$", char_id):
         raise HTTPException(400, "无效的角色 ID")
-    char_file = ROOT / "config" / "characters" / f"{char_id}.yaml"
-    if not char_file.exists():
-        raise HTTPException(404, f"角色 {char_id} 不存在")
-    char_file.unlink()
-
-    # 同步删除数据库记录
-    try:
-        from infra.database.pool import get_pool
-        from infra.database.characters import delete as db_delete_char
-        pool = get_pool()
-        db_delete_char(pool, char_id)
-    except Exception as e:
-        logger.debug(f"数据库同步跳过: {e}")
-
+    from infra.database.characters import delete as db_del
+    _yaml_delete("characters", char_id, "角色", db_delete=db_del)
     return {"status": "ok", "id": char_id}
 
 
 @router.get("/scenes")
 def list_scenes():
-    scenes_dir = ROOT / "config" / "scenes"
-    result = []
-    if scenes_dir.exists():
-        for f in scenes_dir.glob("*.yaml"):
-            if f.stem.endswith(".example"):
-                continue
-            with open(f, encoding="utf-8") as fh:
-                data = yaml.safe_load(fh) or {}
-            scene = data.get("scene", {})
-            if scene.get("id"):
-                result.append(scene)
-    return {"scenes": result}
+    return {"scenes": _yaml_list("scenes", "scene")}
 
 
 @router.post("/scenes")
 def save_scene(req: SceneData):
-    scenes_dir = ROOT / "config" / "scenes"
-    scenes_dir.mkdir(parents=True, exist_ok=True)
     data = req.model_dump(exclude_none=True)
     scene_id = data.pop("id")
-    with open(scenes_dir / f"{scene_id}.yaml", "w") as f:
-        yaml.dump({"scene": {**data, "id": scene_id}}, f, allow_unicode=True, default_flow_style=False)
-
-    # 同步更新数据库
-    try:
-        from infra.database.pool import get_pool
-        from infra.database.scenes import upsert as db_upsert_scene
-        pool = get_pool()
-        db_upsert_scene(pool, scene_id, data)
-    except Exception as e:
-        logger.debug(f"数据库同步跳过: {e}")
-
+    from infra.database.scenes import upsert as db_up
+    _yaml_save("scenes", "scene", scene_id, data, db_upsert=db_up)
     return {"status": "ok", "id": scene_id}
 
 
@@ -565,20 +559,8 @@ def save_scene(req: SceneData):
 def delete_scene(scene_id: str):
     if not re.match(r"^[a-zA-Z0-9_-]+$", scene_id):
         raise HTTPException(400, "无效的场景 ID")
-    scene_file = ROOT / "config" / "scenes" / f"{scene_id}.yaml"
-    if not scene_file.exists():
-        raise HTTPException(404, f"场景 {scene_id} 不存在")
-    scene_file.unlink()
-
-    # 同步删除数据库记录
-    try:
-        from infra.database.pool import get_pool
-        from infra.database.scenes import delete as db_delete_scene
-        pool = get_pool()
-        db_delete_scene(pool, scene_id)
-    except Exception as e:
-        logger.debug(f"数据库同步跳过: {e}")
-
+    from infra.database.scenes import delete as db_del
+    _yaml_delete("scenes", scene_id, "场景", db_delete=db_del)
     return {"status": "ok", "id": scene_id}
 
 
