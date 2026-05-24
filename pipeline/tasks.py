@@ -93,7 +93,7 @@ def step_tts(self, config_path: str, episode: int, shot_id: str):
 
     from infra.config import Config
     from api.registry import Container
-    import api  # noqa: F401
+    from api import _ensure_registered; _ensure_registered()
 
     cfg = Config(config_path)
     cont = Container(cfg.data)
@@ -143,7 +143,7 @@ def step_first_frame(self, config_path: str, episode: int, shot_id: str):
     from api.registry import Container
     from engines.prompt import build_prompt, translate_to_english
     from engines.shot_manager import ShotManager
-    import api  # noqa: F401
+    from api import _ensure_registered; _ensure_registered()
 
     cfg = Config(config_path)
     cont = Container(cfg.data)
@@ -208,7 +208,7 @@ def step_video(self, config_path: str, episode: int, shot_id: str):
     from infra.config import Config
     from api.registry import Container
     from engines.workflow_builder import WorkflowBuilder
-    import api  # noqa: F401
+    from api import _ensure_registered; _ensure_registered()
 
     cfg = Config(config_path)
     cont = Container(cfg.data)
@@ -265,7 +265,7 @@ def step_lipsync(self, config_path: str, episode: int, shot_id: str):
 
     from infra.config import Config
     from api.registry import Container
-    import api  # noqa: F401
+    from api import _ensure_registered; _ensure_registered()
 
     cfg = Config(config_path)
     cont = Container(cfg.data)
@@ -449,7 +449,7 @@ def tts_single_task(self, config_path: str, text: str,
     _ensure_path()
     from infra.config import Config
     from api.registry import Container
-    import api  # noqa: F401
+    from api import _ensure_registered; _ensure_registered()
 
     cfg = Config(config_path)
     cont = Container(cfg.data)

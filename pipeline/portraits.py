@@ -19,7 +19,7 @@ def run_portraits(config_path: str):
     logger.info("生成定妆照")
 
     # 触发后端自注册
-    import api  # noqa: F401
+    from api import _ensure_registered; _ensure_registered()
     from api.registry import Container
 
     chars_dir = Path(cfg.project_dir) / "config" / "characters"

@@ -20,7 +20,7 @@ def run_produce(config_path: str, episode: int):
     logger.info(f"完整生产 第{episode}集")
 
     # 触发后端自注册
-    import api  # noqa: F401
+    from api import _ensure_registered; _ensure_registered()
     from api.registry import Container
     cont = Container(cfg.data)
 

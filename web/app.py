@@ -14,9 +14,11 @@ logger = logging.getLogger(__name__)
 def create_app() -> FastAPI:
     """创建 FastAPI 应用"""
 
-    # 配置日志
+    # 配置日志（含文件输出）
     from web.services import setup_logging
-    setup_logging(level="INFO")
+    log_dir = Path(__file__).resolve().parent.parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+    setup_logging(level="INFO", log_file=str(log_dir / "app.log"))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

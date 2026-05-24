@@ -6,6 +6,50 @@ const API = '/api';
 const _cache = new Map();
 const CACHE_TTL = 30000; // 30s
 
+// ── 撤销/重做 ──
+const _undoStack = [];  // [{shots: [...], desc: string}]
+const _redoStack = [];
+const MAX_UNDO = 50;
+
+function pushUndo(desc) {
+  _undoStack.push({ shots: JSON.parse(JSON.stringify(shots)), desc });
+  if (_undoStack.length > MAX_UNDO) _undoStack.shift();
+  _redoStack.length = 0; // 新操作清空重做栈
+}
+
+function undo() {
+  if (!_undoStack.length) { toast('没有可撤销的操作', 'error'); return; }
+  const entry = _undoStack.pop();
+  _redoStack.push({ shots: JSON.parse(JSON.stringify(shots)), desc: entry.desc });
+  shots = entry.shots;
+  invalidateCache(`storyboard/${ep}`);
+  api(`/storyboard/${ep}`, { method:'POST', body:{shots} }).then(() => {
+    toast(`↩ 撤销: ${entry.desc}`);
+    renderShotsGrid();
+  }).catch(e => toast(e.message, 'error'));
+}
+
+function redo() {
+  if (!_redoStack.length) { toast('没有可重做的操作', 'error'); return; }
+  const entry = _redoStack.pop();
+  _undoStack.push({ shots: JSON.parse(JSON.stringify(shots)), desc: entry.desc });
+  shots = entry.shots;
+  invalidateCache(`storyboard/${ep}`);
+  api(`/storyboard/${ep}`, { method:'POST', body:{shots} }).then(() => {
+    toast(`↪ 重做: ${entry.desc}`);
+    renderShotsGrid();
+  }).catch(e => toast(e.message, 'error'));
+}
+
+// Ctrl+Z 撤销, Ctrl+Shift+Z 重做
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+    if (e.key === 'z' && e.shiftKey) { e.preventDefault(); redo(); }
+    if (e.key === 'y') { e.preventDefault(); redo(); }
+  }
+});
+
 function cachedFetch(key, fetcher, ttl = CACHE_TTL) {
   const entry = _cache.get(key);
   if (entry && Date.now() - entry.ts < ttl) return Promise.resolve(entry.data);
@@ -147,6 +191,8 @@ function renderWB() {
     <div class="wb-top-bar">
       <h2>🎬 第${ep}集 · ${shots.length} 个镜头</h2>
       <div class="wb-batch-btns">
+        <button class="btn btn-outline" onclick="undo()" title="Ctrl+Z">↩ 撤销</button>
+        <button class="btn btn-outline" onclick="redo()" title="Ctrl+Shift+Z">↪ 重做</button>
         <button class="btn btn-outline" onclick="batchRun('tts')">🎤 批量 TTS</button>
         <button class="btn btn-outline" onclick="batchRun('first_frame')">🎨 批量首帧</button>
         <button class="btn btn-outline" onclick="batchRun('video')">🎬 批量视频</button>
@@ -292,6 +338,7 @@ async function saveEdit(idx) {
   s.duration = document.getElementById('ed-dur')?.value || 4;
   s.emotion = document.getElementById('ed-emo')?.value || 'neutral';
 
+  pushUndo(`编辑镜头 ${shots[idx].shot_id || idx+1}`);
   try {
     await api(`/storyboard/${ep}`, { method:'POST', body:{shots:shots} });
     invalidateCache(`storyboard/${ep}`);
@@ -306,8 +353,9 @@ async function saveEdit(idx) {
 async function deleteShot(idx) {
   const s = shots[idx];
   const sid = s.shot_id || String(idx+1).padStart(3,'0');
-  if (!confirm(`确认删除镜头 ${sid}？`)) return;
+  if (!confirm(t('confirm.delete_shot', {id: sid}))) return;
 
+  pushUndo(`删除镜头 ${sid}`);
   shots.splice(idx, 1);
   try {
     await api(`/storyboard/${ep}`, { method:'POST', body:{shots:shots} });
@@ -649,6 +697,7 @@ async function deleteShotFromSB(idx) {
   try {
     const d = await api(`/storyboard/${ep}`);
     const currentShots = d.shots || [];
+    pushUndo(`删除镜头 ${currentShots[idx]?.shot_id || idx+1}`);
     currentShots.splice(idx, 1);
     await api(`/storyboard/${ep}`, { method:'POST', body:{shots:currentShots} });
     invalidateCache(`storyboard/${ep}`);
@@ -661,6 +710,7 @@ async function addShot() {
   try {
     const d = await api(`/storyboard/${ep}`);
     const n = (d.shots || []).length;
+    pushUndo(`添加镜头 ${String(n+1).padStart(3,'0')}`);
     await api(`/storyboard/${ep}`, {method:'POST', body:{shots:[
       ...((d.shots)||[]),
       {episode:ep, shot_id:String(n+1).padStart(3,'0'),scene:'',characters:'',action:'',dialogue:'......',camera:'固定',shot_type:'中景',duration:4,emotion:'neutral'}
@@ -695,23 +745,32 @@ async function loadSettings() {
   const el = document.getElementById('page-settings');
   try {
     const [cfg,env,td] = await Promise.all([api('/config'),api('/system/env'),api('/tools')]);
-    const t = td.tools||{};
+    const t_tools = td.tools||{};
+    const currentLang = localStorage.getItem('drama_lang') || 'zh';
     el.innerHTML = `
+      <div class="card"><h2>🌐 语言 / Language</h2>
+        <div class="form-row"><label>界面语言</label>
+          <select id="cfg-lang" onchange="setLang(this.value);loadSettings()">
+            <option value="zh" ${currentLang==='zh'?'selected':''}>中文</option>
+            <option value="en" ${currentLang==='en'?'selected':''}>English</option>
+          </select>
+        </div>
+      </div>
       <div class="card"><h2>💻 环境</h2><div class="info-grid"><div><span class="dim">OS:</span> ${env.os}</div><div><span class="dim">Python:</span> ${env.python}</div><div><span class="dim">GPU:</span> ${env.gpu.available?env.gpu.name+' ('+env.gpu.vram_mb+'MB)':'不可用'}</div></div></div>
       <div class="card"><h2>🔧 配置</h2>
         <div class="config-section"><h3>🎤 TTS</h3>
           <div class="form-row"><label>后端</label><select id="cfg-tts">${['mimo-voicedesign','mimo-voiceclone','gpt-sovits','cosyvoice','fish-speech'].map(b=>`<option value="${b}" ${cfg.models?.tts_backend===b?'selected':''}>${b}</option>`).join('')}</select></div>
           <div class="form-row"><label>地址</label><input id="cfg-tts-url" value="${cfg.models?.gpt_sovits?.api_url||''}"></div>
-          <div class="tool-status-inline"><span class="status-dot ${t.tts?.available?'ok':'err'}"></span>${t.tts?.available?'可用':t.tts?.reason||'不可用'}</div>
+          <div class="tool-status-inline"><span class="status-dot ${t_tools.tts?.available?'ok':'err'}"></span>${t_tools.tts?.available?'可用':t_tools.tts?.reason||'不可用'}</div>
         </div>
         <div class="config-section"><h3>🎨 ComfyUI</h3>
           <div class="form-row"><label>地址</label><input id="cfg-comfyui" value="${cfg.comfyui?.url||''}"></div>
-          <div class="tool-status-inline"><span class="status-dot ${t.comfyui?.available?'ok':'err'}"></span>${t.comfyui?.available?'可用':t.comfyui?.reason||'不可用'}</div>
+          <div class="tool-status-inline"><span class="status-dot ${t_tools.comfyui?.available?'ok':'err'}"></span>${t_tools.comfyui?.available?'可用':t_tools.comfyui?.reason||'不可用'}</div>
         </div>
         <div class="config-section"><h3>👄 LipSync</h3>
           <div class="form-row"><label>后端</label><select id="cfg-lipsync">${['musetalk','sadtalker','wav2lip'].map(b=>`<option value="${b}" ${cfg.models?.lip_sync_backend===b?'selected':''}>${b}</option>`).join('')}</select></div>
           <div class="form-row"><label>地址</label><input id="cfg-ls-url" value="${cfg.models?.musetalk?.api_url||''}"></div>
-          <div class="tool-status-inline"><span class="status-dot ${t.lipsync?.available?'ok':'err'}"></span>${t.lipsync?.available?'可用':t.lipsync?.reason||'不可用'}</div>
+          <div class="tool-status-inline"><span class="status-dot ${t_tools.lipsync?.available?'ok':'err'}"></span>${t_tools.lipsync?.available?'可用':t_tools.lipsync?.reason||'不可用'}</div>
         </div>
         <button class="btn btn-primary" style="margin-top:1rem" onclick="saveCfg()">💾 保存</button>
       </div>`;

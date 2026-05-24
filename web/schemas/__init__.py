@@ -21,7 +21,7 @@ class StepRequest(BaseModel):
     @classmethod
     def validate_shot_id(cls, v: str) -> str:
         if not re.match(r"^[a-zA-Z0-9_-]+$", v):
-            raise ValueError("shot_id 只允许字母、数字、下划线、连字符")
+            raise ValueError("镜头 ID 只允许字母、数字、下划线、连字符")
         return v
 
 
@@ -76,7 +76,7 @@ class CharacterData(BaseModel):
     @classmethod
     def validate_id(cls, v: str) -> str:
         if not re.match(r"^[a-zA-Z0-9_-]+$", v):
-            raise ValueError("id 只允许字母、数字、下划线、连字符")
+            raise ValueError("角色 ID 只允许字母、数字、下划线、连字符")
         return v
 
 
@@ -92,7 +92,7 @@ class SceneData(BaseModel):
     @classmethod
     def validate_id(cls, v: str) -> str:
         if not re.match(r"^[a-zA-Z0-9_-]+$", v):
-            raise ValueError("id 只允许字母、数字、下划线、连字符")
+            raise ValueError("场景 ID 只允许字母、数字、下划线、连字符")
         return v
 
 

@@ -20,7 +20,7 @@ def run_preview(config_path: str, episode: int, level: str = "draft"):
     logger.info(f"预览 第{episode}集 ({level})")
 
     # 触发后端自注册
-    import api  # noqa: F401
+    from api import _ensure_registered; _ensure_registered()
     from api.registry import Container
     cont = Container(cfg.data)
 
