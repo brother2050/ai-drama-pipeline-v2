@@ -135,7 +135,7 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path):
             multi_char_prompt = mch.generate_multi_char_prompt([c for c in chars_data if c])
 
         models = cfg.get("models", {})
-        wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=cont.get("image"))
+        wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=container.get("image"))
         wb.load_workflows()
         prompt, wf = wb.build_first_frame(
             shot, character_desc=", ".join(char_descs),

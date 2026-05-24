@@ -200,9 +200,9 @@ def _check_tool(name: str, cfg: dict) -> dict:
     return {"available": False, "backend": "unknown", "type": "unknown", "reason": "未知工具"}
 
 
-def _submit_task(task, *args) -> dict:
+def _submit_task(task, *args, **kwargs) -> dict:
     try:
-        result = task.delay(*args)
+        result = task.delay(*args, **kwargs)
         return {"status": "submitted", "task_id": result.id,
                 "poll_url": f"/api/tasks/{result.id}"}
     except Exception as e:
@@ -649,16 +649,14 @@ def save_storyboard(episode: int, data: dict):
 @router.post("/pipeline/run")
 def run_pipeline(req: PipelineRequest):
     from pipeline.tasks import preview_task, produce_task, post_task
-    task_map = {
-        "preview": (preview_task, [req.episode, req.level]),
-        "produce": (produce_task, [req.episode, req.vertical]),
-        "post": (post_task, [req.episode, req.vertical]),
-    }
-    entry = task_map.get(req.command)
-    if not entry:
+    if req.command == "preview":
+        return _submit_task(preview_task, _cfg_path(), req.episode, req.level)
+    elif req.command == "produce":
+        return _submit_task(produce_task, _cfg_path(), req.episode, vertical=req.vertical)
+    elif req.command == "post":
+        return _submit_task(post_task, _cfg_path(), req.episode, req.vertical)
+    else:
         raise HTTPException(400, f"未知命令: {req.command}")
-    task_func, extra_args = entry
-    return _submit_task(task_func, _cfg_path(), *extra_args)
 
 
 @router.get("/pipeline/status/{episode}")

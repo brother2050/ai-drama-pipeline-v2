@@ -103,7 +103,7 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
         logger.warning(f"复制到 final 失败: {e}")
 
     # 清理中间文件（保留 final 和原始镜头视频）
-    # 注意: concat_out 可能是 _concat/_subtitled/_with_bgm/_vertical 中的一个
+    # concat_out 可能是 _concat/_subtitled/_with_bgm/_vertical 中的一个
     # 只删除不同于 concat_out 和 final_out 的中间文件
     for intermediate in [out_dir / f"episode_{episode:02d}_concat.mp4",
                          out_dir / f"episode_{episode:02d}_subtitled.mp4",
