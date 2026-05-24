@@ -65,14 +65,15 @@ function invalidateCache(prefix) {
 }
 
 async function api(path, opts = {}) {
+  const { body, headers, ...rest } = opts;
   const r = await fetch(API + path, {
-    headers: { 'Content-Type': 'application/json', ...opts.headers },
-    ...opts,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    headers: { 'Content-Type': 'application/json', ...headers },
+    ...rest,
+    body: body ? JSON.stringify(body) : undefined,
   });
   if (!r.ok) {
-    const t = await r.text();
-    try { const j = JSON.parse(t); throw new Error(j.detail || t); } catch(e) { if(e.message) throw e; throw new Error(t); }
+    const raw = await r.text();
+    try { const j = JSON.parse(raw); throw new Error(j.detail || raw); } catch(e) { if(e.message) throw e; throw new Error(raw); }
   }
   return r.json();
 }
@@ -460,8 +461,13 @@ async function batchRun(step) {
       if (!r.ok) { fail++; continue; }
       const data = await r.json();
       const result = await pollTask(data.task_id);
-      if (result.status === 'success') { done++; invalidateCache(`res/${ep}/${sid}`); loadResources(i); }
-      else if (result.result?.status === 'skipped') { skip++; }
+      if (result.status === 'success') {
+        const details = result.result?.details;
+        const stepResult = details ? details[step] : result.result;
+        if (stepResult?.status === 'skipped') { skip++; }
+        else { done++; invalidateCache(`res/${ep}/${sid}`); loadResources(i); }
+      }
+      else if (result.status === 'timeout') { fail++; }
       else { fail++; }
     } catch { fail++; }
   }
@@ -766,6 +772,15 @@ async function loadSettings() {
     _cache.set('config', {data: cfg, ts: Date.now()}); // 缓存配置供后端切换使用
     const t_tools = td.tools||{};
     const currentLang = localStorage.getItem('drama_lang') || 'zh';
+
+    // 预计算当前后端的 URL（HTML 渲染前无法 getElementById）
+    const ttsBackend = cfg.models?.tts_backend || 'mimo-voicedesign';
+    const ttsKey = ttsBackend.replace(/-/g, '_');
+    const ttsUrl = cfg.models?.[ttsKey]?.api_url || '';
+    const lsBackend = cfg.models?.lip_sync_backend || 'musetalk';
+    const lsKey = lsBackend.replace(/-/g, '_');
+    const lsUrl = cfg.models?.[lsKey]?.api_url || '';
+
     el.innerHTML = `
       <div class="card"><h2>🌐 语言 / Language</h2>
         <div class="form-row"><label>界面语言</label>
@@ -778,17 +793,17 @@ async function loadSettings() {
       <div class="card"><h2>💻 环境</h2><div class="info-grid"><div><span class="dim">OS:</span> ${env.os}</div><div><span class="dim">Python:</span> ${env.python}</div><div><span class="dim">GPU:</span> ${env.gpu.available?env.gpu.name+' ('+env.gpu.vram_mb+'MB)':'不可用'}</div></div></div>
       <div class="card"><h2>🔧 配置</h2>
         <div class="config-section"><h3>🎤 TTS</h3>
-          <div class="form-row"><label>后端</label><select id="cfg-tts" onchange="updateTtsUrl()">${['mimo-voicedesign','mimo-voiceclone','gpt-sovits','cosyvoice','fish-speech'].map(b=>`<option value="${b}" ${cfg.models?.tts_backend===b?'selected':''}>${b}</option>`).join('')}</select></div>
-          <div class="form-row"><label>地址</label><input id="cfg-tts-url" value="${cfg.models?.[document.getElementById('cfg-tts')?.value?.replace(/-/g,'_')]?.api_url||cfg.models?.gpt_sovits?.api_url||''}"></div>
+          <div class="form-row"><label>后端</label><select id="cfg-tts" onchange="updateTtsUrl()">${['mimo-voicedesign','mimo-voiceclone','gpt-sovits','cosyvoice','fish-speech'].map(b=>`<option value="${b}" ${ttsBackend===b?'selected':''}>${b}</option>`).join('')}</select></div>
+          <div class="form-row"><label>地址</label><input id="cfg-tts-url" value="${esc(ttsUrl)}"></div>
           <div class="tool-status-inline"><span class="status-dot ${t_tools.tts?.available?'ok':'err'}"></span>${t_tools.tts?.available?'可用':t_tools.tts?.reason||'不可用'}</div>
         </div>
         <div class="config-section"><h3>🎨 ComfyUI</h3>
-          <div class="form-row"><label>地址</label><input id="cfg-comfyui" value="${cfg.comfyui?.url||''}"></div>
+          <div class="form-row"><label>地址</label><input id="cfg-comfyui" value="${esc(cfg.comfyui?.url||'')}"></div>
           <div class="tool-status-inline"><span class="status-dot ${t_tools.comfyui?.available?'ok':'err'}"></span>${t_tools.comfyui?.available?'可用':t_tools.comfyui?.reason||'不可用'}</div>
         </div>
         <div class="config-section"><h3>👄 LipSync</h3>
-          <div class="form-row"><label>后端</label><select id="cfg-lipsync" onchange="updateLsUrl()">${['musetalk','sadtalker','wav2lip'].map(b=>`<option value="${b}" ${cfg.models?.lip_sync_backend===b?'selected':''}>${b}</option>`).join('')}</select></div>
-          <div class="form-row"><label>地址</label><input id="cfg-ls-url" value="${cfg.models?.[document.getElementById('cfg-lipsync')?.value?.replace(/-/g,'_')]?.api_url||cfg.models?.musetalk?.api_url||''}"></div>
+          <div class="form-row"><label>后端</label><select id="cfg-lipsync" onchange="updateLsUrl()">${['musetalk','sadtalker','wav2lip'].map(b=>`<option value="${b}" ${lsBackend===b?'selected':''}>${b}</option>`).join('')}</select></div>
+          <div class="form-row"><label>地址</label><input id="cfg-ls-url" value="${esc(lsUrl)}"></div>
           <div class="tool-status-inline"><span class="status-dot ${t_tools.lipsync?.available?'ok':'err'}"></span>${t_tools.lipsync?.available?'可用':t_tools.lipsync?.reason||'不可用'}</div>
         </div>
         <button class="btn btn-primary" style="margin-top:1rem" onclick="saveCfg()">💾 保存</button>
