@@ -155,13 +155,20 @@ def _run_first_frame(config_path: str, episode: int, shot_id: str) -> dict:
     char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
     sb_path = str(Path(cfg.project_dir) / "storyboard" / "episodes.csv")
     sm = ShotManager(sb_path, str(Path(cfg.project_dir) / "config"))
+    # 获取 LLM 后端用于翻译（可选）
+    llm = None
+    try:
+        if cfg.get("llm", {}).get("enabled"):
+            llm = cont.get("llm")
+    except Exception:
+        pass
     char_descs = []
     for cid in char_ids:
         c = sm.get_character(cid)
         if c:
-            char_descs.append(translate_to_english(c.get("appearance", "")))
+            char_descs.append(translate_to_english(c.get("appearance", ""), llm=llm))
     scene = sm.get_scene(shot.get("scene", ""))
-    scene_desc = translate_to_english(scene.get("description", "")) if scene else ""
+    scene_desc = translate_to_english(scene.get("description", ""), llm=llm) if scene else ""
 
     # 多角色 prompt
     multi_char_prompt = ""
@@ -188,7 +195,13 @@ def _run_first_frame(config_path: str, episode: int, shot_id: str) -> dict:
     comfyui = cont.get("image")
     for node_id, file_path in uploads.items():
         if Path(file_path).exists():
-            comfyui.upload_image(file_path, node_id) if hasattr(comfyui, 'upload_image') else None
+            try:
+                comfyui.upload_image(file_path)
+                # 更新工作流中 LoadImage 节点的 image 字段为上传后的文件名
+                if node_id in wf and wf[node_id].get("class_type") in ("LoadImage", "LoadImageFromPath", "ImageLoad"):
+                    wf[node_id]["inputs"]["image"] = Path(file_path).name
+            except Exception as e:
+                logger.warning(f"参考图上传失败 [{node_id}]: {e}")
 
     files = comfyui.generate(wf, str(out_dir))
     frame_path = str(out_dir / "frame.png")

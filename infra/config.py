@@ -97,6 +97,8 @@ class Config:
         self._path = path or self._find_config()
         self._data = self._merge(self._path)
         self._project_dir = str(Path(self._path).resolve().parent.parent) if self._path else os.getcwd()
+        # 注入 project_dir 供后端使用（Container._backend_config 依赖此键）
+        self._data["_project_dir"] = self._project_dir
         self._warnings: list[str] = []
         self._validate()
 
@@ -156,6 +158,7 @@ class Config:
     def reload(self) -> None:
         """重新加载配置"""
         self._data = self._merge(self._path)
+        self._data["_project_dir"] = self._project_dir
         self._warnings = []
         self._validate()
 

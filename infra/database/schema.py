@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS shots (
     characters TEXT,
     action TEXT,
     dialogue TEXT,
+    action_en TEXT DEFAULT '',
+    dialogue_en TEXT DEFAULT '',
     camera TEXT,
     shot_type TEXT,
     duration REAL,

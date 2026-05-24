@@ -105,37 +105,16 @@ class WorkflowBuilder:
         Returns:
             (prompt_dict, workflow_dict) 元组
         """
-        from engines.prompt import build_prompt, EMOTION_MAP, SHOT_TYPE_MAP, CAMERA_MAP
-        from engines.camera import normalize_camera, normalize_shot_type
+        from engines.prompt import build_prompt
 
-        # 构建 prompt
-        camera = normalize_camera(shot.get("camera", "固定"))
-        shot_type = normalize_shot_type(shot.get("shot_type", "中景"))
-        emotion = shot.get("emotion", "neutral")
-
-        action_en = shot.get("action_en", "")
-        dialogue_en = shot.get("dialogue_en", "")
-
-        positive_parts = []
+        # 使用统一的 prompt 构建函数
         style = self.config.get("project", {}).get("style", "cinematic")
         genre = self.config.get("project", {}).get("genre", "urban")
-        if style:
-            positive_parts.append(f"{style} style")
-        if genre:
-            positive_parts.append(f"{genre} atmosphere")
-        if scene_desc:
-            positive_parts.append(scene_desc)
-        if character_desc:
-            positive_parts.append(character_desc)
-        if action_en:
-            positive_parts.append(action_en)
-        positive_parts.append(EMOTION_MAP.get(emotion, "neutral expression"))
-        positive_parts.append(SHOT_TYPE_MAP.get(shot_type, "medium shot"))
-        positive_parts.append(CAMERA_MAP.get(camera, "static camera"))
+        positive = build_prompt(shot, character_desc=character_desc,
+                                scene_desc=scene_desc, style=style, genre=genre)
         if multi_char_prompt:
-            positive_parts.append(multi_char_prompt)
+            positive = f"{positive}, {multi_char_prompt}"
 
-        positive = ", ".join(positive_parts)
         negative = "bad quality, worst quality, ugly, deformed, blurry, watermark, text"
 
         prompt = {"positive": positive, "negative": negative}

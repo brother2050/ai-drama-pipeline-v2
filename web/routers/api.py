@@ -589,6 +589,19 @@ def save_storyboard(episode: int, data: dict):
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(existing + shots)
+
+    # 同步更新数据库 shots 表
+    try:
+        from infra.database.pool import get_pool
+        from infra.database.shots import upsert as db_upsert_shot
+        pool = get_pool()
+        for shot in shots:
+            sid = shot.get("shot_id", "")
+            if sid:
+                db_upsert_shot(pool, episode, sid, shot)
+    except Exception as e:
+        logger.debug(f"数据库同步跳过: {e}")
+
     return {"status": "ok", "count": len(shots)}
 
 

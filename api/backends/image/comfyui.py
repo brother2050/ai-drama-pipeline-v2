@@ -22,6 +22,16 @@ class ComfyUI:
             h["Authorization"] = f"Bearer {self._api_key}"
         return h
 
+    def upload_image(self, filepath: str, overwrite: bool = True) -> dict:
+        """上传图片到 ComfyUI 服务器（用于 IP-Adapter 等需要参考图的节点）"""
+        with httpx.Client(timeout=30) as c:
+            with open(filepath, "rb") as f:
+                r = c.post(f"{self._url}/upload/image",
+                           files={"image": (Path(filepath).name, f)},
+                           data={"overwrite": str(overwrite).lower()})
+            r.raise_for_status()
+            return r.json()
+
     def generate(self, workflow: dict, output_dir: str) -> list[str]:
         """提交工作流并等待结果，返回生成的文件路径列表"""
         client_id = uuid.uuid4().hex

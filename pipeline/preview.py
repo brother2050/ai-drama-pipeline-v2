@@ -84,18 +84,26 @@ def _process_shot(shot: dict, sm, container, cfg, shot_out: Path, preset: dict):
     shot_id = shot.get("shot_id", "001")
     char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
 
+    # 获取 LLM 后端用于翻译（可选）
+    llm = None
+    try:
+        if cfg.get("llm", {}).get("enabled"):
+            llm = container.get("llm")
+    except Exception:
+        pass
+
     # 获取角色描述
     char_descs = []
     for cid in char_ids:
         char = sm.get_character(cid)
         if char:
-            desc = translate_to_english(char.get("appearance", ""), llm=None)
+            desc = translate_to_english(char.get("appearance", ""), llm=llm)
             char_descs.append(desc)
 
     # 获取场景描述
     scene_id = shot.get("scene", "")
     scene = sm.get_scene(scene_id)
-    scene_desc = translate_to_english(scene.get("description", ""), llm=None) if scene else ""
+    scene_desc = translate_to_english(scene.get("description", ""), llm=llm) if scene else ""
 
     # 1) TTS 语音合成
     dialogue = shot.get("dialogue", "").strip()

@@ -31,6 +31,8 @@ models:
     api_url: "http://127.0.0.1:8080"
   sadtalker:
     api_url: "http://127.0.0.1:8082"
+  wav2lip:
+    api_url: "http://127.0.0.1:8084"
 
 # LLM 配置（可选）
 llm:

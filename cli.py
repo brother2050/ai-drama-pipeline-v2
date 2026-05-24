@@ -292,7 +292,7 @@ def run_all(episode, vertical, config_path):
         if task_name == "pipeline.post":
             _run_via_celery(task_name, cfg, episode, vertical=vertical)
         elif task_name == "pipeline.produce":
-            _run_via_celery(task_name, cfg, episode, vertical=vertical)
+            _run_via_celery(task_name, cfg, episode)
         else:
             _run_via_celery(task_name, cfg, episode)
     console.print("\n[bold green]✅ 全流程完成！[/bold green]")

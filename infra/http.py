@@ -1,4 +1,8 @@
-"""HTTP 客户端 — 统一远程 API 调用，基于 httpx"""
+"""HTTP 客户端 — 统一远程 API 调用，基于 httpx
+
+共享工具类，供后端模块使用。后端也可直接使用 httpx.Client。
+提供连接池复用、健康检查、文件上传/下载等便捷方法。
+"""
 
 from __future__ import annotations
 
