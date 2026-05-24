@@ -90,6 +90,12 @@ Rate limit 定义了但从未调用、Rate limit 内存泄露、前端 XSS、add
 | 75 | truncate(None) 崩溃 | ✅ 空值保护 |
 | 76 | _format_srt_time(-1) 输出负时间 | ✅ max(0, seconds) 钳位 |
 
+### 第十一轮（1项）— 重复任务保护
+
+| # | 问题 | 修复 |
+|---|------|------|
+| 77 | 同一镜头重复提交 Celery 任务会互相覆盖文件 | ✅ DB running 状态检查 + 标记 |
+
 ---
 
 ## 🟡 已知限制（非 bug，设计取舍）

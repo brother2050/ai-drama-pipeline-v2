@@ -82,6 +82,32 @@ def _db_record_step(config_path: str, episode: int, shot_id: str,
         logger.debug(f"DB 写入跳过: {e}")
 
 
+def _check_step_running(config_path: str, episode: int, shot_id: str, step: str) -> bool:
+    """检查步骤是否正在执行（防重复提交）"""
+    try:
+        from infra.database.pool import get_pool
+        from infra.database.generation import get_shot_status
+        pool = get_pool()
+        statuses = get_shot_status(pool, episode, shot_id)
+        for s in statuses:
+            if s.get("stage") == step and s.get("status") == "running":
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _db_mark_running(config_path: str, episode: int, shot_id: str, step: str) -> None:
+    """标记步骤为执行中（防重复提交）"""
+    try:
+        from infra.database.pool import get_pool
+        from infra.database.generation import upsert_status
+        pool = get_pool()
+        upsert_status(pool, episode, shot_id, step, status="running")
+    except Exception:
+        pass
+
+
 # ══════════════════════════════════════════════════════════
 #  核心逻辑函数（纯函数，shot_task 直接调用）
 # ══════════════════════════════════════════════════════════
@@ -89,6 +115,10 @@ def _db_record_step(config_path: str, episode: int, shot_id: str,
 def _run_tts(config_path: str, episode: int, shot_id: str) -> dict:
     """TTS 核心逻辑"""
     _ensure_path()
+
+    # 防重复执行
+    if _check_step_running(config_path, episode, shot_id, "tts"):
+        return {"shot_id": shot_id, "step": "tts", "status": "skipped", "reason": "该步骤正在执行中"}
 
     ok, reason = _check_available("tts", config_path)
     if not ok:
@@ -101,6 +131,8 @@ def _run_tts(config_path: str, episode: int, shot_id: str) -> dict:
     dialogue = shot.get("dialogue", "").strip()
     if not dialogue or dialogue == "......":
         return {"shot_id": shot_id, "step": "tts", "status": "skipped", "reason": "无台词"}
+
+    _db_mark_running(config_path, episode, shot_id, "tts")
 
     from infra.config import Config
     from api.registry import Container
@@ -133,6 +165,10 @@ def _run_first_frame(config_path: str, episode: int, shot_id: str) -> dict:
     """首帧生成核心逻辑 — 使用 WorkflowBuilder 含 IP-Adapter 注入"""
     _ensure_path()
 
+    # 防重复执行
+    if _check_step_running(config_path, episode, shot_id, "first_frame"):
+        return {"shot_id": shot_id, "step": "first_frame", "status": "skipped", "reason": "该步骤正在执行中"}
+
     ok, reason = _check_available("comfyui", config_path)
     if not ok:
         return {"shot_id": shot_id, "step": "first_frame", "status": "skipped",
@@ -141,6 +177,8 @@ def _run_first_frame(config_path: str, episode: int, shot_id: str) -> dict:
     shot = _find_shot(config_path, episode, shot_id)
     if not shot:
         return {"shot_id": shot_id, "step": "first_frame", "status": "error", "reason": "镜头不存在"}
+
+    _db_mark_running(config_path, episode, shot_id, "first_frame")
 
     from infra.config import Config
     from api.registry import Container
@@ -227,6 +265,10 @@ def _run_video(config_path: str, episode: int, shot_id: str) -> dict:
     """视频生成核心逻辑"""
     _ensure_path()
 
+    # 防重复执行
+    if _check_step_running(config_path, episode, shot_id, "video"):
+        return {"shot_id": shot_id, "step": "video", "status": "skipped", "reason": "该步骤正在执行中"}
+
     ok, reason = _check_available("comfyui", config_path)
     if not ok:
         return {"shot_id": shot_id, "step": "video", "status": "skipped",
@@ -237,6 +279,8 @@ def _run_video(config_path: str, episode: int, shot_id: str) -> dict:
     if not frame_path.exists():
         return {"shot_id": shot_id, "step": "video", "status": "skipped",
                 "reason": "首帧不存在，请先执行 Step 2"}
+
+    _db_mark_running(config_path, episode, shot_id, "video")
 
     from infra.config import Config
     from api.registry import Container
@@ -274,6 +318,10 @@ def _run_lipsync(config_path: str, episode: int, shot_id: str) -> dict:
     """口型同步核心逻辑"""
     _ensure_path()
 
+    # 防重复执行
+    if _check_step_running(config_path, episode, shot_id, "lipsync"):
+        return {"shot_id": shot_id, "step": "lipsync", "status": "skipped", "reason": "该步骤正在执行中"}
+
     ok, reason = _check_available("lipsync", config_path)
     if not ok:
         return {"shot_id": shot_id, "step": "lipsync", "status": "skipped",
@@ -289,6 +337,8 @@ def _run_lipsync(config_path: str, episode: int, shot_id: str) -> dict:
     if not audio_path.exists():
         return {"shot_id": shot_id, "step": "lipsync", "status": "skipped",
                 "reason": "音频不存在，请先执行 Step 1"}
+
+    _db_mark_running(config_path, episode, shot_id, "lipsync")
 
     from infra.config import Config
     from api.registry import Container
