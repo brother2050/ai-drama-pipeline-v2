@@ -48,6 +48,17 @@ Rate limit 定义了但从未调用、Rate limit 内存泄露、前端 XSS、add
 | 53 | save_character/save_scene 不同步数据库 | ✅ YAML + DB 双写 |
 | 54 | delete_character/delete_scene 不同步数据库 | ✅ 文件 + DB 双删 |
 
+### 第七轮（6项）— 异常处理补全
+
+| # | 问题 | 修复 |
+|---|------|------|
+| 55 | pipeline/portraits.py run_portraits workflow 格式错误 | ✅ 改用 WorkflowBuilder |
+| 56 | post_task 不包裹 _run_post 异常 | ✅ try/except 返回 error dict |
+| 57 | tts_single_task 不包裹 TTS 异常 | ✅ try/except 返回 error dict |
+| 58 | music_task 不包裹配乐异常 | ✅ try/except 返回 error dict |
+| 59 | portraits_task 不包裹异常 | ✅ try/except 返回 error dict |
+| 60 | _run_first_frame comfyui.generate 不包裹异常 | ✅ try/except 返回 error dict |
+
 ---
 
 ## 🟡 已知限制（非 bug，设计取舍）

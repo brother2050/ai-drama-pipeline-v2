@@ -40,7 +40,6 @@ def ensure_portrait(char_id: str, config: dict, container=None) -> str:
             models = config.get("models", {})
             wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui)
             wb.load_workflows()
-            prompt_text = f"portrait photo, {appearance}, high quality, detailed face, 4k"
             # 构建一个简单的首帧工作流（单角色，无场景）
             fake_shot = {"characters": char_id, "emotion": "neutral",
                          "shot_type": "特写", "camera": "固定"}

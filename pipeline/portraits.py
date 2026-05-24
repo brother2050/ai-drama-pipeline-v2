@@ -67,12 +67,23 @@ def run_portraits(config_path: str):
         if cont:
             try:
                 comfyui = cont.get("image")
-                files = comfyui.generate({"prompt": {"positive": prompt}}, str(portrait_dir))
-                if files:
-                    logger.info(f"    ✅ 生成 {len(files)} 张")
-                    generated += 1
+                # 使用 WorkflowBuilder 构建正确的定妆照工作流
+                from engines.workflow_builder import WorkflowBuilder
+                models = cfg.get("models", {})
+                wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=comfyui)
+                wb.load_workflows()
+                fake_shot = {"characters": char_id, "emotion": "neutral",
+                             "shot_type": "特写", "camera": "固定"}
+                prompt, wf = wb.build_first_frame(fake_shot, character_desc=appearance)
+                if wf:
+                    files = comfyui.generate(wf, str(portrait_dir))
+                    if files:
+                        logger.info(f"    ✅ 生成 {len(files)} 张")
+                        generated += 1
+                    else:
+                        logger.warning(f"    ⚠ 未生成任何图片")
                 else:
-                    logger.warning(f"    ⚠ 未生成任何图片")
+                    logger.warning(f"    ⚠ 工作流为空（缺少模板）")
             except Exception as e:
                 logger.error(f"    ❌ 失败: {e}")
         else:

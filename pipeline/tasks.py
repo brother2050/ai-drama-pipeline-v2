@@ -207,7 +207,11 @@ def _run_first_frame(config_path: str, episode: int, shot_id: str) -> dict:
             except Exception as e:
                 logger.warning(f"参考图上传失败 [{node_id}]: {e}")
 
-    files = comfyui.generate(wf, str(out_dir))
+    try:
+        files = comfyui.generate(wf, str(out_dir))
+    except Exception as e:
+        return {"shot_id": shot_id, "step": "first_frame", "status": "error",
+                "reason": f"ComfyUI 首帧生成失败: {e}"}
     frame_path = str(out_dir / "frame.png")
     if files:
         Path(files[0]).rename(frame_path)
@@ -499,7 +503,11 @@ def post_task(self, config_path: str, episode: int, vertical: bool = False):
     """后期合成"""
     _ensure_path()
     self.update_state(state="PROGRESS", meta={"step": "post", "progress": 10})
-    _run_post(config_path, episode, vertical)
+    try:
+        _run_post(config_path, episode, vertical)
+    except Exception as e:
+        logger.error(f"后期合成失败: {e}")
+        return {"status": "error", "episode": episode, "reason": str(e)}
     return {"status": "done", "episode": episode, "vertical": vertical}
 
 
@@ -508,8 +516,12 @@ def portraits_task(self, config_path: str):
     """定妆照"""
     _ensure_path()
     self.update_state(state="PROGRESS", meta={"step": "portraits", "progress": 10})
-    from pipeline.portraits import run_portraits
-    run_portraits(config_path)
+    try:
+        from pipeline.portraits import run_portraits
+        run_portraits(config_path)
+    except Exception as e:
+        logger.error(f"定妆照生成失败: {e}")
+        return {"status": "error", "reason": str(e)}
     return {"status": "done"}
 
 
@@ -568,8 +580,11 @@ def tts_single_task(self, config_path: str, text: str,
 
     import tempfile
     output = tempfile.mktemp(suffix=".wav", prefix="tts_")
-    result = tts.synthesize(text, output, voice_config=voice_config or {},
-                            emotion=emotion, language=language)
+    try:
+        result = tts.synthesize(text, output, voice_config=voice_config or {},
+                                emotion=emotion, language=language)
+    except Exception as e:
+        return {"status": "error", "reason": f"TTS 合成失败: {e}", "text": text}
     return {"path": result, "text": text}
 
 
@@ -583,7 +598,10 @@ def music_task(self, config_path: str, duration: float, mood: str, output: str):
     cfg = Config(config_path)
     backend = cfg.get("models", {}).get("music_backend", "template")
     gen = MusicGenerator(backend=backend, config=cfg.data)
-    result = gen.generate(duration, output, mood=mood)
+    try:
+        result = gen.generate(duration, output, mood=mood)
+    except Exception as e:
+        return {"status": "error", "reason": f"配乐生成失败: {e}", "mood": mood, "duration": duration}
     return {"path": result, "mood": mood, "duration": duration}
 
 
