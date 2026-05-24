@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT))
 from web.schemas import (
     StepRequest, TTSRequest, PostRequest, MusicRequest,
     SubtitleRequest, PipelineRequest, CharacterData, SceneData,
-    ProjectCreate, ProjectSwitch, ConfigUpdate,
+    ProjectCreate, ProjectSwitch,
 )
 
 # ── 简易 Rate Limiting ──
@@ -387,8 +387,16 @@ def get_config():
 
 
 @router.post("/config")
-def update_config(req: ConfigUpdate):
-    data = req.data
+def update_config(data: dict):
+    """更新配置（接受任意 dict）
+
+    兼容两种格式:
+    - {"data": {...}} — 新格式
+    - {"project": {...}} — 旧格式（直接发送 config dict）
+    """
+    # 兼容新格式: 如果只有 "data" 键且值是 dict，解包
+    if set(data.keys()) == {"data"} and isinstance(data.get("data"), dict):
+        data = data["data"]
     # 保存
     cfg_path = _cfg_path()
     from infra.config import save_config

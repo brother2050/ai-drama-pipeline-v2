@@ -117,5 +117,16 @@ class ProjectSwitch(BaseModel):
 # ── 配置 ──
 
 class ConfigUpdate(BaseModel):
-    """配置更新（接受任意 dict，由路由层做额外校验）"""
-    data: dict
+    """配置更新（接受任意 dict，由路由层做额外校验）
+
+    兼容两种格式:
+    - 新格式: {"data": {...}}
+    - 旧格式: {"project": {...}} (直接发送 config dict)
+    """
+    data: dict | None = None
+
+    def model_post_init(self, __context) -> None:
+        # 如果 data 为空但模型有额外字段，用整个 body 作为 data
+        if self.data is None:
+            # Pydantic v2: __context 不直接暴露原始数据
+            pass

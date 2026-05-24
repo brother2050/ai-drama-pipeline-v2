@@ -110,6 +110,10 @@ def test_update_config(client):
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
 
+    # 新格式也应支持
+    r2 = client.post("/api/config", json={"data": {"project": {"name": "再次更新"}}})
+    assert r2.status_code == 200
+
 
 def test_update_config_invalid(client):
     r = client.post("/api/config", content="not json",
