@@ -99,6 +99,11 @@ function debounce(fn, ms = 300) {
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
+// HTML 转义（防 XSS）
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 // ── 路由 ──
 document.querySelectorAll('.nav-item').forEach(item => {
   item.onclick = () => {
@@ -160,7 +165,7 @@ async function loadDashboard() {
     el.innerHTML = `<div class="card"><h2>📊 系统状态</h2>${html}</div>
       <div class="card"><h2>🚀 开始</h2><p class="dim" style="margin-bottom:0.5rem">进入工作台，选择镜头逐步处理</p>
       <button class="btn btn-primary" onclick="navTo('pipeline')">🎬 进入工作台</button></div>`;
-  } catch(e) { el.innerHTML = `<div class="card"><h2>❌ 连接失败</h2><p>${e.message}</p></div>`; }
+  } catch(e) { el.innerHTML = `<div class="card"><h2>❌ 连接失败</h2><p>${esc(e.message)}</p></div>`; }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -182,7 +187,7 @@ async function loadPipeline() {
       return;
     }
     renderWB();
-  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${e.message}</p></div>`; }
+  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${esc(e.message)}</p></div>`; }
 }
 
 function renderWB() {
@@ -483,7 +488,7 @@ async function loadCharacters() {
       </tr>`).join('');
     el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>👤 角色</h2><button class="btn btn-success" onclick="newChar()">+ 新建</button></div>
       <table><thead><tr><th>ID</th><th>姓名</th><th>性别</th><th>外观</th><th>操作</th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="dim" style="text-align:center">暂无</td></tr>'}</tbody></table></div>`;
-  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${e.message}</p></div>`; }
+  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${esc(e.message)}</p></div>`; }
 }
 
 async function newChar() {
@@ -567,7 +572,7 @@ async function loadScenes() {
       </tr>`).join('');
     el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>🏔️ 场景</h2><button class="btn btn-success" onclick="newScene()">+ 新建</button></div>
       <table><thead><tr><th>ID</th><th>名称</th><th>描述</th><th>操作</th></tr></thead><tbody>${rows||'<tr><td colspan="4" class="dim" style="text-align:center">暂无</td></tr>'}</tbody></table></div>`;
-  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${e.message}</p></div>`; }
+  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${esc(e.message)}</p></div>`; }
 }
 
 async function newScene() {
@@ -662,7 +667,7 @@ async function loadStoryboard() {
     }).join('');
     el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>📝 分镜表</h2><div><button class="btn btn-primary" onclick="navTo('pipeline')">🎬 工作台</button><button class="btn btn-success" style="margin-left:0.5rem" onclick="addShot()">+ 添加</button></div></div>
       <div style="overflow-x:auto"><table><thead><tr><th>镜号</th><th>场景</th><th>角色</th><th>动作</th><th>台词</th><th>运镜</th><th>景别</th><th>时长</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="9" class="dim" style="text-align:center">暂无</td></tr>'}</tbody></table></div></div>`;
-  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${e.message}</p></div>`; }
+  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${esc(e.message)}</p></div>`; }
 }
 
 // 内联编辑更新（防抖批量保存）
@@ -709,11 +714,18 @@ async function deleteShotFromSB(idx) {
 async function addShot() {
   try {
     const d = await api(`/storyboard/${ep}`);
-    const n = (d.shots || []).length;
-    pushUndo(`添加镜头 ${String(n+1).padStart(3,'0')}`);
+    const existing = d.shots || [];
+    // 找最大 shot_id 数字部分，避免删除后 ID 冲突
+    let maxNum = 0;
+    for (const s of existing) {
+      const num = parseInt(s.shot_id, 10);
+      if (!isNaN(num) && num > maxNum) maxNum = num;
+    }
+    const newId = String(maxNum + 1).padStart(3, '0');
+    pushUndo(`添加镜头 ${newId}`);
     await api(`/storyboard/${ep}`, {method:'POST', body:{shots:[
-      ...((d.shots)||[]),
-      {episode:ep, shot_id:String(n+1).padStart(3,'0'),scene:'',characters:'',action:'',dialogue:'......',camera:'固定',shot_type:'中景',duration:4,emotion:'neutral'}
+      ...existing,
+      {episode:ep, shot_id:newId,scene:'',characters:'',action:'',dialogue:'......',camera:'固定',shot_type:'中景',duration:4,emotion:'neutral'}
     ]}});
     invalidateCache(`storyboard/${ep}`);
     toast('已添加');
@@ -732,7 +744,7 @@ async function loadProjects() {
     let rows = (d.projects||[]).map(p=>`<tr><td>${p.active?'→':''}</td><td>${p.name}</td><td class="dim" style="font-size:0.75rem">${p.path}</td><td>${p.active?'<span class="badge badge-green">当前</span>':`<button class="btn btn-sm btn-primary" onclick="switchProj('${p.name}')">切换</button>`}</td></tr>`).join('');
     el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>📂 项目</h2><button class="btn btn-success" onclick="newProj()">+ 新建</button></div>
       <table><thead><tr><th></th><th>名称</th><th>路径</th><th>状态</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${e.message}</p></div>`; }
+  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${esc(e.message)}</p></div>`; }
 }
 function newProj() { const n=prompt('名称:'); if(!n) return; api('/projects/new',{method:'POST',body:{name:n}}).then(()=>{toast('已创建');loadProjects();}).catch(e=>toast(e.message,'error')); }
 function switchProj(n) { api('/projects/switch',{method:'POST',body:{name:n}}).then(()=>{toast(`已切换: ${n}`);loadProjects();}).catch(e=>toast(e.message,'error')); }
@@ -774,7 +786,7 @@ async function loadSettings() {
         </div>
         <button class="btn btn-primary" style="margin-top:1rem" onclick="saveCfg()">💾 保存</button>
       </div>`;
-  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${e.message}</p></div>`; }
+  } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${esc(e.message)}</p></div>`; }
 }
 async function saveCfg() {
   try {

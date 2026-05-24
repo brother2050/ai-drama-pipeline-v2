@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import csv
+import logging
 import os
 import re
 import subprocess
@@ -17,10 +18,12 @@ import yaml
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-router = APIRouter()
+logger = logging.getLogger(__name__)
+
+router = APIRouter(dependencies=[Depends(_rate_limit_dependency)])
 ROOT = Path(__file__).resolve().parent.parent.parent
 
 # 导入 schemas
@@ -38,10 +41,17 @@ _RATE_LIMIT_MAX = 120    # 每窗口最大请求数
 
 
 def _check_rate_limit(client_ip: str) -> None:
-    """简易滑动窗口 rate limiting"""
+    """简易滑动窗口 rate limiting（自动清理过期 IP）"""
     import time
     now = time.time()
     window_start = now - _RATE_LIMIT_WINDOW
+
+    # 清理过期 IP（每次检查时顺便清理）
+    if len(_rate_limit_store) > 1000:
+        expired_ips = [ip for ip, timestamps in _rate_limit_store.items()
+                       if not timestamps or timestamps[-1] < window_start]
+        for ip in expired_ips:
+            del _rate_limit_store[ip]
 
     if client_ip not in _rate_limit_store:
         _rate_limit_store[client_ip] = []
@@ -55,6 +65,19 @@ def _check_rate_limit(client_ip: str) -> None:
         raise HTTPException(429, "请求过于频繁，请稍后再试")
 
     _rate_limit_store[client_ip].append(now)
+
+
+def _get_client_ip(request: Request) -> str:
+    """获取客户端 IP（支持反向代理）"""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+async def _rate_limit_dependency(request: Request):
+    """FastAPI 依赖: 自动应用 rate limiting"""
+    _check_rate_limit(_get_client_ip(request))
 
 
 # ── 工具函数 ──
@@ -401,6 +424,7 @@ def update_config(data: dict):
     cfg_path = _cfg_path()
     from infra.config import save_config
     save_config(cfg_path, data)
+    # 注意: Container 在每次请求/任务时按需创建，下次会自动读取新配置
     return {"status": "ok"}
 
 
