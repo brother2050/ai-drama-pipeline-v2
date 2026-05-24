@@ -75,7 +75,9 @@ class FFmpeg:
             try:
                 with open(list_file, "w") as f:
                     for p in inputs:
-                        f.write(f"file '{os.path.abspath(p)}'\n")
+                        # ffmpeg concat 协议要求: 单引号需转义为 '\''
+                        escaped = os.path.abspath(p).replace("'", "'\\''")
+                        f.write(f"file '{escaped}'\n")
                 cmd = [_FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", list_file,
                        "-c", "copy", output]
                 r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)

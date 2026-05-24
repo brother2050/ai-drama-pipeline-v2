@@ -59,7 +59,10 @@ class ComfyUI:
         files = []
         for node_out in outputs.values():
             for img in node_out.get("images", []):
-                fname = Path(img["filename"]).name
+                fname = img.get("filename")
+                if not fname:
+                    continue
+                fname = Path(fname).name
                 subfolder = Path(img.get("subfolder", "")).name if img.get("subfolder") else ""
                 url = f"{self._url}/view?filename={fname}&subfolder={subfolder}&type=output"
                 r = c.get(url)

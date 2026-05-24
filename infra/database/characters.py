@@ -5,11 +5,19 @@ from typing import Any
 
 
 def _row_to_dict(row) -> dict:
-    """将数据库行转为字典"""
+    """将数据库行转为字典，反序列化 JSON 字段"""
     if row is None:
         return {}
     if hasattr(row, 'keys'):
-        return {k: row[k] for k in row.keys()}
+        d = {k: row[k] for k in row.keys()}
+        # 反序列化 JSON 字段
+        for json_field in ("voice_config", "reference_images"):
+            if json_field in d and isinstance(d[json_field], str):
+                try:
+                    d[json_field] = json.loads(d[json_field])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        return d
     return {}
 
 

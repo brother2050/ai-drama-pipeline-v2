@@ -53,16 +53,18 @@ class CharacterConsistency:
         self._insightface_app = None
 
     def _get_insightface_app(self):
-        """懒加载 insightface app"""
+        """懒加载 insightface app（线程安全双重检查锁定）"""
         if self._insightface_app is None and self._engine == "insightface":
-            try:
-                self._insightface_app = insightface.app.FaceAnalysis(
-                    name="buffalo_l", providers=["CPUExecutionProvider"]
-                )
-                self._insightface_app.prepare(ctx_id=0, det_size=(640, 640))
-            except Exception as e:
-                logger.warning(f"insightface 初始化失败: {e}")
-                self._engine = "hash"
+            with self._lock:
+                if self._insightface_app is None and self._engine == "insightface":
+                    try:
+                        self._insightface_app = insightface.app.FaceAnalysis(
+                            name="buffalo_l", providers=["CPUExecutionProvider"]
+                        )
+                        self._insightface_app.prepare(ctx_id=0, det_size=(640, 640))
+                    except Exception as e:
+                        logger.warning(f"insightface 初始化失败: {e}")
+                        self._engine = "hash"
         return self._insightface_app
 
     def prepare_embedding(self, char_id: str, ref_images: list[str], output_dir: str) -> str:

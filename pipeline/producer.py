@@ -33,7 +33,11 @@ def run_produce(config_path: str, episode: int):
     shots = []
     with open(sb_path, encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            if int(row.get("episode", 0)) == episode:
+            try:
+                ep = int(row.get("episode", 0) or 0)
+            except (ValueError, TypeError):
+                continue
+            if ep == episode:
                 shots.append(row)
 
     if not shots:

@@ -95,25 +95,26 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
 
     # 最终输出重命名为 final.mp4（统一命名，flow/episode.py 依赖此文件名）
     final_out = out_dir / f"episode_{episode:02d}_final.mp4"
+    final_copied = False
     try:
         import shutil
         shutil.copy2(str(concat_out), str(final_out))
         logger.info(f"最终输出: {final_out}")
-        # copy2 完成后，concat_out 可被清理
-        concat_out = None
+        final_copied = True
     except Exception as e:
         logger.warning(f"复制到 final 失败: {e}")
 
-    # 清理中间文件（保留 final 和原始镜头视频）
-    for intermediate in [out_dir / f"episode_{episode:02d}_concat.mp4",
-                         out_dir / f"episode_{episode:02d}_subtitled.mp4",
-                         out_dir / f"episode_{episode:02d}_with_bgm.mp4",
-                         out_dir / f"episode_{episode:02d}_vertical.mp4"]:
-        if intermediate.exists() and intermediate != final_out:
-            try:
-                intermediate.unlink()
-            except OSError:
-                pass
+    # 仅当 final 成功复制后才清理中间文件（保留 final 和原始镜头视频）
+    if final_copied:
+        for intermediate in [out_dir / f"episode_{episode:02d}_concat.mp4",
+                             out_dir / f"episode_{episode:02d}_subtitled.mp4",
+                             out_dir / f"episode_{episode:02d}_with_bgm.mp4",
+                             out_dir / f"episode_{episode:02d}_vertical.mp4"]:
+            if intermediate.exists() and intermediate != final_out:
+                try:
+                    intermediate.unlink()
+                except OSError:
+                    pass
 
     logger.info("后期合成完成")
 

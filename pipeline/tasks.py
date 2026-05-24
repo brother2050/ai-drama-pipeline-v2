@@ -18,12 +18,20 @@ def _ensure_path():
         sys.path.insert(0, str(root))
 
 
+def _safe_int(val, default=0) -> int:
+    """安全的 int 转换，处理空字符串和非数字值"""
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+
 def _load_shots(config_path: str, episode: int) -> list[dict]:
     sb = Path(config_path).resolve().parent.parent / "storyboard" / "episodes.csv"
     if not sb.exists():
         return []
     with open(sb, encoding="utf-8") as f:
-        return [dict(r) for r in csv.DictReader(f) if int(r.get("episode", 0)) == episode]
+        return [dict(r) for r in csv.DictReader(f) if _safe_int(r.get("episode", 0)) == episode]
 
 
 def _find_shot(config_path: str, episode: int, shot_id: str) -> dict | None:
@@ -32,7 +40,7 @@ def _find_shot(config_path: str, episode: int, shot_id: str) -> dict | None:
         return None
     with open(sb, encoding="utf-8") as f:
         for r in csv.DictReader(f):
-            if int(r.get("episode", 0)) == episode and r.get("shot_id") == shot_id:
+            if _safe_int(r.get("episode", 0)) == episode and r.get("shot_id") == shot_id:
                 return dict(r)
     return None
 
@@ -83,8 +91,8 @@ def _db_mark_running(config_path: str, episode: int, shot_id: str, step: str) ->
 def _try_mark_running_atomic(config_path: str, episode: int, shot_id: str, step: str) -> bool:
     """原子操作：检查步骤是否正在运行，如果没有则标记为 running。
 
-    使用 INSERT ON CONFLICT 实现原子性，避免竞态条件。
-    Returns True if successfully marked (i.e., no race), False if already running.
+    使用 pg_try_advisory_lock + SELECT FOR UPDATE 实现真正的互斥。
+    Returns True if successfully marked, False if already running.
     """
     try:
         from infra.database.pool import get_pool, placeholder
@@ -92,46 +100,47 @@ def _try_mark_running_atomic(config_path: str, episode: int, shot_id: str, step:
         conn = pool.connect()
         try:
             cur = conn.cursor()
-            # 先尝试插入 running 状态，如果已存在则检查当前状态
-            cur.execute(f"""
-                INSERT INTO generation_status (episode, shot_id, stage, status, updated_at)
-                VALUES ({placeholder()}, {placeholder()}, {placeholder()}, 'running', CURRENT_TIMESTAMP)
-                ON CONFLICT (episode, shot_id, stage) DO UPDATE SET
-                    status = CASE
-                        WHEN generation_status.status = 'running' THEN generation_status.status
-                        ELSE 'running'
-                    END,
-                    updated_at = CURRENT_TIMESTAMP
-                RETURNING status
-            """, (episode, shot_id, step))
-            row = cur.fetchone()
-            conn.commit()
-            # 如果返回的 status 是 running，可能是我们刚标记的，也可能是之前就在运行
-            # 再查一次 updated_at 来判断：如果 updated_at 是刚更新的（<1秒），说明是我们标记的
-            status = row[0] if row else "running"
-            if status == "running":
-                # 检查是否是旧的 running（超过 10 分钟视为超时，允许重新执行）
+            # 用 episode + shot_id + step 生成唯一的 advisory lock key
+            lock_key = hash(f"gen:{episode}:{shot_id}:{step}") & 0x7FFFFFFF
+            cur.execute("SELECT pg_try_advisory_lock(%s)", (lock_key,))
+            locked = cur.fetchone()[0]
+            if not locked:
+                pool.release(conn)
+                return False
+            try:
+                # 查询当前状态，FOR UPDATE 防止并发修改
                 cur.execute(f"""
-                    SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - updated_at))
+                    SELECT status, EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - updated_at))
                     FROM generation_status
                     WHERE episode = {placeholder()} AND shot_id = {placeholder()} AND stage = {placeholder()}
+                    FOR UPDATE
                 """, (episode, shot_id, step))
-                age_row = cur.fetchone()
-                age = age_row[0] if age_row else 0
-                if age is not None and age > 600:  # 10 分钟超时
-                    # 超时的 running 状态，允许重新执行
+                row = cur.fetchone()
+                if row:
+                    status, age = row[0], row[1] or 0
+                    if status == "running" and age < 600:
+                        # 正在运行且未超时，拒绝
+                        cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
+                        pool.release(conn)
+                        return False
+                    # 已完成或超时，更新为 running
                     cur.execute(f"""
-                        UPDATE generation_status SET status = 'running', updated_at = CURRENT_TIMESTAMP
-                        WHERE episode = {placeholder()} AND shot_id = {placeholder()} AND stage = {placeholder()}
+                        UPDATE generation_status SET status='running', updated_at=CURRENT_TIMESTAMP
+                        WHERE episode={placeholder()} AND shot_id={placeholder()} AND stage={placeholder()}
                     """, (episode, shot_id, step))
-                    conn.commit()
-                    return True
-                # 新插入的或仍在运行的
-                # 用 updated_at 判断是否是本次插入
-                if age is not None and age < 2:
-                    return True  # 我们刚标记的
-                return False  # 别的 worker 在跑
-            return True  # 不是 running，已切换为 running
+                else:
+                    # 首次执行，插入记录
+                    cur.execute(f"""
+                        INSERT INTO generation_status (episode, shot_id, stage, status, updated_at)
+                        VALUES ({placeholder()}, {placeholder()}, {placeholder()}, 'running', CURRENT_TIMESTAMP)
+                    """, (episode, shot_id, step))
+                conn.commit()
+                cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
+                pool.release(conn)
+                return True
+            except Exception:
+                cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
+                raise
         finally:
             pool.release(conn)
     except Exception:
@@ -154,9 +163,12 @@ def _prepare(config_path: str, episode: int, shot_id: str, step: str, tool: str,
         return None, None, None, _skip(shot_id, step, "该步骤正在执行中")
     ok, reason = _check_available(tool, config_path)
     if not ok:
+        # 回滚 running 状态，否则该步骤 10 分钟内无法重试
+        _db_record_step(config_path, episode, shot_id, step, {"status": "skipped", "reason": reason})
         return None, None, None, _skip(shot_id, step, f"{tool} 不可用: {reason}")
     shot = _find_shot(config_path, episode, shot_id) if need_shot else None
     if need_shot and not shot:
+        _db_record_step(config_path, episode, shot_id, step, {"status": "error", "reason": "镜头不存在"})
         return None, None, None, _err(shot_id, step, "镜头不存在")
     from infra.config import Config
     from api.registry import Container
