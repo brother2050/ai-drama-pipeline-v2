@@ -487,6 +487,7 @@ def tts_single_task(self, config_path: str, text: str, voice_config: dict | None
     self.update_state(state="PROGRESS", meta={"step": "tts", "progress": 20, "message": "TTS..."})
     import tempfile
     output = None
+    result = None
     with tempfile.NamedTemporaryFile(suffix=".wav", prefix="tts_", delete=False) as tmp_f:
         output = tmp_f.name
     try:
@@ -496,11 +497,9 @@ def tts_single_task(self, config_path: str, text: str, voice_config: dict | None
         return {"status": "error", "reason": f"TTS 合成失败: {e}", "text": text}
     finally:
         # 清理临时文件（如果结果路径不是临时文件本身）
-        if output and os.path.exists(output):
+        if output and os.path.exists(output) and result != output:
             try:
-                # 只在 result 不指向该临时文件时清理
-                if result != output:
-                    os.unlink(output)
+                os.unlink(output)
             except OSError:
                 pass
 
