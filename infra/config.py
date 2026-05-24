@@ -44,8 +44,12 @@ def load_config(path: str, *, force: bool = False) -> dict[str, Any]:
             data, mtime = _cache[abspath]
             if os.path.getmtime(abspath) == mtime:
                 return copy.deepcopy(data)
-        with open(abspath, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+        try:
+            with open(abspath, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            logger.error(f"配置文件 YAML 格式错误: {abspath}: {e}")
+            data = {}
         _cache[abspath] = (data, os.path.getmtime(abspath))
     return copy.deepcopy(data)
 
