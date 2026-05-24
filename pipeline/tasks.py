@@ -289,9 +289,10 @@ def shot_task(self, config_path: str, episode: int, shot_data: dict):
     """单镜头编排：逐步尝试，跳过不可用的步骤
 
     不会因为缺工具而失败，只执行当前可用的步骤。
+    每步在当前 Worker 线程内同步执行（子任务不需要再排队）。
     """
     shot_id = shot_data.get("shot_id", "001")
-    steps = [
+    step_fns = [
         ("tts",         step_tts),
         ("first_frame", step_first_frame),
         ("video",       step_video),
@@ -299,15 +300,16 @@ def shot_task(self, config_path: str, episode: int, shot_data: dict):
     ]
 
     results = {}
-    for i, (step_name, step_fn) in enumerate(steps):
-        pct = int((i + 1) / len(steps) * 100)
+    for i, (step_name, step_fn) in enumerate(step_fns):
+        pct = int((i + 1) / len(step_fns) * 100)
         self.update_state(state="PROGRESS", meta={
             "step": step_name, "shot_id": shot_id,
             "progress": pct,
-            "message": f"[{shot_id}] {step_name} ({i+1}/{len(steps)})"})
+            "message": f"[{shot_id}] {step_name} ({i+1}/{len(step_fns)})"})
 
         try:
-            # 同步调用子任务（在当前 Worker 线程内执行）
+            # .apply() 在当前 Worker 进程同步执行，保持 Celery task 上下文
+            # 不重新排队，不占用额外 Worker 槽位
             result = step_fn.apply(args=[config_path, episode, shot_id]).get()
             results[step_name] = result
 
