@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import csv
+import fcntl
 import logging
 import os
 import re
@@ -595,19 +596,25 @@ def save_storyboard(episode: int, data: dict):
 
     sb_path = ROOT / "storyboard" / "episodes.csv"
     sb_path.parent.mkdir(parents=True, exist_ok=True)
-    existing = []
-    if sb_path.exists():
-        with open(sb_path, encoding="utf-8") as f:
-            for row in csv.DictReader(f):
-                if int(row.get("episode", 0)) != episode:
-                    existing.append(row)
     fieldnames = ["episode", "shot_id", "scene", "characters", "action", "dialogue",
                   "camera", "shot_type", "duration", "outfit", "emotion",
                   "action_en", "dialogue_en"]
-    with open(sb_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(existing + shots)
+    lock_path = sb_path.with_suffix(".lock")
+    with open(lock_path, "w") as lock_f:
+        fcntl.flock(lock_f, fcntl.LOCK_EX)
+        try:
+            existing = []
+            if sb_path.exists():
+                with open(sb_path, encoding="utf-8") as f:
+                    for row in csv.DictReader(f):
+                        if int(row.get("episode", 0)) != episode:
+                            existing.append(row)
+            with open(sb_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(existing + shots)
+        finally:
+            fcntl.flock(lock_f, fcntl.LOCK_UN)
 
     # 同步更新数据库 shots 表
     try:
