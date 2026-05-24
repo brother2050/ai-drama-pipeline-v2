@@ -137,6 +137,22 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
         return dot / (n1 * n2) if n1 > 0 and n2 > 0 else 0.0
 
 
+def _cleanup_frames(frames: list[str]) -> None:
+    """清理临时关键帧文件"""
+    for frame in frames:
+        try:
+            os.unlink(frame)
+        except OSError:
+            pass
+    # 尝试清理临时目录（仅当为空时）
+    if frames:
+        parent = os.path.dirname(frames[0])
+        try:
+            os.rmdir(parent)
+        except OSError:
+            pass
+
+
 def check_video_consistency(video_path: str, ref_images: list[str],
                              threshold: float = 0.6, max_frames: int = 5) -> dict:
     """检查视频中角色是否与参考图一致
@@ -163,18 +179,21 @@ def check_video_consistency(video_path: str, ref_images: list[str],
         logger.warning("无法抽取关键帧，使用哈希回退")
         return _check_with_hash(video_path, ref_images)
 
-    # 尝试人脸嵌入比对
-    ref_embeddings = []
-    for ref in ref_images:
-        if os.path.exists(ref):
-            emb = _extract_embedding(ref)
-            if emb is not None:
-                ref_embeddings.append(emb)
+    try:
+        # 尝试人脸嵌入比对
+        ref_embeddings = []
+        for ref in ref_images:
+            if os.path.exists(ref):
+                emb = _extract_embedding(ref)
+                if emb is not None:
+                    ref_embeddings.append(emb)
 
-    if ref_embeddings:
-        return _check_with_embeddings(frames, ref_embeddings, threshold, video_path)
-    else:
-        return _check_with_hash(video_path, ref_images, frames)
+        if ref_embeddings:
+            return _check_with_embeddings(frames, ref_embeddings, threshold, video_path)
+        else:
+            return _check_with_hash(video_path, ref_images, frames)
+    finally:
+        _cleanup_frames(frames)
 
 
 def _check_with_embeddings(frames: list[str], ref_embeddings: list[list[float]],
@@ -199,14 +218,6 @@ def _check_with_embeddings(frames: list[str], ref_embeddings: list[list[float]],
             "score": round(best_score, 4),
         })
 
-    # 清理临时帧
-    for frame in frames:
-        try:
-            os.unlink(frame)
-            os.rmdir(os.path.dirname(frame))
-        except OSError:
-            pass
-
     if not scores:
         return {"consistent": False, "score": 0.0, "video": video_path,
                 "details": details, "reason": "所有帧均未检测到人脸"}
@@ -225,45 +236,41 @@ def _check_with_embeddings(frames: list[str], ref_embeddings: list[list[float]],
 def _check_with_hash(video_path: str, ref_images: list[str],
                       frames: list[str] | None = None) -> dict:
     """使用图片哈希的回退方案"""
-    cleanup_frames = False
+    local_frames = False
     if frames is None:
         frames = _extract_keyframes(video_path, 3)
-        cleanup_frames = True
+        local_frames = True
 
     if not frames:
         return {"consistent": True, "score": 0.5, "video": video_path,
                 "note": "无法分析视频，假设一致"}
 
-    ref_hashes = []
-    for ref in ref_images:
-        if os.path.exists(ref):
-            h = _compute_image_hash(ref)
-            if h:
-                ref_hashes.append(h)
+    try:
+        ref_hashes = []
+        for ref in ref_images:
+            if os.path.exists(ref):
+                h = _compute_image_hash(ref)
+                if h:
+                    ref_hashes.append(h)
 
-    if not ref_hashes:
-        return {"consistent": True, "score": 0.5, "video": video_path,
-                "note": "无法计算参考图哈希"}
+        if not ref_hashes:
+            return {"consistent": True, "score": 0.5, "video": video_path,
+                    "note": "无法计算参考图哈希"}
 
-    scores = []
-    for frame in frames:
-        fh = _compute_image_hash(frame)
-        if fh:
-            best = max(_hash_similarity(fh, rh) for rh in ref_hashes)
-            scores.append(best)
-
-    if cleanup_frames:
+        scores = []
         for frame in frames:
-            try:
-                os.unlink(frame)
-                os.rmdir(os.path.dirname(frame))
-            except OSError:
-                pass
+            fh = _compute_image_hash(frame)
+            if fh:
+                best = max(_hash_similarity(fh, rh) for rh in ref_hashes)
+                scores.append(best)
 
-    avg = sum(scores) / len(scores) if scores else 0.5
-    return {
-        "consistent": avg >= 0.5,
-        "score": round(avg, 4),
-        "method": "hash",
-        "video": video_path,
-    }
+        avg = sum(scores) / len(scores) if scores else 0.5
+        return {
+            "consistent": avg >= 0.5,
+            "score": round(avg, 4),
+            "method": "hash",
+            "video": video_path,
+        }
+    finally:
+        if local_frames:
+            _cleanup_frames(frames)

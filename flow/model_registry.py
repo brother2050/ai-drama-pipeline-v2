@@ -71,7 +71,11 @@ class ModelRegistry:
         return bool(self._data.get("image_backends", {}).get(backend, {}).get("is_flux", False))
 
     def get_sampler_node(self, backend: str) -> str:
-        return self._data.get("image_backends", {}).get(backend, {}).get("sampler_node", "KSampler")
+        # 检查 image_backends 和 video_backends 两个字典
+        result = self._data.get("image_backends", {}).get(backend, {}).get("sampler_node")
+        if result:
+            return result
+        return self._data.get("video_backends", {}).get(backend, {}).get("sampler_node", "KSampler")
 
     def get_video_sampler_node(self, backend: str) -> str:
         return self._data.get("video_backends", {}).get(backend, {}).get("sampler_node", "KSampler")

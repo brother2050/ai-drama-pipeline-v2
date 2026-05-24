@@ -30,7 +30,8 @@ def upsert(pool, scene_id: str, data: dict):
             VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
                 name=EXCLUDED.name, description=EXCLUDED.description,
-                lighting=EXCLUDED.lighting, reference_image=EXCLUDED.reference_image
+                lighting=EXCLUDED.lighting, reference_image=EXCLUDED.reference_image,
+                depth_map=EXCLUDED.depth_map
         """, (scene_id, data.get("name", ""), data.get("description", ""),
               data.get("lighting", ""), data.get("reference_image", ""),
               data.get("depth_map", "")))
