@@ -31,7 +31,7 @@ def _url_ok(url: str) -> bool:
     try:
         import httpx
         return httpx.get(f"{url}/system_stats", timeout=3).status_code == 200
-    except:
+    except Exception:
         return False
 
 # ── 系统 ──

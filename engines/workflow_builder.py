@@ -42,7 +42,7 @@ class WorkflowBuilder:
     def load_workflows(self) -> None:
         """根据 image_backend / video_backend 加载对应工作流 JSON"""
         available_nodes: set[str] = set()
-        if self.comfyui:
+        if self.comfyui and hasattr(self.comfyui, 'get_available_node_types'):
             try:
                 available_nodes = self.comfyui.get_available_node_types()
             except Exception:

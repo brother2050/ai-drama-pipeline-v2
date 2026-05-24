@@ -1,6 +1,9 @@
-"""后期合成"""
+"""后期合成 — 拼接、转场、字幕、配乐、横转竖"""
 from __future__ import annotations
-import argparse, logging, sys
+
+import argparse
+import logging
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -10,7 +13,9 @@ from infra.ffmpeg import FFmpeg
 
 logger = logging.getLogger(__name__)
 
+
 def run_post(config_path: str, episode: int, vertical: bool = False):
+    """后期合成：拼接所有镜头视频 → 添加字幕/配乐 → 可选横转竖"""
     cfg = Config(config_path)
     logger.info(f"后期合成 第{episode}集{'（竖屏）' if vertical else ''}")
 
@@ -19,23 +24,74 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
         logger.warning(f"输出目录不存在: {out_dir}")
         return
 
-    # 拼接
-    videos = sorted(out_dir.glob("videos/*.mp4"))
+    # 收集所有镜头视频（按 shot_id 排序）
+    videos = []
+    for shot_dir in sorted(out_dir.glob("s*")):
+        # 优先用 synced.mp4（口型同步后的），其次 video.mp4
+        synced = shot_dir / "synced.mp4"
+        video = shot_dir / "video.mp4"
+        final = shot_dir / "final.mp4"
+        if synced.exists():
+            videos.append(synced)
+        elif final.exists():
+            videos.append(final)
+        elif video.exists():
+            videos.append(video)
+
     if not videos:
         logger.warning("没有视频文件")
         return
 
+    # 拼接
+    transition = cfg.get("post_production.transition", "crossfade")
+    transition_duration = cfg.get("post_production.transition_duration", 0.5)
     concat_out = out_dir / f"episode_{episode:02d}_concat.mp4"
-    FFmpeg.concat([str(v) for v in videos], str(concat_out))
-    logger.info(f"拼接完成: {concat_out}")
+
+    try:
+        FFmpeg.concat([str(v) for v in videos], str(concat_out),
+                      transition=transition, duration=transition_duration)
+        logger.info(f"拼接完成: {concat_out}")
+    except Exception as e:
+        logger.error(f"拼接失败: {e}")
+        # 回退：简单拼接（无转场）
+        FFmpeg.concat([str(v) for v in videos], str(concat_out), transition="none")
+        logger.info(f"简单拼接完成: {concat_out}")
+
+    # 添加字幕（如果有 SRT）
+    srt_path = out_dir / f"episode_{episode:02d}.srt"
+    if srt_path.exists():
+        subtitled_out = out_dir / f"episode_{episode:02d}_subtitled.mp4"
+        try:
+            FFmpeg.add_subtitle(str(concat_out), str(srt_path), str(subtitled_out))
+            logger.info(f"字幕添加完成: {subtitled_out}")
+            concat_out = subtitled_out
+        except Exception as e:
+            logger.warning(f"字幕添加失败（跳过）: {e}")
+
+    # 混合配乐（如果有 BGM）
+    bgm_path = out_dir / "bgm.wav"
+    if bgm_path.exists():
+        bgm_out = out_dir / f"episode_{episode:02d}_with_bgm.mp4"
+        bgm_volume = cfg.get("post_production.bgm_volume", 0.15)
+        try:
+            FFmpeg.mix_audio(str(concat_out), str(bgm_path), str(bgm_out),
+                             video_vol=1.0, audio_vol=bgm_volume)
+            logger.info(f"配乐混合完成: {bgm_out}")
+            concat_out = bgm_out
+        except Exception as e:
+            logger.warning(f"配乐混合失败（跳过）: {e}")
 
     # 横转竖
     if vertical:
         vertical_out = out_dir / f"episode_{episode:02d}_vertical.mp4"
-        FFmpeg.to_vertical(str(concat_out), str(vertical_out))
-        logger.info(f"横转竖完成: {vertical_out}")
+        try:
+            FFmpeg.to_vertical(str(concat_out), str(vertical_out))
+            logger.info(f"横转竖完成: {vertical_out}")
+        except Exception as e:
+            logger.error(f"横转竖失败: {e}")
 
     logger.info("后期合成完成")
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -45,6 +101,7 @@ def main():
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     run_post(args.config, args.episode, args.vertical)
+
 
 if __name__ == "__main__":
     main()

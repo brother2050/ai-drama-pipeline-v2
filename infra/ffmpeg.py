@@ -90,7 +90,9 @@ class FFmpeg:
     @staticmethod
     def add_subtitle(video: str, srt: str, output: str, **opts) -> str:
         """烧录字幕"""
-        sub_filter = f"subtitles='{srt}'"
+        # 转义路径中的特殊字符（ffmpeg subtitles 滤镜需要）
+        escaped_srt = srt.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+        sub_filter = f"subtitles='{escaped_srt}'"
         cmd = [_FFMPEG, "-y", "-i", video, "-vf", sub_filter, "-c:a", "copy", output]
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
         if r.returncode != 0:

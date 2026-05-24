@@ -1,7 +1,10 @@
 """FastAPI 应用工厂"""
 from __future__ import annotations
+
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 def create_app() -> FastAPI:
     """创建 FastAPI 应用"""
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("🎬 AI 短剧工作台 v2 已启动")
@@ -32,6 +36,3 @@ def create_app() -> FastAPI:
         app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
 
     return app
-
-
-from pathlib import Path

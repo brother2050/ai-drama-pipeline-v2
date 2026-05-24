@@ -1,22 +1,27 @@
-"""快速预览管线"""
+"""快速预览管线 — draft/standard/high 三档"""
 from __future__ import annotations
-import argparse, logging, sys, os
+
+import argparse
+import csv
+import logging
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from infra.config import Config
-from api.registry import container, Container
 
 logger = logging.getLogger(__name__)
+
 
 def run_preview(config_path: str, episode: int, level: str = "draft"):
     """快速预览"""
     cfg = Config(config_path)
     logger.info(f"预览 第{episode}集 ({level})")
 
-    # 加载后端
-    from api import backends  # 触发自注册
+    # 触发后端自注册
+    import api  # noqa: F401
+    from api.registry import Container
     cont = Container(cfg.data)
 
     # 加载分镜
@@ -25,7 +30,6 @@ def run_preview(config_path: str, episode: int, level: str = "draft"):
         logger.warning("分镜表不存在")
         return
 
-    import csv
     shots = []
     with open(sb_path, encoding="utf-8") as f:
         for row in csv.DictReader(f):
@@ -36,27 +40,123 @@ def run_preview(config_path: str, episode: int, level: str = "draft"):
         logger.warning(f"第{episode}集没有镜头")
         return
 
-    # 预设
-    presets = cfg.data.get("preview", {}).get("presets", {})
-    preset = presets.get(level, presets.get("draft", {}))
+    # 预设参数
+    presets = {
+        "draft": {"steps": 8, "resolution": [512, 288], "video_frames": 4},
+        "standard": {"steps": 20, "resolution": [768, 432], "video_frames": 8},
+        "high": {"steps": 28, "resolution": [1280, 720], "video_frames": 16},
+    }
+    preset = presets.get(level, presets["draft"])
 
     out_dir = Path(cfg.project_dir) / "output" / f"e{episode:02d}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"共 {len(shots)} 个镜头，预设: {level}")
+
+    # 加载角色和场景配置
+    from engines.shot_manager import ShotManager
+    config_dir = Path(cfg.project_dir) / "config"
+    sb_path_str = str(sb_path)
+    sm = ShotManager(sb_path_str, str(config_dir), cfg.data)
+
+    # 逐镜头处理
     for shot in shots:
         sid = shot.get("shot_id", "001")
         logger.info(f"  镜头 {sid}: {shot.get('action', '')[:30]}...")
-        # TODO: 实际生成逻辑（ComfyUI → TTS → LipSync → 后期）
+
+        shot_out = out_dir / f"s{sid}"
+        shot_out.mkdir(parents=True, exist_ok=True)
+
+        try:
+            _process_shot(shot, sm, cont, cfg, shot_out, preset)
+        except Exception as e:
+            logger.error(f"  ❌ 镜头 {sid} 失败: {e}")
+            continue
 
     logger.info("预览完成")
+
+
+def _process_shot(shot: dict, sm, container, cfg, shot_out: Path, preset: dict):
+    """处理单个镜头"""
+    from engines.prompt import build_prompt, translate_to_english
+    from engines.camera import normalize_camera, normalize_shot_type
+
+    shot_id = shot.get("shot_id", "001")
+    char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
+
+    # 获取角色描述
+    char_descs = []
+    for cid in char_ids:
+        char = sm.get_character(cid)
+        if char:
+            desc = translate_to_english(char.get("appearance", ""), llm=None)
+            char_descs.append(desc)
+
+    # 获取场景描述
+    scene_id = shot.get("scene", "")
+    scene = sm.get_scene(scene_id)
+    scene_desc = translate_to_english(scene.get("description", ""), llm=None) if scene else ""
+
+    # 1) TTS 语音合成
+    dialogue = shot.get("dialogue", "").strip()
+    audio_path = shot_out / "audio.wav"
+    if dialogue and dialogue != "......":
+        try:
+            tts = container.get("tts")
+            char = sm.get_character(char_ids[0]) if char_ids else {}
+            voice_config = char.get("voice", {})
+            tts.synthesize(dialogue, str(audio_path), voice_config=voice_config)
+            logger.info(f"    ✅ TTS: {audio_path.name}")
+        except Exception as e:
+            logger.warning(f"    ⚠ TTS 失败: {e}")
+
+    # 2) 首帧生成（需要 ComfyUI）
+    frame_path = shot_out / "frame.png"
+    try:
+        from engines.prompt import build_prompt
+        action_en = translate_to_english(shot.get("action", ""), llm=None)
+        prompt = build_prompt({**shot, "action_en": action_en},
+                              character_desc=", ".join(char_descs),
+                              scene_desc=scene_desc,
+                              style=cfg.get("project.style", "cinematic"),
+                              genre=cfg.get("project.genre", "urban"))
+
+        comfyui = container.get("image")
+        files = comfyui.generate({"prompt": {"positive": prompt}}, str(shot_out))
+        if files:
+            # 重命名为 frame.png
+            Path(files[0]).rename(frame_path)
+            logger.info(f"    ✅ 首帧: {frame_path.name}")
+    except Exception as e:
+        logger.warning(f"    ⚠ 首帧生成失败: {e}")
+
+    # 3) 视频生成（需要 ComfyUI）
+    video_path = shot_out / "video.mp4"
+    if frame_path.exists():
+        try:
+            wf_builder = container.get("video")
+            # 简单的 img2video 工作流
+            logger.info(f"    ⚠ 视频生成需要 ComfyUI 工作流模板")
+        except Exception as e:
+            logger.warning(f"    ⚠ 视频生成失败: {e}")
+
+    # 4) 口型同步
+    if video_path.exists() and audio_path.exists():
+        try:
+            lipsync = container.get("lipsync")
+            synced_path = shot_out / "synced.mp4"
+            lipsync.sync(str(video_path), str(audio_path), str(synced_path))
+            logger.info(f"    ✅ 口型同步: {synced_path.name}")
+        except Exception as e:
+            logger.warning(f"    ⚠ 口型同步失败: {e}")
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", required=True)
     parser.add_argument("-e", "--episode", type=int, default=1)
-    parser.add_argument("-p", "--preset", default="draft")
+    parser.add_argument("-p", "--preset", default="draft",
+                        choices=["draft", "standard", "high"])
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     run_preview(args.config, args.episode, args.preset)

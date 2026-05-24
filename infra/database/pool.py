@@ -16,11 +16,21 @@ class SQLitePool:
     def __init__(self, path: str):
         self._path = path
         Path(path).parent.mkdir(parents=True, exist_ok=True)
+        # 初始化 schema
+        from infra.database.schema import init_schema
+        conn = sqlite3.connect(self._path)
+        conn.row_factory = sqlite3.Row
+        init_schema(conn)
+        conn.close()
 
     def connect(self):
         conn = sqlite3.connect(self._path)
         conn.row_factory = sqlite3.Row
         return conn
+
+    def release(self, conn):
+        """SQLite 连接释放（兼容 PgPool 接口）"""
+        conn.close()
 
     def close(self):
         pass
@@ -32,6 +42,13 @@ class PgPool:
         import psycopg2
         from psycopg2 import pool as pg_pool
         self._pool = pg_pool.ThreadedConnectionPool(1, 10, dsn)
+        # 初始化 schema
+        from infra.database.schema import init_schema
+        conn = self._pool.getconn()
+        try:
+            init_schema(conn)
+        finally:
+            self._pool.putconn(conn)
 
     def connect(self):
         return self._pool.getconn()
@@ -58,3 +75,13 @@ def get_pool():
             _pool = SQLitePool("data/drama.db")
             logger.info("使用 SQLite")
     return _pool
+
+
+def is_postgres(pool) -> bool:
+    """判断当前 pool 是否为 PostgreSQL"""
+    return isinstance(pool, PgPool)
+
+
+def placeholder(pool) -> str:
+    """返回当前数据库的参数占位符"""
+    return "%s" if is_postgres(pool) else "?"
