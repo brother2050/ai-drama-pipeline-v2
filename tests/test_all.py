@@ -352,12 +352,150 @@ def test_music():
 
 def test_distributor():
     """测试分发"""
-    from post.distributor import distribute, PLATFORM_PRESETS
+    from post.distributor import distribute, PLATFORM_PRESETS, check_platform_compat, get_adapt_params
 
     results = distribute("/tmp/test.mp4", ["douyin", "bilibili"])
     assert "douyin" in results
     assert "bilibili" in results
+    assert results["douyin"]["preset"]["resolution"] == [1080, 1920]
+    assert results["bilibili"]["preset"]["resolution"] == [1920, 1080]
     print("✅ 多平台分发正常")
+
+
+def test_distributor_compat():
+    """测试平台兼容性检查"""
+    from post.distributor import check_platform_compat, get_adapt_params
+
+    result = check_platform_compat("/nonexistent.mp4", "douyin")
+    assert result["compatible"] is True
+
+    result = check_platform_compat("/tmp/test.mp4", "unknown_platform")
+    assert result["compatible"] is False
+
+    params = get_adapt_params("/tmp/test.mp4", "douyin")
+    assert "ffmpeg_args" in params
+    assert "needs_transcode" in params
+    print("✅ 平台兼容性检查正常")
+
+
+# ── engines/video_consistency.py ──
+
+def test_video_consistency():
+    """测试视频一致性检查"""
+    from engines.video_consistency import check_video_consistency, _compute_image_hash, _hash_similarity
+
+    # 不存在的视频
+    result = check_video_consistency("/nonexistent/video.mp4", [])
+    assert result["consistent"] is False
+
+    # 无参考图
+    result = check_video_consistency("/nonexistent/video.mp4", [])
+    assert result["score"] == 0.0
+
+    # 哈希相似度
+    h1 = _compute_image_hash(__file__)  # 用测试文件自身
+    if h1:
+        h2 = _compute_image_hash(__file__)
+        sim = _hash_similarity(h1, h2)
+        assert sim == 1.0  # 同一文件
+
+    print("✅ 视频一致性检查正常")
+
+
+# ── engines/consistency.py ──
+
+def test_consistency_engine():
+    """测试角色一致性引擎"""
+    from engines.consistency import CharacterConsistency
+
+    cc = CharacterConsistency()
+
+    # 空参考图
+    score = cc.verify_consistency("/nonexistent.png", [])
+    assert score == 0.0
+
+    # 嵌入提取（哈希回退）
+    emb = cc._extract_hash(__file__)
+    assert emb is not None
+    assert len(emb) > 0
+
+    # 余弦相似度
+    sim = cc._compute_similarity([1.0, 0.0, 0.0], [1.0, 0.0, 0.0])
+    assert sim == 1.0
+    sim = cc._compute_similarity([1.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+    assert sim == 0.0
+
+    cc.shutdown()
+    print("✅ 角色一致性引擎正常")
+
+
+# ── web/schemas ──
+
+def test_web_schemas():
+    """测试 Pydantic 模型"""
+    from web.schemas import StepRequest, TTSRequest, CharacterData, SceneData, ProjectCreate
+
+    # 正常
+    req = StepRequest(episode=1, shot_id="001")
+    assert req.episode == 1
+    assert req.shot_id == "001"
+
+    # TTS
+    tts = TTSRequest(text="你好世界")
+    assert tts.text == "你好世界"
+    assert tts.emotion == "neutral"
+
+    # 角色
+    char = CharacterData(id="test_char", name="测试角色")
+    assert char.id == "test_char"
+
+    # 场景
+    scene = SceneData(id="scene1", name="客厅")
+    assert scene.id == "scene1"
+
+    # 项目名
+    proj = ProjectCreate(name="我的项目")
+    assert proj.name == "我的项目"
+
+    # 非法 shot_id
+    try:
+        StepRequest(episode=1, shot_id="../etc")
+        assert False, "应该抛出异常"
+    except Exception:
+        pass
+
+    # 非法 episode
+    try:
+        StepRequest(episode=0, shot_id="001")
+        assert False, "应该抛出异常"
+    except Exception:
+        pass
+
+    # 非法 character id
+    try:
+        CharacterData(id="../etc", name="bad")
+        assert False, "应该抛出异常"
+    except Exception:
+        pass
+
+    print("✅ Pydantic 模型校验正常")
+
+
+# ── infra/config.py 验证 ──
+
+def test_config_validation():
+    """测试配置校验"""
+    from infra.config import Config
+
+    cfg_path = str(ROOT / "config" / "project.yaml")
+    if Path(cfg_path).exists():
+        cfg = Config(cfg_path)
+        # 默认配置应该通过
+        assert isinstance(cfg.warnings, list)
+        assert cfg.get("project.name") is not None
+        print(f"✅ 配置校验正常 ({len(cfg.warnings)} 个警告)")
+    else:
+        print("⚠ 配置文件不存在，跳过校验测试")
 
 
 # ── api/registry.py ──
@@ -455,6 +593,7 @@ def run_all():
     tests = [
         test_config_load,
         test_config_save_load,
+        test_config_validation,
         test_text_utils,
         test_ttl_cache,
         test_gpu_detect,
@@ -471,6 +610,10 @@ def run_all():
         test_transitions,
         test_music,
         test_distributor,
+        test_distributor_compat,
+        test_video_consistency,
+        test_consistency_engine,
+        test_web_schemas,
         test_registry,
         test_model_registry,
         test_web_app,

@@ -1,7 +1,12 @@
 """简单缓存"""
 from __future__ import annotations
+
+import logging
 import threading
 import time
+
+logger = logging.getLogger(__name__)
+
 
 class TTLCache:
     """带 TTL 的简单缓存"""

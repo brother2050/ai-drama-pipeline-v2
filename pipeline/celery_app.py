@@ -1,9 +1,13 @@
 """Celery 应用配置 — 异步任务队列核心"""
 from __future__ import annotations
 
+import logging
 import os
+import traceback
 
 from celery import Celery
+
+logger = logging.getLogger(__name__)
 
 broker = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 backend = os.environ.get("REDIS_BACKEND_URL", broker.replace("/0", "/1"))
@@ -17,11 +21,11 @@ app.conf.update(
     timezone="Asia/Shanghai",
     enable_utc=True,
     task_track_started=True,
-    task_acks_late=True,             # 任务完成后才确认，防止 worker 崩溃丢任务
-    worker_prefetch_multiplier=1,    # 每次只取 1 个任务，适配长耗时 AI 任务
-    task_soft_time_limit=3600,       # 软超时 1 小时
-    task_time_limit=3900,            # 硬超时 65 分钟
-    result_expires=86400,            # 结果保留 24 小时
+    task_acks_late=True,
+    worker_prefetch_multiplier=1,
+    task_soft_time_limit=3600,
+    task_time_limit=3900,
+    result_expires=86400,
     task_default_queue="drama",
     task_routes={
         "pipeline.tts": {"queue": "drama"},
@@ -35,3 +39,25 @@ app.conf.update(
         "pipeline.portraits": {"queue": "drama"},
     },
 )
+
+
+def format_task_error(exc: Exception, task_name: str = "", task_id: str = "") -> dict:
+    """统一的 Celery 任务错误格式
+
+    Returns:
+        {"status": "error", "error": str, "error_type": str, "task": str, "task_id": str}
+    """
+    return {
+        "status": "error",
+        "error": str(exc),
+        "error_type": type(exc).__name__,
+        "task": task_name,
+        "task_id": task_id,
+        "traceback": traceback.format_exc(),
+    }
+
+
+# 统一的失败回调
+@app.task(bind=True)
+def _on_failure(self, exc, task_id, args, kwargs, einfo):
+    logger.error(f"任务 {task_id} 失败: {exc} ({type(exc).__name__})")

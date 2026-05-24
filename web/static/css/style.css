@@ -1,4 +1,4 @@
-/* AI 短剧工作台 v2 */
+/* AI 短剧工作台 v2 — 完整样式 */
 :root {
   --bg:#0f1117; --bg2:#1a1d27; --bg3:#242836; --bg4:#2d3143;
   --fg:#e4e6ed; --dim:#8b8fa3; --accent:#5b8af5;
@@ -40,6 +40,7 @@ th{color:var(--dim);font-weight:600;font-size:0.75rem}
 .btn{padding:0.35rem 0.7rem;border:none;border-radius:4px;cursor:pointer;font-size:0.82rem;transition:all .15s}
 .btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{filter:brightness(1.1)}
 .btn-success{background:var(--green);color:#000}
+.btn-danger{background:var(--red);color:#fff}.btn-danger:hover{filter:brightness(1.1)}
 .btn-outline{background:transparent;border:1px solid var(--dim);color:var(--dim)}.btn-outline:hover{border-color:var(--fg);color:var(--fg)}
 .btn-xs{padding:0.2rem 0.4rem;font-size:0.75rem;background:var(--bg4);color:var(--fg);border:1px solid var(--bg3)}
 .btn-xs:hover{border-color:var(--accent);color:var(--accent)}
@@ -85,7 +86,7 @@ th{color:var(--dim);font-weight:600;font-size:0.75rem}
 .res-chip video{width:40px;height:40px;object-fit:cover;border-radius:3px}
 
 /* 镜头操作按钮 */
-.wb-shot-actions{display:flex;gap:0.3rem;padding:0.4rem 0.8rem;border-top:1px solid var(--bg3);background:var(--bg2)}
+.wb-shot-actions{display:flex;gap:0.3rem;padding:0.4rem 0.8rem;border-top:1px solid var(--bg3);background:var(--bg2);flex-wrap:wrap}
 .run-indicator{font-size:0.8rem;color:var(--yellow);padding:0.2rem 0.4rem}
 
 /* 资源预览浮层 */
@@ -122,6 +123,11 @@ th{color:var(--dim);font-weight:600;font-size:0.75rem}
 .task-done{color:var(--green);font-size:0.85rem}
 .task-fail{color:var(--red);font-size:0.85rem}
 
+/* 分镜表内联编辑 */
+.sb-inline-input{background:var(--bg);border:1px solid transparent;color:var(--fg);padding:0.2rem 0.4rem;border-radius:3px;font-size:0.82rem;width:100%;transition:border-color .15s}
+.sb-inline-input:hover{border-color:var(--bg4)}
+.sb-inline-input:focus{border-color:var(--accent);outline:none;background:var(--bg2)}
+
 /* 配置 */
 .config-section{background:var(--bg3);border-radius:var(--radius);padding:0.8rem;margin-bottom:0.6rem}
 .config-section h3{font-size:0.9rem;margin-bottom:0.5rem}
@@ -133,11 +139,32 @@ th{color:var(--dim);font-weight:600;font-size:0.75rem}
 .info-grid{display:grid;gap:0.3rem;font-size:0.85rem}
 .quick-actions{display:flex;gap:0.5rem;flex-wrap:wrap}
 
-/* 响应式 */
+/* ══════════════════════════════════════════════════════════
+   响应式 — 移动端适配
+   ══════════════════════════════════════════════════════════ */
+
 @media(max-width:768px){
-  #sidebar{width:50px}.nav-item{padding:0.5rem;font-size:1.1rem;text-align:center}
-  .logo{font-size:1rem;text-align:center}
+  body{flex-direction:column}
+  #sidebar{width:100%;padding:0.5rem 0;border-right:none;border-bottom:1px solid var(--bg3);position:sticky;top:0;z-index:50}
+  .logo{padding:0.3rem 0.8rem;border-bottom:none}
+  .nav-list{display:flex;overflow-x:auto;gap:0;margin:0}
+  .nav-item{padding:0.4rem 0.6rem;white-space:nowrap;font-size:0.75rem;border-right:none!important}
+  .nav-item.active{border-right:none!important;border-bottom:2px solid var(--accent)}
   #content{padding:0.6rem}
   .wb-shots-grid{grid-template-columns:1fr}
   .edit-field-row{grid-template-columns:repeat(2,1fr)}
+  .edit-panel{width:100%;max-width:100%;border-radius:0;max-height:100vh}
+  .wb-top-bar{flex-direction:column;align-items:flex-start}
+  .wb-batch-btns{width:100%}
+  .wb-batch-btns .btn{flex:1;text-align:center;font-size:0.75rem}
+  .tool-grid{grid-template-columns:1fr}
+  table{font-size:0.75rem}
+  th,td{padding:0.3rem}
+  .sb-inline-input{font-size:0.75rem;padding:0.15rem 0.3rem}
+}
+
+@media(max-width:480px){
+  .edit-field-row{grid-template-columns:1fr}
+  .wb-shot-actions{gap:0.2rem}
+  .btn-xs{padding:0.15rem 0.3rem;font-size:0.7rem}
 }

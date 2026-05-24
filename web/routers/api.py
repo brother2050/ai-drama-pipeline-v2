@@ -17,7 +17,7 @@ import yaml
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -30,6 +30,31 @@ from web.schemas import (
     SubtitleRequest, PipelineRequest, CharacterData, SceneData,
     ProjectCreate, ProjectSwitch,
 )
+
+# ── 简易 Rate Limiting ──
+_rate_limit_store: dict[str, list[float]] = {}
+_RATE_LIMIT_WINDOW = 60  # 秒
+_RATE_LIMIT_MAX = 120    # 每窗口最大请求数
+
+
+def _check_rate_limit(client_ip: str) -> None:
+    """简易滑动窗口 rate limiting"""
+    import time
+    now = time.time()
+    window_start = now - _RATE_LIMIT_WINDOW
+
+    if client_ip not in _rate_limit_store:
+        _rate_limit_store[client_ip] = []
+
+    # 清理过期记录
+    _rate_limit_store[client_ip] = [
+        t for t in _rate_limit_store[client_ip] if t > window_start
+    ]
+
+    if len(_rate_limit_store[client_ip]) >= _RATE_LIMIT_MAX:
+        raise HTTPException(429, "请求过于频繁，请稍后再试")
+
+    _rate_limit_store[client_ip].append(now)
 
 
 # ── 工具函数 ──
@@ -437,6 +462,17 @@ def save_character(req: CharacterData):
     return {"status": "ok", "id": char_id}
 
 
+@router.delete("/characters/{char_id}")
+def delete_character(char_id: str):
+    if not re.match(r"^[a-zA-Z0-9_-]+$", char_id):
+        raise HTTPException(400, "无效的角色 ID")
+    char_file = ROOT / "config" / "characters" / f"{char_id}.yaml"
+    if not char_file.exists():
+        raise HTTPException(404, f"角色 {char_id} 不存在")
+    char_file.unlink()
+    return {"status": "ok", "id": char_id}
+
+
 @router.get("/scenes")
 def list_scenes():
     scenes_dir = ROOT / "config" / "scenes"
@@ -461,6 +497,17 @@ def save_scene(req: SceneData):
     scene_id = data.pop("id")
     with open(scenes_dir / f"{scene_id}.yaml", "w") as f:
         yaml.dump({"scene": {**data, "id": scene_id}}, f, allow_unicode=True, default_flow_style=False)
+    return {"status": "ok", "id": scene_id}
+
+
+@router.delete("/scenes/{scene_id}")
+def delete_scene(scene_id: str):
+    if not re.match(r"^[a-zA-Z0-9_-]+$", scene_id):
+        raise HTTPException(400, "无效的场景 ID")
+    scene_file = ROOT / "config" / "scenes" / f"{scene_id}.yaml"
+    if not scene_file.exists():
+        raise HTTPException(404, f"场景 {scene_id} 不存在")
+    scene_file.unlink()
     return {"status": "ok", "id": scene_id}
 
 

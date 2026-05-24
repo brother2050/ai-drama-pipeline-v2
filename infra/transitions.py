@@ -1,8 +1,12 @@
-"""转场效果 — ffmpeg concat + xfade 滤镜构建"""
+"""转场效果 — ffmpeg concat + xfade 滤镜构建
+
+改进: 多段视频 xfade offset 精确计算，音频/视频时间轴同步
+"""
 from __future__ import annotations
 
 import logging
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -38,6 +42,18 @@ def _get_duration(path: str) -> float:
     return float(info.get("format", {}).get("duration", 0))
 
 
+def _get_audio_duration(path: str) -> float:
+    """获取音频流时长（秒）"""
+    from infra.ffmpeg import probe
+    info = probe(path)
+    for stream in info.get("streams", []):
+        if stream.get("codec_type") == "audio":
+            dur = stream.get("duration")
+            if dur:
+                return float(dur)
+    return float(info.get("format", {}).get("duration", 0))
+
+
 def build_concat_filter(inputs: list[str], output: str, transition: str = "crossfade",
                         duration: float = 0.5, timeout: int = 1200) -> str:
     """带转场的视频拼接
@@ -55,17 +71,18 @@ def build_concat_filter(inputs: list[str], output: str, transition: str = "cross
     if not inputs:
         return ""
     if len(inputs) == 1:
-        import shutil
         shutil.copy2(inputs[0], output)
         return output
 
     Path(output).parent.mkdir(parents=True, exist_ok=True)
 
-    # 获取每个视频的时长
-    durations = [_get_duration(p) for p in inputs]
-
-    # 构建 ffmpeg 滤镜链
     ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+
+    # 获取每个视频的精确时长
+    durations = [_get_duration(p) for p in inputs]
+    logger.debug(f"视频时长: {durations}")
+
+    # 构建 ffmpeg 命令
     cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "warning"]
 
     # 输入
@@ -73,31 +90,40 @@ def build_concat_filter(inputs: list[str], output: str, transition: str = "cross
         cmd.extend(["-i", p])
 
     # 构建 xfade 滤镜链
+    filter_parts = []
+    audio_parts = []
+    xfade = TRANSITIONS.get(transition, "fade")
+
     if len(inputs) == 2:
+        # 两段视频: 单次 xfade
         offset = max(0, durations[0] - duration)
-        xfade = TRANSITIONS.get(transition, "fade")
-        filter_str = f"[0:v][1:v]xfade=transition={xfade}:duration={duration}:offset={offset}[v]"
-        cmd.extend(["-filter_complex", filter_str, "-map", "[v]"])
+        filter_parts.append(f"[0:v][1:v]xfade=transition={xfade}:duration={duration}:offset={offset}[v]")
     else:
-        # 多段视频：链式 xfade
-        filter_parts = []
-        current_offset = 0.0
+        # 多段视频: 链式 xfade
+        # offset 计算: 每段转场的起始时间 = 前面所有视频总时长 - 已消耗的转场时长
         prev_label = "0:v"
+        accumulated_duration = 0.0  # 累积已输出的视频时长
 
         for i in range(1, len(inputs)):
-            current_offset = sum(durations[:i]) - duration * i
-            current_offset = max(0, current_offset)
-            xfade = TRANSITIONS.get(transition, "fade")
+            # 当前转场开始时间 = 累积输出时长 + 当前视频时长 - 转场时长
+            # 但第一段的累积输出时长 = durations[0]
+            # 后续: 累积 = 前面的总时长 - 转场重叠
+            if i == 1:
+                offset = max(0, durations[0] - duration)
+            else:
+                # 累积时长 = sum(durations[:i]) - duration * (i-1)
+                # offset = 累积时长 + durations[i] - duration
+                # 简化: offset = sum(durations[:i+1]) - duration * i
+                offset = sum(durations[:i]) - duration * (i - 1)
+                offset = max(0, offset)
+
             out_label = f"v{i}" if i < len(inputs) - 1 else "v"
             filter_parts.append(
-                f"[{prev_label}][{i}:v]xfade=transition={xfade}:duration={duration}:offset={current_offset}[{out_label}]"
+                f"[{prev_label}][{i}:v]xfade=transition={xfade}:duration={duration}:offset={offset}[{out_label}]"
             )
             prev_label = out_label
 
-        filter_str = ";".join(filter_parts)
-        cmd.extend(["-filter_complex", filter_str, "-map", "[v]"])
-
-    # 音频处理（简单混合）
+    # 音频处理: 使用 acrossfade 或 amix 保持与视频同步
     audio_inputs = []
     for i, p in enumerate(inputs):
         from infra.ffmpeg import probe
@@ -110,18 +136,33 @@ def build_concat_filter(inputs: list[str], output: str, transition: str = "cross
         if len(audio_inputs) == 1:
             cmd.extend(["-map", f"{audio_inputs[0]}:a"])
         else:
-            # 多段音频用 amix
-            audio_labels = "".join(f"[{i}:a]" for i in audio_inputs)
-            audio_filter = f"{audio_labels}amix=inputs={len(audio_inputs)}:duration=longest[a]"
-            if ";" in filter_str or filter_parts:
-                # 追加到已有 filter_complex
-                cmd_idx = cmd.index("-filter_complex")
-                cmd[cmd_idx + 1] = cmd[cmd_idx + 1] + ";" + audio_filter
+            # 多段音频: 使用 acrossfade（与 xfade 时间同步）
+            if len(audio_inputs) == 2:
+                audio_parts.append(
+                    f"[{audio_inputs[0]}:a][{audio_inputs[1]}:a]acrossfade=d={duration}:c1=tri:c2=tri[a]"
+                )
             else:
-                cmd.extend(["-filter_complex", audio_filter])
+                # 多段: 链式 acrossfade
+                prev_alabel = f"{audio_inputs[0]}:a"
+                for i in range(1, len(audio_inputs)):
+                    out_alabel = "a" if i == len(audio_inputs) - 1 else f"a{i}"
+                    audio_parts.append(
+                        f"[{prev_alabel}][{audio_inputs[i]}:a]acrossfade=d={duration}:c1=tri:c2=tri[{out_alabel}]"
+                    )
+                    prev_alabel = out_alabel
+
+    # 合并 filter_complex
+    all_filters = filter_parts + audio_parts
+    if all_filters:
+        cmd.extend(["-filter_complex", ";".join(all_filters)])
+        cmd.extend(["-map", "[v]"])
+        if audio_inputs:
             cmd.extend(["-map", "[a]"])
 
-    cmd.extend(["-c:v", "libx264", "-preset", "fast", "-crf", "18", "-y", output])
+    cmd.extend(["-c:v", "libx264", "-preset", "fast", "-crf", "18",
+                "-c:a", "aac", "-b:a", "128k",
+                "-movflags", "+faststart",
+                "-y", output])
 
     logger.debug(f"ffmpeg concat: {' '.join(cmd)}")
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)

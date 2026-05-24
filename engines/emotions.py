@@ -1,6 +1,10 @@
 """情绪分析引擎 — 从台词/动作提取情绪标签"""
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # 中文情绪关键词
 _KEYWORDS = {
     "angry": ["愤怒", "生气", "暴怒", "怒吼", "怒", "气愤"],

@@ -1,6 +1,11 @@
 """文本工具"""
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def truncate(s: str, max_len: int = 100) -> str:
     return s[:max_len] + "..." if len(s) > max_len else s
 

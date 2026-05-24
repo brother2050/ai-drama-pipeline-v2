@@ -1,6 +1,10 @@
 """机位/景别规范化"""
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 CAMERA_ALIASES = {
     "环绕摇镜头": "环绕", "俯冲推镜": "缓慢推近",
     "横移跟拍": "跟随平移", "手持轻微晃动": "手持晃动",

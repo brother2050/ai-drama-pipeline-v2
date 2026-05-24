@@ -1,5 +1,19 @@
-// AI 短剧工作台 v2 — 前端应用（人性化交互版）
+// AI 短剧工作台 v2 — 前端应用（完整版）
+// 改进: pollTask 限制、批量取消、删除功能、内联编辑、ESC 关闭、防抖、缓存
 const API = '/api';
+
+// ── 缓存层 ──
+const _cache = new Map();
+const CACHE_TTL = 30000; // 30s
+
+function cachedFetch(key, fetcher, ttl = CACHE_TTL) {
+  const entry = _cache.get(key);
+  if (entry && Date.now() - entry.ts < ttl) return Promise.resolve(entry.data);
+  return fetcher().then(data => { _cache.set(key, { data, ts: Date.now() }); return data; });
+}
+function invalidateCache(prefix) {
+  for (const k of _cache.keys()) { if (k.startsWith(prefix)) _cache.delete(k); }
+}
 
 async function api(path, opts = {}) {
   const r = await fetch(API + path, {
@@ -22,13 +36,23 @@ function toast(msg, type = 'success') {
   setTimeout(() => el.remove(), 3500);
 }
 
+// ── pollTask: 最多轮询 300 次（约 4 分钟），防止无限等待 ──
+const MAX_POLL = 300;
+
 async function pollTask(taskId, onProgress) {
-  while (true) {
+  for (let i = 0; i < MAX_POLL; i++) {
     const info = await api(`/tasks/${taskId}`);
     if (onProgress) onProgress(info);
     if (['success','failed','cancelled'].includes(info.status)) return info;
     await new Promise(r => setTimeout(r, 800));
   }
+  return { status: 'timeout', error: '轮询超时，请手动检查任务状态' };
+}
+
+// ── 防抖 ──
+function debounce(fn, ms = 300) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
 // ── 路由 ──
@@ -48,6 +72,14 @@ async function loadPage(p) {
   if (m[p]) await m[p]();
 }
 
+// ── ESC 关闭浮层 ──
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const overlay = document.querySelector('.res-overlay, .edit-overlay');
+    if (overlay) overlay.remove();
+  }
+});
+
 // ══════════════════════════════════════════════════════════
 // 仪表盘
 // ══════════════════════════════════════════════════════════
@@ -61,7 +93,7 @@ const TOOL_META = {
 async function loadDashboard() {
   const el = document.getElementById('page-dashboard');
   try {
-    const s = await api('/system/status');
+    const s = await cachedFetch('system/status', () => api('/system/status'), 10000);
     const t = s.tools;
     const groups = [
       {label:'基础设施', keys:['redis','celery','ffmpeg']},
@@ -88,16 +120,17 @@ async function loadDashboard() {
 }
 
 // ══════════════════════════════════════════════════════════
-// 生产工作台 — 核心
+// 生产工作台
 // ══════════════════════════════════════════════════════════
 
 let ep = 1, shots = [], activeShot = 0;
+let batchCancelled = false; // 批量取消标志
 
 async function loadPipeline() {
   const el = document.getElementById('page-pipeline');
   el.innerHTML = '<div class="card"><h2>⏳ 加载...</h2></div>';
   try {
-    const d = await api(`/storyboard/${ep}`);
+    const d = await cachedFetch(`storyboard/${ep}`, () => api(`/storyboard/${ep}`));
     shots = d.shots || [];
     if (!shots.length) {
       el.innerHTML = `<div class="card"><h2>暂无分镜</h2><p class="dim">先在分镜表添加镜头</p>
@@ -151,11 +184,12 @@ function renderShotsGrid() {
         <button class="btn btn-xs" onclick="runOne('first_frame',${i})" title="首帧">🎨</button>
         <button class="btn btn-xs" onclick="runOne('video',${i})" title="视频">🎬</button>
         <button class="btn btn-xs" onclick="runOne('lipsync',${i})" title="口型">👄</button>
+        <button class="btn btn-xs btn-danger" onclick="deleteShot(${i})" title="删除">🗑️</button>
       </div>
     </div>`;
   }).join('');
 
-  // 加载每个镜头的已有资源
+  // 批量加载资源（带缓存）
   shots.forEach((s, i) => loadResources(i));
 }
 
@@ -166,10 +200,10 @@ async function loadResources(idx) {
   if (!el) return;
 
   try {
-    const d = await api(`/shots/${ep}/${sid}/resources`);
+    const d = await cachedFetch(`res/${ep}/${sid}`, () => api(`/shots/${ep}/${sid}/resources`));
     const r = d.resources || {};
     let html = '';
-    if (r.audio) html += `<div class="res-chip res-audio" onclick="previewRes('${sid}','audio','${r.audio}')">🎤 <audio src="/api/files/${ep}/${sid}/audio.wav" preload="none"></audio></div>`;
+    if (r.audio) html += `<div class="res-chip res-audio" onclick="previewRes('${sid}','audio','${r.audio}')">🎤</div>`;
     if (r.frame) html += `<div class="res-chip res-img" onclick="previewRes('${sid}','frame','${r.frame}')"><img src="/api/files/${ep}/${sid}/frame.png" loading="lazy"></div>`;
     if (r.video) html += `<div class="res-chip res-video" onclick="previewRes('${sid}','video','${r.video}')">🎬</div>`;
     if (r.synced) html += `<div class="res-chip res-video" onclick="previewRes('${sid}','synced','${r.synced}')">👄</div>`;
@@ -191,7 +225,7 @@ function previewRes(sid, type, path) {
   } else {
     content = `<video controls src="/api/files/${ep}/${sid}/${type === 'synced' ? 'synced.mp4' : 'video.mp4'}" style="max-width:90vw;max-height:80vh;border-radius:8px"></video>`;
   }
-  overlay.innerHTML = `<div class="res-overlay-inner">${content}<div class="dim" style="margin-top:0.5rem">点击空白处关闭</div></div>`;
+  overlay.innerHTML = `<div class="res-overlay-inner">${content}<div class="dim" style="margin-top:0.5rem">点击空白处关闭 · ESC 键退出</div></div>`;
   document.body.appendChild(overlay);
 }
 
@@ -236,6 +270,10 @@ function editShot(idx) {
       </div>
     </div>`;
   document.body.appendChild(overlay);
+
+  // 聚焦第一个输入框
+  const firstInput = overlay.querySelector('input, textarea');
+  if (firstInput) firstInput.focus();
 }
 
 function closeEdit() {
@@ -243,7 +281,8 @@ function closeEdit() {
   if (o) o.remove();
 }
 
-async function saveEdit(idx) {
+// 保存编辑（防抖）
+const _debouncedSaveEdit = debounce(async (idx) => {
   const s = shots[idx];
   s.scene = document.getElementById('ed-scene').value;
   s.characters = document.getElementById('ed-chars').value;
@@ -256,8 +295,27 @@ async function saveEdit(idx) {
 
   try {
     await api(`/storyboard/${ep}`, { method:'POST', body:{shots:shots} });
+    invalidateCache(`storyboard/${ep}`);
+    invalidateCache(`res/${ep}`);
     toast('✅ 已保存');
     closeEdit();
+    renderShotsGrid();
+  } catch(e) { toast(e.message, 'error'); }
+}, 500);
+
+async function saveEdit(idx) { _debouncedSaveEdit(idx); }
+
+// ── 删除镜头 ──
+async function deleteShot(idx) {
+  const s = shots[idx];
+  const sid = s.shot_id || String(idx+1).padStart(3,'0');
+  if (!confirm(`确认删除镜头 ${sid}？`)) return;
+
+  shots.splice(idx, 1);
+  try {
+    await api(`/storyboard/${ep}`, { method:'POST', body:{shots:shots} });
+    invalidateCache(`storyboard/${ep}`);
+    toast('✅ 已删除');
     renderShotsGrid();
   } catch(e) { toast(e.message, 'error'); }
 }
@@ -268,7 +326,6 @@ async function runOne(step, idx) {
   const s = shots[idx];
   const sid = s.shot_id || String(idx+1).padStart(3,'0');
 
-  // 找到镜头卡片，显示状态
   const card = document.getElementById(`shot-${sid}`);
   const actionsEl = card?.querySelector('.wb-shot-actions');
   if (actionsEl) actionsEl.innerHTML = `<span class="run-indicator">⏳ ${step}...</span>`;
@@ -287,6 +344,8 @@ async function runOne(step, idx) {
 
     if (result.status === 'success') {
       toast(`✅ ${sid} ${step} 完成`);
+    } else if (result.status === 'timeout') {
+      toast(`⏰ ${sid} ${step}: 轮询超时`, 'error');
     } else {
       toast(`❌ ${sid} ${step}: ${result.error||'失败'}`, 'error');
     }
@@ -301,22 +360,33 @@ async function runOne(step, idx) {
       <button class="btn btn-xs" onclick="runOne('tts',${idx})" title="TTS">🎤</button>
       <button class="btn btn-xs" onclick="runOne('first_frame',${idx})" title="首帧">🎨</button>
       <button class="btn btn-xs" onclick="runOne('video',${idx})" title="视频">🎬</button>
-      <button class="btn btn-xs" onclick="runOne('lipsync',${idx})" title="口型">👄</button>`;
+      <button class="btn btn-xs" onclick="runOne('lipsync',${idx})" title="口型">👄</button>
+      <button class="btn btn-xs btn-danger" onclick="deleteShot(${idx})" title="删除">🗑️</button>`;
   }
+  invalidateCache(`res/${ep}/${sid}`);
   loadResources(idx);
 }
 
-// ── 批量执行 ──
+// ── 批量执行（带取消按钮）──
 
 async function batchRun(step) {
   const names = {tts:'TTS',first_frame:'首帧',video:'视频',lipsync:'口型同步'};
   if (!confirm(`批量执行 ${names[step]}？共 ${shots.length} 个镜头`)) return;
 
+  batchCancelled = false;
   const statusEl = document.getElementById('wb-batch-status');
   statusEl.style.display = 'block';
 
   let done = 0, fail = 0, skip = 0;
   for (let i = 0; i < shots.length; i++) {
+    // 检查取消
+    if (batchCancelled) {
+      statusEl.innerHTML = `<div class="batch-done">⏹ 已取消 · ✅ ${done} · ⏭ ${skip} · ❌ ${fail}
+        <button class="btn btn-sm btn-outline" style="margin-left:0.5rem" onclick="this.parentElement.parentElement.style.display='none'">关闭</button></div>`;
+      toast(`批量已取消: ${done}成功 ${skip}跳过 ${fail}失败`);
+      return;
+    }
+
     const s = shots[i];
     const sid = s.shot_id || String(i+1).padStart(3,'0');
 
@@ -324,6 +394,7 @@ async function batchRun(step) {
       <div class="batch-progress">
         <div class="batch-bar"><div class="batch-fill" style="width:${(i/shots.length)*100}%"></div></div>
         <div class="batch-text">[${i+1}/${shots.length}] ${sid} — ${names[step]}...</div>
+        <button class="btn btn-sm btn-danger" onclick="batchCancelled=true" style="margin-top:0.3rem">⏹ 取消</button>
       </div>`;
 
     try {
@@ -334,7 +405,7 @@ async function batchRun(step) {
       if (!r.ok) { fail++; continue; }
       const data = await r.json();
       const result = await pollTask(data.task_id);
-      if (result.status === 'success') { done++; loadResources(i); }
+      if (result.status === 'success') { done++; invalidateCache(`res/${ep}/${sid}`); loadResources(i); }
       else if (result.result?.status === 'skipped') { skip++; }
       else { fail++; }
     } catch { fail++; }
@@ -349,52 +420,263 @@ async function batchRun(step) {
 }
 
 // ══════════════════════════════════════════════════════════
-// 其他页面（角色/场景/分镜/项目/设置）
+// 角色管理 — 内联编辑 + 删除
 // ══════════════════════════════════════════════════════════
 
 async function loadCharacters() {
   const el = document.getElementById('page-characters');
   try {
-    const d = await api('/characters');
-    let rows = (d.characters||[]).map(c=>`<tr><td>${c.id}</td><td>${c.name}</td><td>${c.gender||''}</td><td>${(c.appearance||'').substring(0,40)}</td></tr>`).join('');
+    const d = await cachedFetch('characters', () => api('/characters'));
+    let rows = (d.characters||[]).map(c => `
+      <tr>
+        <td>${c.id}</td><td>${c.name}</td><td>${c.gender||''}</td>
+        <td>${(c.appearance||'').substring(0,40)}</td>
+        <td>
+          <button class="btn btn-xs" onclick="editChar('${c.id}')">✏️</button>
+          <button class="btn btn-xs btn-danger" onclick="deleteChar('${c.id}')">🗑️</button>
+        </td>
+      </tr>`).join('');
     el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>👤 角色</h2><button class="btn btn-success" onclick="newChar()">+ 新建</button></div>
-      <table><thead><tr><th>ID</th><th>姓名</th><th>性别</th><th>外观</th></tr></thead><tbody>${rows||'<tr><td colspan="4" class="dim" style="text-align:center">暂无</td></tr>'}</tbody></table></div>`;
+      <table><thead><tr><th>ID</th><th>姓名</th><th>性别</th><th>外观</th><th>操作</th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="dim" style="text-align:center">暂无</td></tr>'}</tbody></table></div>`;
   } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${e.message}</p></div>`; }
 }
-function newChar() {
-  const id=prompt('ID:'); if(!id) return;
-  const name=prompt('姓名:'); if(!name) return;
-  api('/characters',{method:'POST',body:{id,name,gender:'',appearance:'',outfits:{},voice:{}}}).then(()=>{toast('已创建');loadCharacters();}).catch(e=>toast(e.message,'error'));
+
+async function newChar() {
+  const id = prompt('ID (字母数字下划线):');
+  if (!id) return;
+  if (!/^[a-zA-Z0-9_-]+$/.test(id)) { toast('ID 格式不合法', 'error'); return; }
+  const name = prompt('姓名:');
+  if (!name) return;
+  try {
+    await api('/characters', {method:'POST', body:{id, name, gender:'', appearance:'', outfits:{}, voice:{}}});
+    invalidateCache('characters');
+    toast('已创建');
+    loadCharacters();
+  } catch(e) { toast(e.message, 'error'); }
 }
+
+async function editChar(id) {
+  const d = await cachedFetch('characters', () => api('/characters'));
+  const c = (d.characters||[]).find(x => x.id === id);
+  if (!c) { toast('角色不存在', 'error'); return; }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'edit-overlay';
+  overlay.id = 'edit-char-overlay';
+  overlay.innerHTML = `
+    <div class="edit-panel">
+      <div class="edit-header"><h3>✏️ 编辑角色 ${id}</h3><button class="btn btn-sm btn-outline" onclick="document.getElementById('edit-char-overlay').remove()">✕</button></div>
+      <div class="edit-body">
+        <div class="edit-field"><label>姓名</label><input id="ec-name" value="${c.name||''}"></div>
+        <div class="edit-field"><label>性别</label><select id="ec-gender"><option value="">-</option><option value="male" ${c.gender==='male'?'selected':''}>男</option><option value="female" ${c.gender==='female'?'selected':''}>女</option></select></div>
+        <div class="edit-field"><label>外观</label><textarea id="ec-appearance" rows="3">${c.appearance||''}</textarea></div>
+      </div>
+      <div class="edit-footer">
+        <button class="btn btn-primary" onclick="saveCharEdit('${id}')">💾 保存</button>
+        <button class="btn btn-outline" onclick="document.getElementById('edit-char-overlay').remove()">取消</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function saveCharEdit(id) {
+  try {
+    await api('/characters', {method:'POST', body:{
+      id,
+      name: document.getElementById('ec-name').value,
+      gender: document.getElementById('ec-gender').value,
+      appearance: document.getElementById('ec-appearance').value,
+    }});
+    invalidateCache('characters');
+    document.getElementById('edit-char-overlay')?.remove();
+    toast('✅ 已保存');
+    loadCharacters();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function deleteChar(id) {
+  if (!confirm(`确认删除角色 ${id}？`)) return;
+  try {
+    await api(`/characters/${id}`, {method:'DELETE'});
+    invalidateCache('characters');
+    toast('✅ 已删除');
+    loadCharacters();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════
+// 场景管理 — 内联编辑 + 删除
+// ══════════════════════════════════════════════════════════
 
 async function loadScenes() {
   const el = document.getElementById('page-scenes');
   try {
-    const d = await api('/scenes');
-    let rows = (d.scenes||[]).map(s=>`<tr><td>${s.id}</td><td>${s.name}</td><td>${(s.description||'').substring(0,40)}</td></tr>`).join('');
+    const d = await cachedFetch('scenes', () => api('/scenes'));
+    let rows = (d.scenes||[]).map(s => `
+      <tr>
+        <td>${s.id}</td><td>${s.name}</td><td>${(s.description||'').substring(0,40)}</td>
+        <td>
+          <button class="btn btn-xs" onclick="editScene('${s.id}')">✏️</button>
+          <button class="btn btn-xs btn-danger" onclick="deleteScene('${s.id}')">🗑️</button>
+        </td>
+      </tr>`).join('');
     el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>🏔️ 场景</h2><button class="btn btn-success" onclick="newScene()">+ 新建</button></div>
-      <table><thead><tr><th>ID</th><th>名称</th><th>描述</th></tr></thead><tbody>${rows||'<tr><td colspan="3" class="dim" style="text-align:center">暂无</td></tr>'}</tbody></table></div>`;
+      <table><thead><tr><th>ID</th><th>名称</th><th>描述</th><th>操作</th></tr></thead><tbody>${rows||'<tr><td colspan="4" class="dim" style="text-align:center">暂无</td></tr>'}</tbody></table></div>`;
   } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${e.message}</p></div>`; }
 }
-function newScene() {
-  const id=prompt('ID:'); if(!id) return;
-  const name=prompt('名称:'); if(!name) return;
-  api('/scenes',{method:'POST',body:{id,name,description:'',lighting:''}}).then(()=>{toast('已创建');loadScenes();}).catch(e=>toast(e.message,'error'));
+
+async function newScene() {
+  const id = prompt('ID (字母数字下划线):');
+  if (!id) return;
+  if (!/^[a-zA-Z0-9_-]+$/.test(id)) { toast('ID 格式不合法', 'error'); return; }
+  const name = prompt('名称:');
+  if (!name) return;
+  try {
+    await api('/scenes', {method:'POST', body:{id, name, description:'', lighting:''}});
+    invalidateCache('scenes');
+    toast('已创建');
+    loadScenes();
+  } catch(e) { toast(e.message, 'error'); }
 }
+
+async function editScene(id) {
+  const d = await cachedFetch('scenes', () => api('/scenes'));
+  const s = (d.scenes||[]).find(x => x.id === id);
+  if (!s) { toast('场景不存在', 'error'); return; }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'edit-overlay';
+  overlay.id = 'edit-scene-overlay';
+  overlay.innerHTML = `
+    <div class="edit-panel">
+      <div class="edit-header"><h3>✏️ 编辑场景 ${id}</h3><button class="btn btn-sm btn-outline" onclick="document.getElementById('edit-scene-overlay').remove()">✕</button></div>
+      <div class="edit-body">
+        <div class="edit-field"><label>名称</label><input id="es-name" value="${s.name||''}"></div>
+        <div class="edit-field"><label>描述</label><textarea id="es-desc" rows="3">${s.description||''}</textarea></div>
+        <div class="edit-field"><label>光照</label><input id="es-lighting" value="${s.lighting||''}"></div>
+      </div>
+      <div class="edit-footer">
+        <button class="btn btn-primary" onclick="saveSceneEdit('${id}')">💾 保存</button>
+        <button class="btn btn-outline" onclick="document.getElementById('edit-scene-overlay').remove()">取消</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function saveSceneEdit(id) {
+  try {
+    await api('/scenes', {method:'POST', body:{
+      id,
+      name: document.getElementById('es-name').value,
+      description: document.getElementById('es-desc').value,
+      lighting: document.getElementById('es-lighting').value,
+    }});
+    invalidateCache('scenes');
+    document.getElementById('edit-scene-overlay')?.remove();
+    toast('✅ 已保存');
+    loadScenes();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function deleteScene(id) {
+  if (!confirm(`确认删除场景 ${id}？`)) return;
+  try {
+    await api(`/scenes/${id}`, {method:'DELETE'});
+    invalidateCache('scenes');
+    toast('✅ 已删除');
+    loadScenes();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════
+// 分镜表 — 内联编辑表格
+// ══════════════════════════════════════════════════════════
 
 async function loadStoryboard() {
   const el = document.getElementById('page-storyboard');
   try {
-    const d = await api(`/storyboard/${ep}`);
-    let rows = (d.shots||[]).map((s,i)=>`<tr><td>${s.shot_id||i+1}</td><td>${s.scene||''}</td><td>${s.characters||''}</td><td>${(s.action||'').substring(0,25)}</td><td>${(s.dialogue||'').substring(0,25)}</td><td>${s.camera||''}</td><td>${s.shot_type||''}</td><td>${s.duration||''}s</td></tr>`).join('');
+    const d = await cachedFetch(`storyboard/${ep}`, () => api(`/storyboard/${ep}`));
+    const shots = d.shots || [];
+    let rows = shots.map((s, i) => {
+      const sid = s.shot_id || String(i+1).padStart(3,'0');
+      return `<tr>
+        <td>${sid}</td>
+        <td><input class="sb-inline-input" value="${s.scene||''}" data-idx="${i}" data-field="scene" onchange="updateShotField(this)"></td>
+        <td><input class="sb-inline-input" value="${s.characters||''}" data-idx="${i}" data-field="characters" onchange="updateShotField(this)"></td>
+        <td><input class="sb-inline-input" value="${s.action||''}" data-idx="${i}" data-field="action" onchange="updateShotField(this)"></td>
+        <td><input class="sb-inline-input" value="${s.dialogue||''}" data-idx="${i}" data-field="dialogue" onchange="updateShotField(this)"></td>
+        <td><select class="sb-inline-input" data-idx="${i}" data-field="camera" onchange="updateShotField(this)">
+          ${['固定','缓慢推近','跟随平移','手持晃动','环绕','俯视','仰视'].map(c=>`<option ${s.camera===c?'selected':''}>${c}</option>`).join('')}
+        </select></td>
+        <td><select class="sb-inline-input" data-idx="${i}" data-field="shot_type" onchange="updateShotField(this)">
+          ${['特写','近景','中景','过肩','全身','全景','远景'].map(c=>`<option ${s.shot_type===c?'selected':''}>${c}</option>`).join('')}
+        </select></td>
+        <td><input class="sb-inline-input" type="number" value="${s.duration||4}" min="1" max="30" data-idx="${i}" data-field="duration" onchange="updateShotField(this)"></td>
+        <td><button class="btn btn-xs btn-danger" onclick="deleteShotFromSB(${i})">🗑️</button></td>
+      </tr>`;
+    }).join('');
     el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>📝 分镜表</h2><div><button class="btn btn-primary" onclick="navTo('pipeline')">🎬 工作台</button><button class="btn btn-success" style="margin-left:0.5rem" onclick="addShot()">+ 添加</button></div></div>
-      <table><thead><tr><th>镜号</th><th>场景</th><th>角色</th><th>动作</th><th>台词</th><th>运镜</th><th>景别</th><th>时长</th></tr></thead><tbody>${rows||'<tr><td colspan="8" class="dim" style="text-align:center">暂无</td></tr>'}</tbody></table></div>`;
+      <div style="overflow-x:auto"><table><thead><tr><th>镜号</th><th>场景</th><th>角色</th><th>动作</th><th>台词</th><th>运镜</th><th>景别</th><th>时长</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="9" class="dim" style="text-align:center">暂无</td></tr>'}</tbody></table></div></div>`;
   } catch(e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${e.message}</p></div>`; }
 }
-function addShot() {
-  const n = document.querySelectorAll('#page-storyboard tbody tr').length;
-  api(`/storyboard/${ep}`,{method:'POST',body:{shots:[{episode:ep,shot_id:String(n+1).padStart(3,'0'),scene:prompt('场景:')||'',characters:prompt('角色:')||'',action:prompt('动作:')||'',dialogue:prompt('台词:')||'......',camera:'固定',shot_type:'中景',duration:4,emotion:'neutral'}]}}).then(()=>{toast('已添加');loadStoryboard();}).catch(e=>toast(e.message,'error'));
+
+// 内联编辑更新（防抖批量保存）
+let _sbDirty = false;
+const _debouncedSaveSB = debounce(async () => {
+  if (!_sbDirty) return;
+  try {
+    const d = await api(`/storyboard/${ep}`);
+    const currentShots = d.shots || [];
+    // 从 DOM 读取最新值
+    document.querySelectorAll('.sb-inline-input').forEach(inp => {
+      const idx = parseInt(inp.dataset.idx);
+      const field = inp.dataset.field;
+      if (currentShots[idx]) {
+        currentShots[idx][field] = inp.value;
+      }
+    });
+    await api(`/storyboard/${ep}`, { method:'POST', body:{shots:currentShots} });
+    invalidateCache(`storyboard/${ep}`);
+    _sbDirty = false;
+    toast('✅ 已保存');
+  } catch(e) { toast(e.message, 'error'); }
+}, 1000);
+
+function updateShotField(el) {
+  _sbDirty = true;
+  _debouncedSaveSB();
 }
+
+async function deleteShotFromSB(idx) {
+  if (!confirm('确认删除此镜头？')) return;
+  try {
+    const d = await api(`/storyboard/${ep}`);
+    const currentShots = d.shots || [];
+    currentShots.splice(idx, 1);
+    await api(`/storyboard/${ep}`, { method:'POST', body:{shots:currentShots} });
+    invalidateCache(`storyboard/${ep}`);
+    toast('✅ 已删除');
+    loadStoryboard();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function addShot() {
+  try {
+    const d = await api(`/storyboard/${ep}`);
+    const n = (d.shots || []).length;
+    await api(`/storyboard/${ep}`, {method:'POST', body:{shots:[
+      ...((d.shots)||[]),
+      {episode:ep, shot_id:String(n+1).padStart(3,'0'),scene:'',characters:'',action:'',dialogue:'......',camera:'固定',shot_type:'中景',duration:4,emotion:'neutral'}
+    ]}});
+    invalidateCache(`storyboard/${ep}`);
+    toast('已添加');
+    loadStoryboard();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════
+// 项目管理
+// ══════════════════════════════════════════════════════════
 
 async function loadProjects() {
   const el = document.getElementById('page-projects');
@@ -407,6 +689,10 @@ async function loadProjects() {
 }
 function newProj() { const n=prompt('名称:'); if(!n) return; api('/projects/new',{method:'POST',body:{name:n}}).then(()=>{toast('已创建');loadProjects();}).catch(e=>toast(e.message,'error')); }
 function switchProj(n) { api('/projects/switch',{method:'POST',body:{name:n}}).then(()=>{toast(`已切换: ${n}`);loadProjects();}).catch(e=>toast(e.message,'error')); }
+
+// ══════════════════════════════════════════════════════════
+// 系统设置
+// ══════════════════════════════════════════════════════════
 
 async function loadSettings() {
   const el = document.getElementById('page-settings');
@@ -443,7 +729,7 @@ async function saveCfg() {
     cfg.models.musetalk=cfg.models.musetalk||{}; cfg.models.musetalk.api_url=document.getElementById('cfg-ls-url')?.value||'';
     cfg.comfyui=cfg.comfyui||{}; cfg.comfyui.url=document.getElementById('cfg-comfyui')?.value||'';
     await api('/config',{method:'POST',body:cfg}); toast('✅ 已保存');
-  } catch(e) { toast(e.message,'error'); }
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 loadDashboard();

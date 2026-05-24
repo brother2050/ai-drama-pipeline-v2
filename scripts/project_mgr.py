@@ -1,7 +1,12 @@
 """项目管理 — 纯 Python"""
 from __future__ import annotations
-import shutil, yaml
+
+import logging
+import shutil
+import yaml
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 def _active(root: Path) -> str | None:
     f = root / "projects" / ".active"
