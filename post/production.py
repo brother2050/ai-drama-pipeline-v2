@@ -98,6 +98,17 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
     except Exception as e:
         logger.warning(f"复制到 final 失败: {e}")
 
+    # 清理中间文件（保留 final 和原始镜头视频）
+    for intermediate in [out_dir / f"episode_{episode:02d}_concat.mp4",
+                         out_dir / f"episode_{episode:02d}_subtitled.mp4",
+                         out_dir / f"episode_{episode:02d}_with_bgm.mp4",
+                         out_dir / f"episode_{episode:02d}_vertical.mp4"]:
+        if intermediate.exists() and intermediate != final_out:
+            try:
+                intermediate.unlink()
+            except OSError:
+                pass
+
     logger.info("后期合成完成")
 
 

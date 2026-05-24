@@ -370,6 +370,8 @@ def shot_task(self, config_path: str, episode: int, shot_data: dict):
         except Exception as e:
             logger.error(f"[{shot_id}] {step_name}: 异常 — {e}")
             results[step_name] = {"status": "error", "reason": str(e)}
+            _db_record_step(config_path, episode, shot_id, step_name,
+                            {"status": "error", "reason": str(e)})
 
     # 汇总
     done = [k for k, v in results.items() if v.get("status") == "done"]

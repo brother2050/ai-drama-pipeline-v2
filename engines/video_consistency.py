@@ -53,7 +53,8 @@ def _compute_image_hash(image_path: str) -> str | None:
     """计算图片感知哈希（pHash 简化版）"""
     try:
         from PIL import Image
-        img = Image.open(image_path).convert("L").resize((8, 8))
+        with Image.open(image_path) as pil_img:
+            img = pil_img.convert("L").resize((8, 8))
         pixels = list(img.getdata())
         avg = sum(pixels) / len(pixels)
         bits = "".join("1" if p > avg else "0" for p in pixels)
@@ -90,7 +91,8 @@ def _extract_embedding(image_path: str) -> list[float] | None:
             app.prepare(ctx_id=0, det_size=(640, 640))
             _extract_embedding._app = app
 
-        img = np.array(Image.open(image_path).convert("RGB"))
+        with Image.open(image_path) as pil_img:
+            img = np.array(pil_img.convert("RGB"))
         faces = app.get(img)
         if faces:
             return faces[0].embedding.tolist()

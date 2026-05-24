@@ -6,6 +6,7 @@ import os
 import traceback
 
 from celery import Celery
+from celery.signals import task_failure
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ def format_task_error(exc: Exception, task_name: str = "", task_id: str = "") ->
     }
 
 
-# 统一的失败回调
-@app.task(bind=True)
-def _on_failure(self, exc, task_id, args, kwargs, einfo):
-    logger.error(f"任务 {task_id} 失败: {exc} ({type(exc).__name__})")
+# 全局失败回调 — 所有任务失败时自动记录日志
+@task_failure.connect
+def _on_task_failure(sender, task_id, exception, traceback, einfo, **kwargs):
+    logger.error(f"任务失败: {task_id} ({sender.name}): {exception} ({type(exception).__name__})")

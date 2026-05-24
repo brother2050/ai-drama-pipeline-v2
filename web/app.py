@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import logging
+import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,15 @@ def create_app() -> FastAPI:
 
     # CORS
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+    # 全局异常处理
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        logger.error(f"未处理异常: {request.method} {request.url.path} — {exc}\n{traceback.format_exc()}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"服务器内部错误: {type(exc).__name__}: {str(exc)}"},
+        )
 
     # 注册路由
     from web.routers import api

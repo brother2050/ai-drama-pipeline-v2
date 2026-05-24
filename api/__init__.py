@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -26,22 +27,26 @@ _BACKEND_MODULES = [
 ]
 
 _loaded = False
+_register_lock = threading.Lock()
 
 
 def _ensure_registered():
-    """懒加载: 首次调用时导入所有后端模块触发注册"""
+    """懒加载: 首次调用时导入所有后端模块触发注册（线程安全）"""
     global _loaded
     if _loaded:
         return
-    _loaded = True
+    with _register_lock:
+        if _loaded:
+            return
+        _loaded = True
 
-    for service_type, module_path, _priority in _BACKEND_MODULES:
-        try:
-            importlib.import_module(module_path)
-        except ImportError as e:
-            logger.debug(f"跳过后端 {module_path}: {e}")
-        except Exception as e:
-            logger.warning(f"加载后端 {module_path} 失败: {e}")
+        for service_type, module_path, _priority in _BACKEND_MODULES:
+            try:
+                importlib.import_module(module_path)
+            except ImportError as e:
+                logger.debug(f"跳过后端 {module_path}: {e}")
+            except Exception as e:
+                logger.warning(f"加载后端 {module_path} 失败: {e}")
 
 
 def get_registry():

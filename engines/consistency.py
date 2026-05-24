@@ -110,7 +110,8 @@ class CharacterConsistency:
         app = self._get_insightface_app()
         if app is None:
             return self._extract_hash(image_path)
-        img = np.array(Image.open(image_path).convert("RGB"))
+        with Image.open(image_path) as pil_img:
+            img = np.array(pil_img.convert("RGB"))
         faces = app.get(img)
         if not faces:
             logger.warning(f"未检测到人脸: {image_path}")

@@ -72,15 +72,18 @@ class FFmpeg:
         # 简单拼接（无转场）
         if transition == "none":
             list_file = output + ".list.txt"
-            with open(list_file, "w") as f:
-                for p in inputs:
-                    f.write(f"file '{os.path.abspath(p)}'\n")
-            cmd = [_FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", list_file,
-                   "-c", "copy", output]
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-            os.unlink(list_file)
-            if r.returncode != 0:
-                raise RuntimeError(f"concat failed: {r.stderr[-300:]}")
+            try:
+                with open(list_file, "w") as f:
+                    for p in inputs:
+                        f.write(f"file '{os.path.abspath(p)}'\n")
+                cmd = [_FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", list_file,
+                       "-c", "copy", output]
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+                if r.returncode != 0:
+                    raise RuntimeError(f"concat failed: {r.stderr[-300:]}")
+            finally:
+                if os.path.exists(list_file):
+                    os.unlink(list_file)
             return output
 
         # 带转场拼接
