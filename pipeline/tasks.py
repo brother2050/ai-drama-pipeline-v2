@@ -99,7 +99,8 @@ def _prepare(config_path: str, episode: int, shot_id: str, step: str, tool: str,
     from infra.config import Config
     from api.registry import Container
     from api import _ensure_registered; _ensure_registered()
-    return Config(config_path), Container(Config(config_path).data), shot, None
+    cfg = Config(config_path)
+    return cfg, Container(cfg.data), shot, None
 
 
 def _skip(shot_id, step, reason): return {"shot_id": shot_id, "step": step, "status": "skipped", "reason": reason}

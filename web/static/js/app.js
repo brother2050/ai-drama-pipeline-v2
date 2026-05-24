@@ -293,12 +293,12 @@ async function runOne(step, idx) {
   const actionsEl = document.getElementById(`shot-${sid}`)?.querySelector('.wb-shot-actions');
   if (actionsEl) actionsEl.innerHTML = `<span class="run-indicator">⏳ ${step}...</span>`;
   try {
-    const { task_id } = await fetch(`${API}/steps/${step}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ episode: ep, shot_id: sid }) }).then(r => r.ok ? r.json() : Promise.reject(r));
+    const { task_id } = await api(`/steps/${step}`, { method: 'POST', body: { episode: ep, shot_id: sid } });
     const result = await pollTask(task_id, info => { if (actionsEl) actionsEl.innerHTML = `<span class="run-indicator">⏳ ${info.message || step} (${info.progress || 0}%)</span>`; });
     if (result.status === 'success') toast(`✅ ${sid} ${step} 完成`);
     else if (result.status === 'timeout') toast(`⏰ ${sid} ${step}: 轮询超时`, 'error');
     else toast(`❌ ${sid} ${step}: ${result.error || '失败'}`, 'error');
-  } catch (e) { toast(`❌ ${sid}: ${e.message || e}`, 'error'); }
+  } catch (e) { toast(`❌ ${sid}: ${e.message}`, 'error'); }
   if (actionsEl) actionsEl.innerHTML = _actionBtns(idx);
   invalidateCache(`res/${ep}/${sid}`); loadResources(idx);
 }
@@ -322,9 +322,7 @@ async function batchRun(step) {
       <div class="batch-text">[${i + 1}/${shots.length}] ${sid} — ${names[step]}...</div>
       <button class="btn btn-sm btn-danger" onclick="batchCancelled=true" style="margin-top:0.3rem">⏹ 取消</button></div>`;
     try {
-      const r = await fetch(`${API}/steps/${step}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ episode: ep, shot_id: sid }) });
-      if (!r.ok) { fail++; continue; }
-      const { task_id } = await r.json();
+      const { task_id } = await api(`/steps/${step}`, { method: 'POST', body: { episode: ep, shot_id: sid } });
       const result = await pollTask(task_id);
       if (result.status === 'success') {
         const stepResult = result.result?.details?.[step] || result.result;
