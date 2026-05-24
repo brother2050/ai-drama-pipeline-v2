@@ -1,0 +1,57 @@
+# 模型注册表 — 工作流文件映射 + 默认参数
+
+image_backends:
+  sd15:
+    workflow: "01_first_frame_sd15.json"
+    is_flux: false
+    sampler_node: "KSampler"
+    default_params:
+      width: 512
+      height: 512
+      steps: 20
+      cfg_scale: 7.5
+  flux:
+    workflow: "01_first_frame_flux.json"
+    is_flux: true
+    sampler_node: "KSampler"
+    default_params:
+      width: 1024
+      height: 576
+      steps: 28
+      cfg_scale: 3.5
+
+video_backends:
+  animatediff:
+    workflow: "02_img2video.json"
+    sampler_node: "KSampler"
+    default_params:
+      frames: 8
+      fps: 8
+      steps: 15
+      denoise: 0.5
+  cogvideox:
+    workflow: "03_img2video_cogvideo.json"
+    sampler_node: "CogVideoXSampler"
+    default_params:
+      frames: 16
+      fps: 12
+      steps: 20
+      denoise: 0.55
+
+gpu_profiles:
+  t4:
+    resolution: [512, 512]
+    image_steps: 20
+    video_frames: 8
+  a10:
+    resolution: [768, 432]
+    image_steps: 20
+    video_frames: 12
+  a100:
+    resolution: [1024, 576]
+    image_steps: 28
+    video_frames: 16
+  rtx4090:
+    resolution: [1280, 720]
+    image_steps: 28
+    video_frames: 16
