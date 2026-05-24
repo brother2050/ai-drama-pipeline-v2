@@ -1,5 +1,6 @@
-"""字幕生成 — SRT 格式，支持 Ollama 翻译"""
+"""字幕生成 — SRT 格式"""
 from __future__ import annotations
+
 import logging
 from pathlib import Path
 
@@ -35,18 +36,3 @@ def _format_srt_time(seconds: float) -> str:
     s = int(seconds % 60)
     ms = int((seconds % 1) * 1000)
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-
-
-def translate_srt(srt_path: str, output: str, llm=None) -> str:
-    """翻译字幕"""
-    if not llm:
-        logger.warning("无 LLM，跳过翻译")
-        return srt_path
-    content = Path(srt_path).read_text(encoding="utf-8")
-    try:
-        translated = llm.chat(f"Translate this SRT subtitle to English, keep format:\n{content}")
-        Path(output).write_text(translated, encoding="utf-8")
-        return output
-    except Exception as e:
-        logger.warning(f"翻译失败: {e}")
-        return srt_path

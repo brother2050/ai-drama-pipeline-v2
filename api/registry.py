@@ -25,7 +25,6 @@ class BackendMeta:
     name: str
     service_type: str  # tts / lipsync / image / video / music / llm
     factory: Callable[..., Any]
-    requires_gpu: bool = False
     requires_api_key: bool = False
     api_key_env: str = ""
     description: str = ""
@@ -68,13 +67,6 @@ class ServiceRegistry:
             if meta.requires_api_key:
                 key = os.environ.get(meta.api_key_env, "")
                 if not key:
-                    continue
-            if meta.requires_gpu:
-                try:
-                    import torch
-                    if not torch.cuda.is_available():
-                        continue
-                except ImportError:
                     continue
             return meta.name
         raise ValueError(f"没有可用的 {service_type} 后端")

@@ -31,14 +31,3 @@ def check_video_format(path: str) -> dict:
         }
     except Exception as e:
         return {"valid": False, "error": str(e)}
-
-
-def check_audio_exists(path: str) -> bool:
-    """检查视频是否包含音频流"""
-    try:
-        r = subprocess.run(
-            ["ffprobe", "-v", "quiet", "-select_streams", "a", "-show_entries", "stream=codec_type", path],
-            capture_output=True, text=True, timeout=30)
-        return "codec_type=audio" in r.stdout
-    except Exception:
-        return False

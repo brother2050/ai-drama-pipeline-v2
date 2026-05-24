@@ -29,9 +29,3 @@ def analyze_emotion(text: str) -> str:
             if kw in text:
                 return emotion
     return "neutral"
-
-
-def emotion_to_english(emotion: str) -> str:
-    """情绪标签→英文描述"""
-    from engines.prompt import EMOTION_MAP
-    return EMOTION_MAP.get(emotion, "neutral expression")

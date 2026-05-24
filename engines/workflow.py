@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "find_first_node", "find_nodes_by_class", "find_load_image_nodes",
     "find_character_load_image_nodes", "set_clip_text_prompts",
-    "apply_controlnet_config", "apply_ip_adapter_config", "resolve_node_aliases",
+    "apply_ip_adapter_config", "resolve_node_aliases",
 ]
 
 
@@ -62,14 +62,6 @@ def set_clip_text_prompts(wf: dict, positive: str, negative: str = "", backend: 
                 node["inputs"]["text"] = negative or text
             else:
                 node["inputs"]["text"] = positive
-    return wf
-
-
-def apply_controlnet_config(wf: dict, config: dict) -> dict:
-    strength = config.get("strength", 0.5)
-    for nid, node in wf.items():
-        if "ControlNet" in node.get("class_type", "") and "Apply" in node.get("class_type", ""):
-            node.get("inputs", {})["strength"] = strength
     return wf
 
 

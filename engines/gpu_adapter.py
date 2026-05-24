@@ -1,5 +1,6 @@
 """GPU 适配器 — 根据显存自动调整生成参数"""
 from __future__ import annotations
+
 import logging
 import shutil
 import subprocess
@@ -22,7 +23,7 @@ GPU_PRESETS = {
 }
 
 
-def detect_vram() -> int:
+def _detect_vram() -> int:
     """检测 GPU 显存（MB），无 GPU 返回 0"""
     if not shutil.which("nvidia-smi"):
         return 0
@@ -40,30 +41,10 @@ def detect_vram() -> int:
 def get_gpu_config(vram_mb: int | None = None) -> dict:
     """根据显存返回推荐配置"""
     if vram_mb is None:
-        vram_mb = detect_vram()
+        vram_mb = _detect_vram()
 
     for (min_v, max_v), cfg in GPU_PRESETS.items():
         if min_v <= vram_mb < max_v:
             return {**cfg, "vram_mb": vram_mb}
 
     return {"vram_mb": vram_mb, "note": "未知 GPU，使用默认配置"}
-
-
-def auto_adjust(config: dict, vram_mb: int | None = None) -> dict:
-    """根据 GPU 自动调整配置"""
-    gpu_cfg = get_gpu_config(vram_mb)
-    if gpu_cfg.get("vram_mb", 0) == 0:
-        logger.info("无本地 GPU，使用 API 模式")
-        return config
-
-    models = config.setdefault("models", {})
-    for key in ("image_backend", "video_backend"):
-        if key in gpu_cfg:
-            models[key] = gpu_cfg[key]
-            logger.info(f"GPU 适配: {key} → {gpu_cfg[key]}")
-
-    if "resolution" in gpu_cfg:
-        config.setdefault("project", {})["resolution"] = gpu_cfg["resolution"]
-
-    logger.info(f"GPU 适配: {gpu_cfg}")
-    return config
