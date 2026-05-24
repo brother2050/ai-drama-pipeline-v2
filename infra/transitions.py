@@ -148,7 +148,7 @@ def build_concat_filter(inputs: list[str], output: str, transition: str = "cross
     cmd.extend(["-c:v", "libx264", "-preset", "fast", "-crf", "18",
                 "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
-                "-y", output])
+                output])
 
     logger.debug(f"ffmpeg concat: {' '.join(cmd)}")
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)

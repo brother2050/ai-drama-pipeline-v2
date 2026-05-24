@@ -69,5 +69,5 @@ def apply_ip_adapter_config(wf: dict, config: dict) -> dict:
     weight = config.get("weight", 0.6)
     for nid, node in wf.items():
         if "IPAdapter" in node.get("class_type", ""):
-            node.get("inputs", {})["weight"] = weight
+            node.setdefault("inputs", {})["weight"] = weight
     return wf
