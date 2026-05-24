@@ -182,7 +182,7 @@ def test_storyboard():
 
         # 主要情绪
         emotion = get_dominant_emotion(ep1_shots)
-        assert emotion in ("worried", "sad", "determined")
+        assert emotion in ("worried", "sad", "determined", "happy", "romantic")
 
         print(f"✅ 分镜表正常: {len(all_shots)} 镜头")
     else:

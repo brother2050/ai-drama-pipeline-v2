@@ -23,17 +23,6 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(dependencies=[Depends(_rate_limit_dependency)])
-ROOT = Path(__file__).resolve().parent.parent.parent
-
-# 导入 schemas
-sys.path.insert(0, str(ROOT))
-from web.schemas import (
-    StepRequest, TTSRequest, PostRequest, MusicRequest,
-    SubtitleRequest, PipelineRequest, CharacterData, SceneData,
-    ProjectCreate, ProjectSwitch,
-)
-
 # ── 简易 Rate Limiting ──
 _rate_limit_store: dict[str, list[float]] = {}
 _RATE_LIMIT_WINDOW = 60  # 秒
@@ -79,6 +68,17 @@ async def _rate_limit_dependency(request: Request):
     """FastAPI 依赖: 自动应用 rate limiting"""
     _check_rate_limit(_get_client_ip(request))
 
+
+router = APIRouter(dependencies=[Depends(_rate_limit_dependency)])
+ROOT = Path(__file__).resolve().parent.parent.parent
+
+# 导入 schemas
+sys.path.insert(0, str(ROOT))
+from web.schemas import (
+    StepRequest, TTSRequest, PostRequest, MusicRequest,
+    SubtitleRequest, PipelineRequest, CharacterData, SceneData,
+    ProjectCreate, ProjectSwitch,
+)
 
 # ── 工具函数 ──
 

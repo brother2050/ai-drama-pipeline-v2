@@ -17,6 +17,14 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# 配置 Celery eager 模式（不需要 Redis broker）
+from pipeline.celery_app import app as celery_app
+celery_app.conf.update(
+    task_always_eager=True,
+    task_eager_propagates=True,
+    result_backend="cache+memory://",
+)
+
 
 @pytest.fixture
 def test_project():
