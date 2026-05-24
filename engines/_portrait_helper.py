@@ -1,6 +1,14 @@
-"""定妆照辅助 — 确保角色有参考图"""
+"""定妆照辅助 — 确保角色有参考图
+
+.. deprecated::
+    本模块功能与 engines/portrait.py 重叠。
+    建议直接使用 engines.portrait.ensure_portrait()。
+    保留本模块仅为向后兼容。
+"""
 from __future__ import annotations
-import logging, os
+
+import logging
+import os
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -16,7 +24,15 @@ def ensure_reference_images(char_id: str, shot_manager, project_dir: str) -> lis
 
     Returns:
         参考图路径列表
+
+    .. deprecated::
+        请使用 engines.portrait.ensure_portrait() 替代。
     """
+    logger.warning(
+        f"[{char_id}] ensure_reference_images() 已废弃，"
+        "请使用 engines.portrait.ensure_portrait()"
+    )
+
     char_cfg = shot_manager.get_character(char_id)
     refs = char_cfg.get("reference_images", [])
 
@@ -50,8 +66,8 @@ def ensure_reference_images(char_id: str, shot_manager, project_dir: str) -> lis
     if resolved:
         return sorted(resolved)
 
-    # 自动生成
-    logger.info(f"[{char_id}] 无参考图，尝试自动生成定妆照...")
+    # 委托给 engines.portrait
+    logger.info(f"[{char_id}] 无参考图，委托给 engines.portrait...")
     try:
         from engines.portrait import ensure_portrait
         portrait = ensure_portrait(char_id, {"_project_dir": project_dir}, None)

@@ -310,7 +310,10 @@ def shot_task(self, config_path: str, episode: int, shot_data: dict):
         try:
             # .apply() 在当前 Worker 进程同步执行，保持 Celery task 上下文
             # 不重新排队，不占用额外 Worker 槽位
-            result = step_fn.apply(args=[config_path, episode, shot_id]).get()
+            # 设置超时防止无限等待
+            timeout_map = {"tts": 120, "first_frame": 300, "video": 600, "lipsync": 300}
+            step_timeout = timeout_map.get(step_name, 300)
+            result = step_fn.apply(args=[config_path, episode, shot_id]).get(timeout=step_timeout)
             results[step_name] = result
 
             status = result.get("status", "")

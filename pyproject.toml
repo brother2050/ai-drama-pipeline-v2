@@ -29,10 +29,10 @@ dev = ["pytest>=7.0", "ruff>=0.1.0"]
 all = ["ai-drama-pipeline[db,dev]"]
 
 [project.scripts]
-drama = "cli:main"
+drama = "cli:cli"
 
 [tool.setuptools.packages.find]
-include = ["api*", "infra*", "pipeline*", "post*", "web*", "cli*"]
+include = ["api*", "engines*", "flow*", "infra*", "pipeline*", "post*", "scripts*", "web*", "cli*"]
 
 [tool.ruff]
 line-length = 120

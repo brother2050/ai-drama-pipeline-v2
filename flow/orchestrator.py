@@ -1,5 +1,12 @@
-"""管线编排器 — 单镜头全流程"""
+"""管线编排器 — 单镜头全流程
+
+.. deprecated::
+    本模块与 pipeline/tasks.py 中的 shot_task 功能重复。
+    统一使用 pipeline.tasks.shot_task 作为编排入口。
+    保留本模块仅为向后兼容和独立测试。
+"""
 from __future__ import annotations
+
 import logging
 import os
 from pathlib import Path
@@ -12,9 +19,16 @@ STAGES = ["first_frame", "video", "audio", "lip_sync", "post"]
 
 
 class ShotOrchestrator:
-    """单镜头编排器 — 按阶段顺序执行"""
+    """单镜头编排器 — 按阶段顺序执行
+
+    .. deprecated::
+        请使用 pipeline.tasks.shot_task 替代。
+    """
 
     def __init__(self, config: dict, container=None):
+        logger.warning(
+            "ShotOrchestrator 已废弃，请使用 pipeline.tasks.shot_task"
+        )
         self._config = config
         self._container = container
         self._project_dir = config.get("_project_dir", os.getcwd())

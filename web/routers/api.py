@@ -1,8 +1,16 @@
-"""API 路由 — 独立工具 + 按需启停"""
+"""API 路由 — 独立工具 + 按需启停
+
+改进项：
+- 使用 Pydantic 模型做输入校验
+- 路径遍历防护
+- 统一重试机制
+- 角色/场景 ID 格式校验
+"""
 from __future__ import annotations
 
 import csv
 import os
+import re
 import subprocess
 import sys
 import yaml
@@ -14,6 +22,14 @@ from pydantic import BaseModel
 
 router = APIRouter()
 ROOT = Path(__file__).resolve().parent.parent.parent
+
+# 导入 schemas
+sys.path.insert(0, str(ROOT))
+from web.schemas import (
+    StepRequest, TTSRequest, PostRequest, MusicRequest,
+    SubtitleRequest, PipelineRequest, CharacterData, SceneData,
+    ProjectCreate, ProjectSwitch,
+)
 
 
 # ── 工具函数 ──
@@ -42,9 +58,19 @@ def _port_ok(port: int) -> bool:
 def _url_ok(url: str, path: str = "/") -> bool:
     try:
         import httpx
-        return httpx.get(f"{url}{path}", timeout=3).status_code == 200
+        from infra.retry import retry
+        return retry(lambda: httpx.get(f"{url}{path}", timeout=3).status_code == 200,
+                     max_retries=2, base_delay=0.5)
     except Exception:
         return False
+
+
+def _safe_path(base: Path, *parts: str) -> Path:
+    """防止路径遍历的安全路径拼接"""
+    resolved = (base / "/".join(parts)).resolve()
+    if not str(resolved).startswith(str(base.resolve())):
+        raise HTTPException(400, "非法路径")
+    return resolved
 
 
 def _check_tool(name: str, cfg: dict) -> dict:
@@ -52,12 +78,10 @@ def _check_tool(name: str, cfg: dict) -> dict:
     if name == "tts":
         backend = cfg.get("models", {}).get("tts_backend", "mimo-voicedesign")
         if "mimo" in backend:
-            import os
             ok = bool(os.environ.get("MIMO_API_KEY"))
             return {"available": ok, "backend": backend, "type": "cloud",
                     "reason": "" if ok else "MIMO_API_KEY 未配置"}
         else:
-            # 其他 TTS 需要 API 服务
             api_url = cfg.get("models", {}).get(backend.replace("-", "_"), {}).get("api_url", "")
             ok = _url_ok(api_url) if api_url else False
             return {"available": ok, "backend": backend, "type": "api",
@@ -147,7 +171,6 @@ def system_status():
     tools = {}
     for name in ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg"]:
         tools[name] = _check_tool(name, cfg)
-
     return {"version": "2.0.0", "tools": tools}
 
 
@@ -161,7 +184,7 @@ def system_env():
 
 
 # ══════════════════════════════════════════════════════════
-# 工具管理 — 独立检测 / 独立使用
+# 工具管理
 # ══════════════════════════════════════════════════════════
 
 @router.get("/tools")
@@ -182,44 +205,39 @@ def check_tool(name: str):
     return {"name": name, **result}
 
 
-# ── 单步执行（每步独立，能跑哪步跑哪步）──
-
-class StepRequest(BaseModel):
-    episode: int
-    shot_id: str
-
+# ── 单步执行 ──
 
 @router.post("/steps/tts")
 def run_step_tts(req: StepRequest):
-    """Step 1: TTS — 只需要 TTS 服务"""
+    """Step 1: TTS"""
     from pipeline.tasks import step_tts
     return _submit_task(step_tts, _cfg_path(), req.episode, req.shot_id)
 
 
 @router.post("/steps/first-frame")
 def run_step_first_frame(req: StepRequest):
-    """Step 2: 首帧 — 只需要 ComfyUI"""
+    """Step 2: 首帧"""
     from pipeline.tasks import step_first_frame
     return _submit_task(step_first_frame, _cfg_path(), req.episode, req.shot_id)
 
 
 @router.post("/steps/video")
 def run_step_video(req: StepRequest):
-    """Step 3: 视频 — 需要 ComfyUI + 首帧已存在"""
+    """Step 3: 视频"""
     from pipeline.tasks import step_video
     return _submit_task(step_video, _cfg_path(), req.episode, req.shot_id)
 
 
 @router.post("/steps/lipsync")
 def run_step_lipsync(req: StepRequest):
-    """Step 4: 口型同步 — 需要 LipSync + 视频 + 音频"""
+    """Step 4: 口型同步"""
     from pipeline.tasks import step_lipsync
     return _submit_task(step_lipsync, _cfg_path(), req.episode, req.shot_id)
 
 
 @router.post("/steps/shot")
 def run_step_shot(req: StepRequest):
-    """单镜头编排 — 逐步尝试，跳过不可用的步骤"""
+    """单镜头编排"""
     from pipeline.tasks import shot_task
     shot = _find_shot_for_api(req.episode, req.shot_id)
     if not shot:
@@ -238,18 +256,11 @@ def _find_shot_for_api(episode: int, shot_id: str) -> dict | None:
     return None
 
 
-# ── 独立工具（直接调用，不走编排）──
-
-class TTSRequest(BaseModel):
-    text: str
-    voice_config: dict | None = None
-    emotion: str = "neutral"
-    language: str = "zh"
-
+# ── 独立工具 ──
 
 @router.post("/tools/tts")
 def run_tts(req: TTSRequest):
-    """独立 TTS — 直接合成"""
+    """独立 TTS"""
     from pipeline.tasks import tts_single_task
     return _submit_task(tts_single_task, _cfg_path(), req.text,
                         req.voice_config, req.emotion, req.language)
@@ -262,21 +273,11 @@ def gen_portraits():
     return _submit_task(portraits_task, _cfg_path())
 
 
-class PostRequest(BaseModel):
-    episode: int
-    vertical: bool = False
-
-
 @router.post("/tools/post")
 def run_post(req: PostRequest):
     """后期合成"""
     from pipeline.tasks import post_task
     return _submit_task(post_task, _cfg_path(), req.episode, req.vertical)
-
-
-class MusicRequest(BaseModel):
-    duration: float
-    mood: str = "neutral"
 
 
 @router.post("/tools/music")
@@ -285,10 +286,6 @@ def run_music(req: MusicRequest):
     from pipeline.tasks import music_task
     output = str(ROOT / "output" / "bgm.wav")
     return _submit_task(music_task, _cfg_path(), req.duration, req.mood, output)
-
-
-class SubtitleRequest(BaseModel):
-    episode: int
 
 
 @router.post("/tools/subtitle")
@@ -304,6 +301,9 @@ def run_subtitle(req: SubtitleRequest):
 
 @router.get("/tasks/{task_id}")
 def get_task(task_id: str):
+    # 校验 task_id 格式（UUID）
+    if not re.match(r"^[a-f0-9-]{36}$", task_id):
+        raise HTTPException(400, "无效的任务 ID")
     from pipeline.celery_app import app
     result = app.AsyncResult(task_id)
     info = result.info if result.info else {}
@@ -341,13 +341,15 @@ def list_tasks():
 
 @router.post("/tasks/{task_id}/cancel")
 def cancel_task(task_id: str):
+    if not re.match(r"^[a-f0-9-]{36}$", task_id):
+        raise HTTPException(400, "无效的任务 ID")
     from pipeline.celery_app import app
     app.control.revoke(task_id, terminate=True)
     return {"status": "cancelled", "task_id": task_id}
 
 
 # ══════════════════════════════════════════════════════════
-# 配置 / 项目 / 角色 / 场景 / 分镜（不变）
+# 配置 / 项目 / 角色 / 场景 / 分镜
 # ══════════════════════════════════════════════════════════
 
 @router.get("/config")
@@ -357,8 +359,13 @@ def get_config():
 
 @router.post("/config")
 def update_config(data: dict):
-    with open(_cfg_path(), "w") as f:
-        yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+    # 基本校验：必须是 dict，不能包含危险键
+    if not isinstance(data, dict):
+        raise HTTPException(400, "配置必须是 JSON 对象")
+    # 保存
+    cfg_path = _cfg_path()
+    from infra.config import save_config
+    save_config(cfg_path, data)
     return {"status": "ok"}
 
 
@@ -388,22 +395,18 @@ def list_projects():
 
 
 @router.post("/projects/new")
-def create_project(data: dict):
-    name = data.get("name", "")
-    if not name:
-        raise HTTPException(400, "name required")
+def create_project(req: ProjectCreate):
     from scripts.project_mgr import create_project
     from rich.console import Console
-    create_project(name, ROOT, Console())
-    return {"status": "ok", "name": name}
+    create_project(req.name, ROOT, Console())
+    return {"status": "ok", "name": req.name}
 
 
 @router.post("/projects/switch")
-def switch_project(data: dict):
-    name = data.get("name", "")
+def switch_project(req: ProjectSwitch):
     from scripts.project_mgr import switch_project
     from rich.console import Console
-    switch_project(name, ROOT, Console())
+    switch_project(req.name, ROOT, Console())
     return {"status": "ok"}
 
 
@@ -424,14 +427,13 @@ def list_characters():
 
 
 @router.post("/characters")
-def save_character(data: dict):
-    char_id = data.get("id", "")
-    if not char_id:
-        raise HTTPException(400, "id required")
+def save_character(req: CharacterData):
     chars_dir = ROOT / "config" / "characters"
     chars_dir.mkdir(parents=True, exist_ok=True)
+    data = req.model_dump(exclude_none=True)
+    char_id = data.pop("id")
     with open(chars_dir / f"{char_id}.yaml", "w") as f:
-        yaml.dump({"character": data}, f, allow_unicode=True, default_flow_style=False)
+        yaml.dump({"character": {**data, "id": char_id}}, f, allow_unicode=True, default_flow_style=False)
     return {"status": "ok", "id": char_id}
 
 
@@ -452,19 +454,20 @@ def list_scenes():
 
 
 @router.post("/scenes")
-def save_scene(data: dict):
-    scene_id = data.get("id", "")
-    if not scene_id:
-        raise HTTPException(400, "id required")
+def save_scene(req: SceneData):
     scenes_dir = ROOT / "config" / "scenes"
     scenes_dir.mkdir(parents=True, exist_ok=True)
+    data = req.model_dump(exclude_none=True)
+    scene_id = data.pop("id")
     with open(scenes_dir / f"{scene_id}.yaml", "w") as f:
-        yaml.dump({"scene": data}, f, allow_unicode=True, default_flow_style=False)
+        yaml.dump({"scene": {**data, "id": scene_id}}, f, allow_unicode=True, default_flow_style=False)
     return {"status": "ok", "id": scene_id}
 
 
 @router.get("/storyboard/{episode}")
 def get_storyboard(episode: int):
+    if episode < 1:
+        raise HTTPException(400, "episode 必须 >= 1")
     sb_path = ROOT / "storyboard" / "episodes.csv"
     if not sb_path.exists():
         return {"episode": episode, "shots": []}
@@ -478,7 +481,18 @@ def get_storyboard(episode: int):
 
 @router.post("/storyboard/{episode}")
 def save_storyboard(episode: int, data: dict):
+    if episode < 1:
+        raise HTTPException(400, "episode 必须 >= 1")
     shots = data.get("shots", [])
+    if not isinstance(shots, list):
+        raise HTTPException(400, "shots 必须是数组")
+
+    # 校验每个镜头的 shot_id 格式
+    for shot in shots:
+        sid = shot.get("shot_id", "")
+        if sid and not re.match(r"^[a-zA-Z0-9_-]+$", sid):
+            raise HTTPException(400, f"无效的 shot_id: {sid}")
+
     sb_path = ROOT / "storyboard" / "episodes.csv"
     sb_path.parent.mkdir(parents=True, exist_ok=True)
     existing = []
@@ -498,14 +512,8 @@ def save_storyboard(episode: int, data: dict):
 
 
 # ══════════════════════════════════════════════════════════
-# 管线（完整流程，通过 Celery）
+# 管线
 # ══════════════════════════════════════════════════════════
-
-class PipelineRequest(BaseModel):
-    episode: int
-    command: str = "produce"
-    level: str = "draft"
-
 
 @router.post("/pipeline/run")
 def run_pipeline(req: PipelineRequest):
@@ -529,38 +537,46 @@ def pipeline_status(episode: int):
 
 
 # ══════════════════════════════════════════════════════════
-# 镜头资源查询 + 文件预览
+# 镜头资源查询 + 文件预览（带路径遍历防护）
 # ══════════════════════════════════════════════════════════
 
 @router.get("/shots/{episode}/{shot_id}/resources")
 def get_shot_resources(episode: int, shot_id: str):
     """查询镜头已生成的资源"""
-    out_dir = ROOT / "output" / f"e{episode:02d}" / f"s{shot_id}"
+    if episode < 1:
+        raise HTTPException(400, "episode 必须 >= 1")
+    if not re.match(r"^[a-zA-Z0-9_-]+$", shot_id):
+        raise HTTPException(400, "无效的 shot_id")
+
+    out_dir = _safe_path(ROOT, "output", f"e{episode:02d}", f"s{shot_id}")
     if not out_dir.exists():
         return {"shot_id": shot_id, "resources": {}}
 
     resources = {}
-    if (out_dir / "audio.wav").exists():
-        resources["audio"] = "audio.wav"
-    if (out_dir / "frame.png").exists():
-        resources["frame"] = "frame.png"
-    if (out_dir / "video.mp4").exists():
-        resources["video"] = "video.mp4"
-    if (out_dir / "synced.mp4").exists():
-        resources["synced"] = "synced.mp4"
-
+    for fname, key in [("audio.wav", "audio"), ("frame.png", "frame"),
+                        ("video.mp4", "video"), ("synced.mp4", "synced")]:
+        if (out_dir / fname).exists():
+            resources[key] = fname
     return {"shot_id": shot_id, "resources": resources}
 
 
 @router.get("/files/{episode}/{shot_id}/{filename}")
 def get_shot_file(episode: int, shot_id: str, filename: str):
-    """预览镜头资源文件"""
+    """预览镜头资源文件（带路径遍历防护）"""
     from fastapi.responses import FileResponse
-    file_path = ROOT / "output" / f"e{episode:02d}" / f"s{shot_id}" / filename
+
+    if episode < 1:
+        raise HTTPException(400, "episode 必须 >= 1")
+    if not re.match(r"^[a-zA-Z0-9_-]+$", shot_id):
+        raise HTTPException(400, "无效的 shot_id")
+    # 文件名只允许字母数字下划线连字符点号
+    if not re.match(r"^[a-zA-Z0-9_\-\.]+$", filename):
+        raise HTTPException(400, "无效的文件名")
+
+    file_path = _safe_path(ROOT, "output", f"e{episode:02d}", f"s{shot_id}", filename)
     if not file_path.exists():
         raise HTTPException(404, f"文件不存在: {filename}")
 
-    # 根据扩展名设置 content-type
     ext = file_path.suffix.lower()
     media_types = {
         ".wav": "audio/wav", ".mp3": "audio/mpeg",

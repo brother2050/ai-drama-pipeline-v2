@@ -31,8 +31,10 @@ cd ai-drama-pipeline-v2
 ```bash
 pip install -e .
 # 或最小安装
-pip install fastapi uvicorn pyyaml python-dotenv httpx click rich Pillow celery redis
+pip install fastapi uvicorn pyyaml python-dotenv httpx click rich Pillow celery redis pydantic
 ```
+
+> 安装后 `drama` 命令即可用。如遇问题请确认 `pyproject.toml` 中 entry point 为 `cli:cli`。
 
 ### 3. 启动 Redis（必选）
 
@@ -76,7 +78,7 @@ python cli.py serve
 python cli.py serve                    # 启动 Web 工作台
 python cli.py worker                   # 启动 Celery Worker
 python cli.py status                   # 服务状态（Redis + Celery + ComfyUI）
-python cli.py setup                    # 环境检测
+python cli.py env                      # 环境信息
 
 # 管线（通过 Celery 异步执行）
 python cli.py preview 1 draft          # 快速预览
@@ -91,6 +93,12 @@ python cli.py project new love_story   # 创建项目
 python cli.py project switch love_story # 切换项目
 python cli.py project current          # 当前项目
 ```
+
+## 📚 API 文档
+
+启动 Web 工作台后访问：
+- **Swagger UI**: http://localhost:8888/docs
+- **ReDoc**: http://localhost:8888/redoc
 
 ---
 

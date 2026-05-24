@@ -74,10 +74,24 @@ class Config:
         "timeouts": {"comfyui": 300, "tts": 60, "lipsync": 120, "llm": 300, "music": 120},
     }
 
+    # 必填字段校验规则
+    REQUIRED_FIELDS: list[tuple[str, str]] = [
+        ("project.name", "项目名称"),
+    ]
+
+    # 合法值范围
+    VALID_RANGES: dict[str, tuple[int, int]] = {
+        "project.fps": (1, 120),
+        "server.port": (1, 65535),
+        "comfyui.timeout": (1, 3600),
+    }
+
     def __init__(self, path: str | None = None):
         self._path = path or self._find_config()
         self._data = self._merge(self._path)
         self._project_dir = str(Path(self._path).resolve().parent.parent) if self._path else os.getcwd()
+        self._warnings: list[str] = []
+        self._validate()
 
     @staticmethod
     def _find_config() -> str:
@@ -135,6 +149,46 @@ class Config:
     def reload(self) -> None:
         """重新加载配置"""
         self._data = self._merge(self._path)
+        self._warnings = []
+        self._validate()
+
+    def _validate(self) -> None:
+        """校验配置合法性（不阻断，仅记录警告）"""
+        # 必填字段
+        for field, desc in self.REQUIRED_FIELDS:
+            val = self.get(field)
+            if val is None or val == "":
+                self._warnings.append(f"缺少必填配置: {desc} ({field})")
+
+        # 数值范围
+        for field, (lo, hi) in self.VALID_RANGES.items():
+            val = self.get(field)
+            if val is not None:
+                try:
+                    v = int(val)
+                    if v < lo or v > hi:
+                        self._warnings.append(
+                            f"配置 {field}={v} 超出范围 [{lo}, {hi}]"
+                        )
+                except (ValueError, TypeError):
+                    self._warnings.append(f"配置 {field} 不是有效数值: {val}")
+
+        # 分辨率格式
+        res = self.get("project.resolution")
+        if res is not None:
+            if not isinstance(res, list) or len(res) != 2:
+                self._warnings.append("project.resolution 应为 [width, height] 格式")
+            elif not all(isinstance(x, (int, float)) and x > 0 for x in res):
+                self._warnings.append("project.resolution 的值必须为正数")
+
+        if self._warnings:
+            for w in self._warnings:
+                logger.warning(f"⚠ 配置校验: {w}")
+
+    @property
+    def warnings(self) -> list[str]:
+        """返回配置校验警告列表"""
+        return list(self._warnings)
 
     def __repr__(self) -> str:
         return f"Config({self._path})"
