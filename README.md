@@ -54,31 +54,35 @@ pip install -e ".[all]"
 | `.[face]` | face_recognition | 次选人脸检测 | 回退到哈希 |
 | `.[face]` | opencv-python-headless | 横转竖人脸定位 | 回退到模糊背景 |
 | `.[gpu]` | torch | GPU 检测加速 | CPU 模式运行 |
-| `.[db]` | psycopg2-binary | PostgreSQL 支持 | 使用 SQLite |
 
 不装可选包时，各功能自动降级，不会崩溃。
 
 </details>
 
-### 3. 启动 Redis（必选）
+### 3. 启动 Redis + PostgreSQL（必选）
 
 ```bash
 # Ubuntu
 sudo apt install redis-server && sudo systemctl start redis
+sudo apt install postgresql && sudo systemctl start postgresql
 
 # macOS
 brew install redis && brew services start redis
+brew install postgresql && brew services start postgresql
 
 # Docker
 docker run -d -p 6379:6379 redis:7-alpine
+docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=drama123 -e POSTGRES_USER=drama -e POSTGRES_DB=ai_drama postgres:16-alpine
 ```
 
 ### 4. 配置
 
 ```bash
 cp .env.example .env
-# 编辑 .env，填入 MIMO_API_KEY（语音合成免费）
-# 获取: https://api.xiaomimimo.com
+# 编辑 .env，必填:
+#   AI_DRAMA_DB_DSN=postgresql://drama:drama123@127.0.0.1:5432/ai_drama
+#   MIMO_API_KEY=（语音合成免费）
+# 获取 MIMO_API_KEY: https://api.xiaomimimo.com
 ```
 
 ### 5. 启动
@@ -328,7 +332,7 @@ ai-drama-pipeline-v2/
 │   ├── retry.py              # 指数退避重试
 │   ├── text.py               # 文本工具
 │   ├── redis_mgr.py          # Redis 连接管理
-│   └── database/             # SQLite / PostgreSQL 双模式
+│   └── database/             # PostgreSQL（必须）
 │       ├── schema.py         # 表结构定义
 │       ├── pool.py           # 连接池
 │       ├── characters.py     # 角色 CRUD
@@ -364,7 +368,7 @@ ai-drama-pipeline-v2/
 ├── storyboard/               # 分镜表（CSV）
 ├── output/                   # 生成产物
 ├── logs/                     # 日志文件
-└── data/                     # SQLite 数据库
+└── data/                     # PostgreSQL 数据库
 ```
 
 ---

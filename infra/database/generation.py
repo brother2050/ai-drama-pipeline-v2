@@ -1,14 +1,8 @@
-"""生成状态数据库操作"""
+"""生成状态数据库操作 — PostgreSQL"""
 from __future__ import annotations
 import json
 import time
 from typing import Any
-
-from infra.database.pool import is_postgres
-
-
-def _ph(pool) -> str:
-    return "%s" if is_postgres(pool) else "?"
 
 
 def _row_to_dict(row) -> dict:
@@ -26,20 +20,13 @@ def upsert_status(pool, episode: int, shot_id: str, stage: str,
     conn = pool.connect()
     try:
         cur = conn.cursor()
-        ph = _ph(pool)
-        if is_postgres(pool):
-            cur.execute(f"""
-                INSERT INTO generation_status (episode, shot_id, stage, status, path, error, elapsed, updated_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, CURRENT_TIMESTAMP)
-                ON CONFLICT (episode, shot_id, stage) DO UPDATE SET
-                    status=EXCLUDED.status, path=EXCLUDED.path, error=EXCLUDED.error,
-                    elapsed=EXCLUDED.elapsed, updated_at=CURRENT_TIMESTAMP
-            """, (episode, shot_id, stage, status, path, error, elapsed))
-        else:
-            cur.execute(f"""
-                INSERT OR REPLACE INTO generation_status (episode, shot_id, stage, status, path, error, elapsed, updated_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, CURRENT_TIMESTAMP)
-            """, (episode, shot_id, stage, status, path, error, elapsed))
+        cur.execute("""
+            INSERT INTO generation_status (episode, shot_id, stage, status, path, error, elapsed, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (episode, shot_id, stage) DO UPDATE SET
+                status=EXCLUDED.status, path=EXCLUDED.path, error=EXCLUDED.error,
+                elapsed=EXCLUDED.elapsed, updated_at=CURRENT_TIMESTAMP
+        """, (episode, shot_id, stage, status, path, error, elapsed))
         conn.commit()
     finally:
         pool.release(conn)
@@ -50,8 +37,7 @@ def get_shot_status(pool, episode: int, shot_id: str) -> list[dict]:
     conn = pool.connect()
     try:
         cur = conn.cursor()
-        ph = _ph(pool)
-        cur.execute(f"SELECT * FROM generation_status WHERE episode = {ph} AND shot_id = {ph} ORDER BY stage",
+        cur.execute("SELECT * FROM generation_status WHERE episode = %s AND shot_id = %s ORDER BY stage",
                     (episode, shot_id))
         return [_row_to_dict(r) for r in cur.fetchall()]
     finally:
@@ -63,8 +49,7 @@ def get_episode_statuses(pool, episode: int) -> list[dict]:
     conn = pool.connect()
     try:
         cur = conn.cursor()
-        ph = _ph(pool)
-        cur.execute(f"SELECT * FROM generation_status WHERE episode = {ph} ORDER BY shot_id, stage",
+        cur.execute("SELECT * FROM generation_status WHERE episode = %s ORDER BY shot_id, stage",
                     (episode,))
         return [_row_to_dict(r) for r in cur.fetchall()]
     finally:
@@ -76,9 +61,8 @@ def get_pending_shots(pool, episode: int, stage: str) -> list[str]:
     conn = pool.connect()
     try:
         cur = conn.cursor()
-        ph = _ph(pool)
-        cur.execute(f"""SELECT DISTINCT shot_id FROM generation_status
-                        WHERE episode = {ph} AND stage = {ph} AND status != 'done'""",
+        cur.execute("""SELECT DISTINCT shot_id FROM generation_status
+                        WHERE episode = %s AND stage = %s AND status != 'done'""",
                     (episode, stage))
         return [r['shot_id'] if hasattr(r, 'keys') else r[0] for r in cur.fetchall()]
     finally:
@@ -90,8 +74,7 @@ def clear_episode(pool, episode: int):
     conn = pool.connect()
     try:
         cur = conn.cursor()
-        ph = _ph(pool)
-        cur.execute(f"DELETE FROM generation_status WHERE episode = {ph}", (episode,))
+        cur.execute("DELETE FROM generation_status WHERE episode = %s", (episode,))
         conn.commit()
     finally:
         pool.release(conn)

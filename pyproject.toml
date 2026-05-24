@@ -21,10 +21,10 @@ dependencies = [
     "Pillow>=10.0.0",
     "celery>=5.3.0",
     "redis>=5.0.0",
+    "psycopg2-binary>=2.9.0",
 ]
 
 [project.optional-dependencies]
-db = ["psycopg2-binary>=2.9.0"]
 face = [
     "numpy>=1.24.0",
     "insightface>=0.7.3",
@@ -34,7 +34,7 @@ face = [
 ]
 gpu = ["torch>=2.0.0"]
 dev = ["pytest>=7.0", "ruff>=0.1.0"]
-all = ["ai-drama-pipeline[db,face,gpu,dev]"]
+all = ["ai-drama-pipeline[face,gpu,dev]"]
 
 [project.scripts]
 drama = "cli:cli"

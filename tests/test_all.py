@@ -111,54 +111,69 @@ def test_retry():
 
 # ── infra/database ──
 
-def test_sqlite_database():
-    """测试 SQLite 数据库"""
-    from infra.database.pool import SQLitePool
+def test_postgres_database():
+    """测试 PostgreSQL 数据库（需要配置 AI_DRAMA_DB_DSN）"""
+    import os
+    dsn = os.environ.get("AI_DRAMA_DB_DSN", "")
+    if not dsn:
+        print("⚠ AI_DRAMA_DB_DSN 未配置，跳过数据库测试")
+        return
+
+    from infra.database.pool import PgPool
     from infra.database import characters, episodes, scenes, shots
 
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        db_path = f.name
+    pool = PgPool(dsn)
 
     try:
-        pool = SQLitePool(db_path)
-
         # 角色
         characters.upsert(pool, "test_char", {
             "name": "测试角色", "appearance": "黑色头发",
             "voice": {"desc": "温柔"}, "reference_images": ["a.png"]
         })
         chars = characters.get_all(pool)
-        assert len(chars) == 1
-        assert chars[0]["name"] == "测试角色"
+        assert any(c["name"] == "测试角色" for c in chars)
 
         char = characters.get_by_id(pool, "test_char")
         assert char is not None
         assert char["id"] == "test_char"
 
         # 集
-        episodes.upsert(pool, 1, {"title": "第一集", "status": "done", "shot_count": 3})
+        episodes.upsert(pool, 999, {"title": "测试集", "status": "done", "shot_count": 3})
         eps = episodes.get_all(pool)
-        assert len(eps) == 1
+        assert any(e["episode"] == 999 for e in eps)
 
         # 场景
-        scenes.upsert(pool, "scene1", {"name": "客厅", "description": "现代客厅", "lighting": "暖光"})
+        scenes.upsert(pool, "test_scene", {"name": "测试客厅", "description": "现代客厅", "lighting": "暖光"})
         sc = scenes.get_all(pool)
-        assert len(sc) == 1
+        assert any(s["id"] == "test_scene" for s in sc)
 
         # 镜头
-        shots.upsert(pool, 1, "001", {
-            "scene": "scene1", "characters": "test_char",
+        shots.upsert(pool, 999, "001", {
+            "scene": "test_scene", "characters": "test_char",
             "action": "坐着", "dialogue": "你好", "camera": "固定",
             "shot_type": "中景", "duration": 4.0, "emotion": "calm"
         })
-        shot_list = shots.get_by_episode(pool, 1)
-        assert len(shot_list) == 1
+        shot_list = shots.get_by_episode(pool, 999)
+        assert len(shot_list) >= 1
         assert shot_list[0]["dialogue"] == "你好"
 
+        # 清理测试数据
+        conn = pool.connect()
+        try:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM shots WHERE episode = 999")
+            cur.execute("DELETE FROM episodes WHERE episode = 999")
+            cur.execute("DELETE FROM characters WHERE id = 'test_char'")
+            cur.execute("DELETE FROM scenes WHERE id = 'test_scene'")
+            conn.commit()
+        finally:
+            pool.release(conn)
+
         pool.close()
-        print("✅ SQLite 数据库正常")
-    finally:
-        os.unlink(db_path)
+        print("✅ PostgreSQL 数据库正常")
+    except Exception as e:
+        print(f"❌ PostgreSQL 测试失败: {e}")
+        raise
 
 
 # ── engines/storyboard.py ──
@@ -598,7 +613,7 @@ def run_all():
         test_ttl_cache,
         test_gpu_detect,
         test_retry,
-        test_sqlite_database,
+        test_postgres_database,
         test_storyboard,
         test_camera,
         test_emotions,

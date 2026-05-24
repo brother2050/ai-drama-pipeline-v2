@@ -109,6 +109,17 @@ def _ensure_deps():
     """启动前检查"""
     _load_env()
     _ensure_redis()
+    _ensure_postgres()
+
+
+def _ensure_postgres():
+    """确保 PostgreSQL 已配置"""
+    dsn = os.environ.get("AI_DRAMA_DB_DSN", "")
+    if not dsn:
+        console.print("[red]❌ AI_DRAMA_DB_DSN 未配置（PostgreSQL 必须）[/red]")
+        console.print("  示例: AI_DRAMA_DB_DSN=postgresql://drama:drama123@127.0.0.1:5432/ai_drama")
+        console.print("  先创建数据库: CREATE DATABASE ai_drama;")
+        sys.exit(1)
 
 
 # ── CLI ──
@@ -171,6 +182,20 @@ def status():
     redis = _port_open(6379)
     table.add_row("Redis", "[green]✅[/green]" if redis else "[red]❌ 必选[/red]",
                    "6379", "任务队列（必选）")
+
+    # PostgreSQL（必选）
+    pg_ok = False
+    pg_dsn = os.environ.get("AI_DRAMA_DB_DSN", "")
+    if pg_dsn:
+        try:
+            import psycopg2
+            conn = psycopg2.connect(pg_dsn, connect_timeout=3)
+            conn.close()
+            pg_ok = True
+        except Exception:
+            pass
+    table.add_row("PostgreSQL", "[green]✅[/green]" if pg_ok else "[red]❌ 必选[/red]",
+                   pg_dsn.split("@")[-1] if pg_dsn else "未配置", "数据库（必选）")
 
     # Celery Worker
     celery_ok = False
