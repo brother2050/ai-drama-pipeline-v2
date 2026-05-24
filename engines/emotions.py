@@ -24,6 +24,8 @@ _KEYWORDS = {
 
 def analyze_emotion(text: str) -> str:
     """从文本分析情绪"""
+    if not text:
+        return "neutral"
     for emotion, keywords in _KEYWORDS.items():
         for kw in keywords:
             if kw in text:

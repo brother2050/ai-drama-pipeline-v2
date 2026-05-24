@@ -10,6 +10,8 @@ class MultiCharacterHandler:
 
     def generate_multi_char_prompt(self, characters: list[dict], layout: str = "side_by_side") -> str:
         """生成多人同框 prompt"""
+        if not characters:
+            return ""
         if len(characters) <= 1:
             char = characters[0] if characters else {}
             return char.get("appearance_en", char.get("appearance", ""))
@@ -25,7 +27,7 @@ class MultiCharacterHandler:
         return ", ".join(parts)
 
     def calculate_regions(self, count: int, layout: str = "side_by_side") -> list[dict]:
-        if count <= 1:
+        if not count or count <= 1:
             return [{"position": "center", "x": 0.5, "y": 0.5}]
         return [{"position": "left" if i % 2 == 0 else "right",
                  "x": 0.25 + 0.5 * (i % 2), "y": 0.5} for i in range(count)]

@@ -96,6 +96,17 @@ Rate limit 定义了但从未调用、Rate limit 内存泄露、前端 XSS、add
 |---|------|------|
 | 77 | 同一镜头重复提交 Celery 任务会互相覆盖文件 | ✅ DB running 状态检查 + 标记 |
 
+### 第十二轮（6项）— None 输入防御
+
+| # | 问题 | 修复 |
+|---|------|------|
+| 78 | analyze_emotion(None) 崩溃 | ✅ 空值保护 |
+| 79 | normalize_camera(None) 崩溃 | ✅ 空值保护 |
+| 80 | normalize_shot_type(None) 崩溃 | ✅ 空值保护 |
+| 81 | validate_shot(None) 崩溃 | ✅ 空值保护 |
+| 82 | generate_multi_char_prompt(None) 崩溃 | ✅ 空值保护 |
+| 83 | build_prompt 未知情绪标签直接拼接中文 | ✅ 回退到 neutral |
+
 ---
 
 ## 🟡 已知限制（非 bug，设计取舍）

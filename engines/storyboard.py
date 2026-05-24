@@ -33,6 +33,8 @@ def load_storyboard(path: str, episode: int | None = None) -> list[dict[str, Any
 
 def validate_shot(shot: dict) -> list[str]:
     """验证镜头数据完整性，返回错误列表"""
+    if not shot:
+        return ["镜头数据为空"]
     errors = []
     for field in REQUIRED_FIELDS:
         if not shot.get(field):

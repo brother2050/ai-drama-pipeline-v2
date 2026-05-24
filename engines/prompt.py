@@ -72,7 +72,7 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
 
     # 情绪
     emotion = shot.get("emotion", "neutral")
-    emotion_desc = EMOTION_MAP.get(emotion, emotion)
+    emotion_desc = EMOTION_MAP.get(emotion, EMOTION_MAP.get("neutral", "neutral expression"))
     parts.append(emotion_desc)
 
     # 景别
