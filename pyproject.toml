@@ -38,8 +38,11 @@ all = ["ai-drama-pipeline[face,dev]"]
 [project.scripts]
 drama = "cli:cli"
 
+[tool.setuptools]
+py-modules = ["cli"]
+
 [tool.setuptools.packages.find]
-include = ["api*", "engines*", "flow*", "infra*", "pipeline*", "post*", "scripts*", "web*", "cli*"]
+include = ["api*", "engines*", "flow*", "infra*", "pipeline*", "post*", "scripts*", "web*"]
 
 [tool.ruff]
 line-length = 120
