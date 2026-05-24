@@ -23,7 +23,10 @@ def generate_srt(shots: list[dict], output: str, *,
 
     for i, shot in enumerate(shots):
         dialogue = shot.get("dialogue", "").strip()
-        duration = float(shot.get("duration", 4))
+        try:
+            duration = float(shot.get("duration", 4))
+        except (ValueError, TypeError):
+            duration = 4.0
 
         # current_time 已经是正确的起始时间（考虑了前面所有镜头的转场重叠）
         start = current_time
