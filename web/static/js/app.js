@@ -281,17 +281,16 @@ function closeEdit() {
   if (o) o.remove();
 }
 
-// 保存编辑（防抖）
-const _debouncedSaveEdit = debounce(async (idx) => {
+async function saveEdit(idx) {
   const s = shots[idx];
-  s.scene = document.getElementById('ed-scene').value;
-  s.characters = document.getElementById('ed-chars').value;
-  s.action = document.getElementById('ed-action').value;
-  s.dialogue = document.getElementById('ed-dialogue').value;
-  s.camera = document.getElementById('ed-camera').value;
-  s.shot_type = document.getElementById('ed-shottype').value;
-  s.duration = document.getElementById('ed-dur').value;
-  s.emotion = document.getElementById('ed-emo').value;
+  s.scene = document.getElementById('ed-scene')?.value || '';
+  s.characters = document.getElementById('ed-chars')?.value || '';
+  s.action = document.getElementById('ed-action')?.value || '';
+  s.dialogue = document.getElementById('ed-dialogue')?.value || '';
+  s.camera = document.getElementById('ed-camera')?.value || '';
+  s.shot_type = document.getElementById('ed-shottype')?.value || '';
+  s.duration = document.getElementById('ed-dur')?.value || 4;
+  s.emotion = document.getElementById('ed-emo')?.value || 'neutral';
 
   try {
     await api(`/storyboard/${ep}`, { method:'POST', body:{shots:shots} });
@@ -301,9 +300,7 @@ const _debouncedSaveEdit = debounce(async (idx) => {
     closeEdit();
     renderShotsGrid();
   } catch(e) { toast(e.message, 'error'); }
-}, 500);
-
-async function saveEdit(idx) { _debouncedSaveEdit(idx); }
+}
 
 // ── 删除镜头 ──
 async function deleteShot(idx) {

@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 def create_app() -> FastAPI:
     """创建 FastAPI 应用"""
 
+    # 配置日志
+    from web.services import setup_logging
+    setup_logging(level="INFO")
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("🎬 AI 短剧工作台 v2 已启动")

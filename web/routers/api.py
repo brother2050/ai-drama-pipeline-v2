@@ -92,8 +92,12 @@ def _url_ok(url: str, path: str = "/") -> bool:
 
 def _safe_path(base: Path, *parts: str) -> Path:
     """防止路径遍历的安全路径拼接"""
-    resolved = (base / "/".join(parts)).resolve()
-    if not str(resolved).startswith(str(base.resolve())):
+    joined = "/".join(parts)
+    # 阻断 .. 遍历
+    if ".." in joined.split("/"):
+        raise HTTPException(400, "非法路径")
+    resolved = (base / joined).resolve()
+    if not str(resolved).startswith(str(base.resolve()) + "/"):
         raise HTTPException(400, "非法路径")
     return resolved
 
