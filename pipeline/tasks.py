@@ -80,6 +80,68 @@ def _db_mark_running(config_path: str, episode: int, shot_id: str, step: str) ->
         pass
 
 
+def _try_mark_running_atomic(config_path: str, episode: int, shot_id: str, step: str) -> bool:
+    """原子操作：检查步骤是否正在运行，如果没有则标记为 running。
+
+    使用 INSERT ON CONFLICT 实现原子性，避免竞态条件。
+    Returns True if successfully marked (i.e., no race), False if already running.
+    """
+    try:
+        from infra.database.pool import get_pool, placeholder
+        pool = get_pool()
+        conn = pool.connect()
+        try:
+            cur = conn.cursor()
+            # 先尝试插入 running 状态，如果已存在则检查当前状态
+            cur.execute(f"""
+                INSERT INTO generation_status (episode, shot_id, stage, status, updated_at)
+                VALUES ({placeholder()}, {placeholder()}, {placeholder()}, 'running', CURRENT_TIMESTAMP)
+                ON CONFLICT (episode, shot_id, stage) DO UPDATE SET
+                    status = CASE
+                        WHEN generation_status.status = 'running' THEN generation_status.status
+                        ELSE 'running'
+                    END,
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING status
+            """, (episode, shot_id, step))
+            row = cur.fetchone()
+            conn.commit()
+            # 如果返回的 status 是 running，可能是我们刚标记的，也可能是之前就在运行
+            # 再查一次 updated_at 来判断：如果 updated_at 是刚更新的（<1秒），说明是我们标记的
+            status = row[0] if row else "running"
+            if status == "running":
+                # 检查是否是旧的 running（超过 10 分钟视为超时，允许重新执行）
+                cur.execute(f"""
+                    SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - updated_at))
+                    FROM generation_status
+                    WHERE episode = {placeholder()} AND shot_id = {placeholder()} AND stage = {placeholder()}
+                """, (episode, shot_id, step))
+                age_row = cur.fetchone()
+                age = age_row[0] if age_row else 0
+                if age is not None and age > 600:  # 10 分钟超时
+                    # 超时的 running 状态，允许重新执行
+                    cur.execute(f"""
+                        UPDATE generation_status SET status = 'running', updated_at = CURRENT_TIMESTAMP
+                        WHERE episode = {placeholder()} AND shot_id = {placeholder()} AND stage = {placeholder()}
+                    """, (episode, shot_id, step))
+                    conn.commit()
+                    return True
+                # 新插入的或仍在运行的
+                # 用 updated_at 判断是否是本次插入
+                if age is not None and age < 2:
+                    return True  # 我们刚标记的
+                return False  # 别的 worker 在跑
+            return True  # 不是 running，已切换为 running
+        finally:
+            pool.release(conn)
+    except Exception:
+        # 数据库不可用时回退到非原子版本
+        if _check_step_running(config_path, episode, shot_id, step):
+            return False
+        _db_mark_running(config_path, episode, shot_id, step)
+        return True
+
+
 # ══════════════════════════════════════════════════════════
 #  公共前置检查
 # ══════════════════════════════════════════════════════════
@@ -87,7 +149,8 @@ def _db_mark_running(config_path: str, episode: int, shot_id: str, step: str) ->
 def _prepare(config_path: str, episode: int, shot_id: str, step: str, tool: str, *, need_shot: bool = True):
     """防重复 → 工具可用 → 查镜头 → 标记运行 → 返回 (cfg, cont, shot, err)"""
     _ensure_path()
-    if _check_step_running(config_path, episode, shot_id, step):
+    # 使用原子操作检查+标记，避免竞态条件
+    if not _try_mark_running_atomic(config_path, episode, shot_id, step):
         return None, None, None, _skip(shot_id, step, "该步骤正在执行中")
     ok, reason = _check_available(tool, config_path)
     if not ok:
@@ -95,7 +158,6 @@ def _prepare(config_path: str, episode: int, shot_id: str, step: str, tool: str,
     shot = _find_shot(config_path, episode, shot_id) if need_shot else None
     if need_shot and not shot:
         return None, None, None, _err(shot_id, step, "镜头不存在")
-    _db_mark_running(config_path, episode, shot_id, step)
     from infra.config import Config
     from api.registry import Container
     from api import _ensure_registered; _ensure_registered()
@@ -424,13 +486,23 @@ def tts_single_task(self, config_path: str, text: str, voice_config: dict | None
     cont = Container(cfg.data)
     self.update_state(state="PROGRESS", meta={"step": "tts", "progress": 20, "message": "TTS..."})
     import tempfile
+    output = None
     with tempfile.NamedTemporaryFile(suffix=".wav", prefix="tts_", delete=False) as tmp_f:
         output = tmp_f.name
     try:
         result = cont.get("tts").synthesize(text, output, voice_config=voice_config or {}, emotion=emotion, language=language)
+        return {"path": result, "text": text}
     except Exception as e:
         return {"status": "error", "reason": f"TTS 合成失败: {e}", "text": text}
-    return {"path": result, "text": text}
+    finally:
+        # 清理临时文件（如果结果路径不是临时文件本身）
+        if output and os.path.exists(output):
+            try:
+                # 只在 result 不指向该临时文件时清理
+                if result != output:
+                    os.unlink(output)
+            except OSError:
+                pass
 
 
 @app.task(bind=True, name="pipeline.music", soft_time_limit=120)

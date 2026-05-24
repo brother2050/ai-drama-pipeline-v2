@@ -32,7 +32,9 @@ def upsert(pool, episode: int, shot_id: str, data: dict):
             ON CONFLICT (episode, shot_id) DO UPDATE SET
                 scene_id=EXCLUDED.scene_id, characters=EXCLUDED.characters,
                 action=EXCLUDED.action, dialogue=EXCLUDED.dialogue,
-                action_en=EXCLUDED.action_en, dialogue_en=EXCLUDED.dialogue_en
+                action_en=EXCLUDED.action_en, dialogue_en=EXCLUDED.dialogue_en,
+                camera=EXCLUDED.camera, shot_type=EXCLUDED.shot_type,
+                duration=EXCLUDED.duration, emotion=EXCLUDED.emotion, outfit=EXCLUDED.outfit
         """, (episode, shot_id, data.get("scene", ""), data.get("characters", ""),
               data.get("action", ""), data.get("dialogue", ""),
               data.get("action_en", ""), data.get("dialogue_en", ""),

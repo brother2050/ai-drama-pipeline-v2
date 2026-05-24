@@ -142,14 +142,25 @@ class WorkflowBuilder:
         ip_config = self.models.get("ip_adapter", {})
 
         if char_ids:
-            # 优先使用已训练的 LoRA，无 LoRA 时回退到 IP-Adapter
-            lora_path = self._find_character_lora(char_ids[0])
-            if lora_path:
+            # 为所有角色查找 LoRA，无 LoRA 的用 IP-Adapter 回退
+            chars_with_lora = []
+            chars_without_lora = []
+            for cid in char_ids:
+                lora_path = self._find_character_lora(cid)
+                if lora_path:
+                    chars_with_lora.append((cid, lora_path))
+                else:
+                    chars_without_lora.append(cid)
+
+            # 注入所有有 LoRA 的角色
+            for cid, lora_path in chars_with_lora:
                 lora_strength = self.models.get("character_lora_strength", 0.7)
                 wf = self._inject_lora(wf, lora_path, strength=lora_strength)
-                logger.info(f"使用角色 LoRA: {char_ids[0]} → {lora_path}")
-            else:
-                wf = self._inject_character_refs(wf, char_ids, ip_config)
+                logger.info(f"使用角色 LoRA: {cid} → {lora_path}")
+
+            # 无 LoRA 的角色使用 IP-Adapter 回退
+            if chars_without_lora:
+                wf = self._inject_character_refs(wf, chars_without_lora, ip_config)
 
         # 注入风格 LoRA
         genre = self.config.get("project", {}).get("genre", "")

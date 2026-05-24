@@ -99,17 +99,17 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
         import shutil
         shutil.copy2(str(concat_out), str(final_out))
         logger.info(f"最终输出: {final_out}")
+        # copy2 完成后，concat_out 可被清理
+        concat_out = None
     except Exception as e:
         logger.warning(f"复制到 final 失败: {e}")
 
     # 清理中间文件（保留 final 和原始镜头视频）
-    # concat_out 可能是 _concat/_subtitled/_with_bgm/_vertical 中的一个
-    # 只删除不同于 concat_out 和 final_out 的中间文件
     for intermediate in [out_dir / f"episode_{episode:02d}_concat.mp4",
                          out_dir / f"episode_{episode:02d}_subtitled.mp4",
                          out_dir / f"episode_{episode:02d}_with_bgm.mp4",
                          out_dir / f"episode_{episode:02d}_vertical.mp4"]:
-        if intermediate.exists() and intermediate != final_out and intermediate != concat_out:
+        if intermediate.exists() and intermediate != final_out:
             try:
                 intermediate.unlink()
             except OSError:

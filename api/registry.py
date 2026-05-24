@@ -124,9 +124,9 @@ class Container:
         return cfg
 
     def reload(self, new_config: dict) -> list[str]:
-        self._config = new_config
         changed = []
         with self._lock:
+            self._config = new_config
             for key, inst in list(self._instances.items()):
                 stype, bname = key.split(":", 1)
                 old = self._snapshots.get(key, {})

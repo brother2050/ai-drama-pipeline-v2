@@ -27,7 +27,15 @@ class PgPool:
             self._pool.putconn(conn)
 
     def connect(self):
-        return self._pool.getconn()
+        conn = self._pool.getconn()
+        # 健康检查：如果连接已关闭，丢弃并重新获取
+        if getattr(conn, 'closed', False):
+            try:
+                self._pool.putconn(conn, close=True)
+            except Exception:
+                pass
+            conn = self._pool.getconn()
+        return conn
 
     def release(self, conn):
         self._pool.putconn(conn)

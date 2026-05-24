@@ -22,8 +22,13 @@ def load_storyboard(path: str, episode: int | None = None) -> list[dict[str, Any
     with open(path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            if episode is not None and int(row.get("episode", 0)) != episode:
-                continue
+            if episode is not None:
+                try:
+                    ep = int(row.get("episode", 0) or 0)
+                except (ValueError, TypeError):
+                    continue
+                if ep != episode:
+                    continue
             shots.append(dict(row))
 
     shots.sort(key=lambda s: s.get("shot_id", "000"))

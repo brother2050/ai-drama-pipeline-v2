@@ -33,12 +33,11 @@ def _check_rate_limit(client_ip: str) -> None:
     now = time.time()
     window_start = now - _RATE_LIMIT_WINDOW
 
-    # 清理过期 IP（每次检查时顺便清理）
-    if len(_rate_limit_store) > 1000:
-        expired_ips = [ip for ip, timestamps in _rate_limit_store.items()
-                       if not timestamps or timestamps[-1] < window_start]
-        for ip in expired_ips:
-            del _rate_limit_store[ip]
+    # 每次调用时清理过期 IP（防止低流量环境下内存泄漏）
+    expired_ips = [ip for ip, timestamps in _rate_limit_store.items()
+                   if not timestamps or timestamps[-1] < window_start]
+    for ip in expired_ips:
+        del _rate_limit_store[ip]
 
     if client_ip not in _rate_limit_store:
         _rate_limit_store[client_ip] = []
@@ -113,14 +112,28 @@ def _url_ok(url: str, path: str = "/") -> bool:
 
 def _safe_path(base: Path, *parts: str) -> Path:
     """防止路径遍历的安全路径拼接"""
+    # 过滤空字符串
+    parts = [p for p in parts if p]
     joined = "/".join(parts)
+    if not joined:
+        return base.resolve()
     # 阻断 .. 遍历
     if ".." in joined.split("/"):
         raise HTTPException(400, "非法路径")
     resolved = (base / joined).resolve()
-    if not str(resolved).startswith(str(base.resolve()) + "/"):
+    if not resolved.is_relative_to(base.resolve()):
         raise HTTPException(400, "非法路径")
     return resolved
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """深度合并 override 到 base 中（原地修改 base）"""
+    for key, value in override.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+    return base
 
 
 def _check_tool(name: str, cfg: dict) -> dict:
@@ -416,10 +429,15 @@ def update_config(req: ConfigUpdate):
     - {"project": {...}} — 旧格式（直接发送 config dict）
     """
     data = req.get_config_data()
-    # 保存
     cfg_path = _cfg_path()
-    from infra.config import save_config
-    save_config(cfg_path, data)
+    from infra.config import save_config, load_config
+    # 加载现有配置，深度合并后再保存
+    try:
+        existing = load_config(cfg_path)
+    except Exception:
+        existing = {}
+    _deep_merge(existing, data)
+    save_config(cfg_path, existing)
     # 注意: Container 在每次请求/任务时按需创建，下次会自动读取新配置
     return {"status": "ok"}
 

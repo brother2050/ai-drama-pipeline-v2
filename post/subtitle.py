@@ -41,9 +41,11 @@ def generate_srt(shots: list[dict], output: str, *,
             continue
 
         # 字幕结束时间 = 下一段画面开始时间
-        # 第一段: start + duration（无转场重叠）
-        # 后续段: start + duration（转场重叠已体现在 current_time 中）
-        end = start + duration
+        # 当有转场时，字幕应提前结束以避免与下一个镜头字幕重叠
+        if i > 0 and transition_duration > 0:
+            end = start + max(0, duration - transition_duration)
+        else:
+            end = start + duration
         start_str = _format_srt_time(start)
         end_str = _format_srt_time(end)
         lines.append(f"{idx}\n{start_str} --> {end_str}\n{dialogue}\n")

@@ -12,9 +12,12 @@ import logging
 import os
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+_insightface_lock = threading.Lock()
 
 
 def _extract_keyframes(video_path: str, max_frames: int = 5) -> list[str]:
@@ -88,17 +91,19 @@ def _extract_embedding(image_path: str) -> list[float] | None:
         import numpy as np
         from PIL import Image
 
-        app = getattr(_extract_embedding, "_app", None)
-        if app is None:
-            app = insightface.app.FaceAnalysis(
-                name="buffalo_l", providers=["CPUExecutionProvider"]
-            )
-            app.prepare(ctx_id=0, det_size=(640, 640))
-            _extract_embedding._app = app
+        with _insightface_lock:
+            app = getattr(_extract_embedding, "_app", None)
+            if app is None:
+                app = insightface.app.FaceAnalysis(
+                    name="buffalo_l", providers=["CPUExecutionProvider"]
+                )
+                app.prepare(ctx_id=0, det_size=(640, 640))
+                _extract_embedding._app = app
 
         with Image.open(image_path) as pil_img:
             img = np.array(pil_img.convert("RGB"))
-        faces = app.get(img)
+        with _insightface_lock:
+            faces = app.get(img)
         if faces:
             return faces[0].embedding.tolist()
     except ImportError:
