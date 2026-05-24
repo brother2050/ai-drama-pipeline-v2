@@ -35,10 +35,15 @@ body {
   font-family: -apple-system, 'SF Pro Text', 'Segoe UI', 'Inter', sans-serif;
   background: var(--bg);
   color: var(--fg);
-  display: flex;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -831,7 +836,7 @@ tbody tr:hover {
    ══════════════════════════════════════════════════════════ */
 
 @media (max-width: 768px) {
-  body { flex-direction: column; }
+  #app { flex-direction: column; }
 
   #sidebar {
     width: 100%;
