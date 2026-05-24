@@ -23,24 +23,19 @@ def generate_srt(shots: list[dict], output: str, *,
 
     for i, shot in enumerate(shots):
         dialogue = shot.get("dialogue", "").strip()
-        if not dialogue or dialogue == "......":
-            # 无台词的镜头仍消耗时间
-            duration = float(shot.get("duration", 4))
-            # 非首段镜头减去转场重叠
-            if i > 0 and transition_duration > 0:
-                current_time += duration - transition_duration
-            else:
-                current_time += duration
-            continue
-
         duration = float(shot.get("duration", 4))
+
+        # current_time 已经是正确的起始时间（考虑了前面所有镜头的转场重叠）
         start = current_time
-        # 非首段镜头减去转场重叠
+
+        # 非首段镜头: 实际时长减去转场重叠
         if i > 0 and transition_duration > 0:
-            start = max(0, current_time - transition_duration)
             current_time += duration - transition_duration
         else:
             current_time += duration
+
+        if not dialogue or dialogue == "......":
+            continue
 
         end = start + duration
         start_str = _format_srt_time(start)

@@ -194,6 +194,9 @@ def _run_first_frame(config_path: str, episode: int, shot_id: str) -> dict:
     frame_path = str(out_dir / "frame.png")
     if files:
         Path(files[0]).rename(frame_path)
+    else:
+        return {"shot_id": shot_id, "step": "first_frame", "status": "error",
+                "reason": "ComfyUI 未返回任何图片"}
 
     return {"shot_id": shot_id, "step": "first_frame", "status": "done",
             "path": frame_path, "prompt": prompt.get("positive", "")}
@@ -236,6 +239,9 @@ def _run_video(config_path: str, episode: int, shot_id: str) -> dict:
     video_path = str(out_dir / "video.mp4")
     if files:
         Path(files[0]).rename(video_path)
+    else:
+        return {"shot_id": shot_id, "step": "video", "status": "error",
+                "reason": "ComfyUI 未返回任何视频"}
 
     return {"shot_id": shot_id, "step": "video", "status": "done", "path": video_path}
 
