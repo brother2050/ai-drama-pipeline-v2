@@ -123,10 +123,13 @@ class ConfigUpdate(BaseModel):
     - 新格式: {"data": {...}}
     - 旧格式: {"project": {...}} (直接发送 config dict)
     """
+    model_config = {"extra": "allow"}
+
     data: dict | None = None
 
-    def model_post_init(self, __context) -> None:
-        # 如果 data 为空但模型有额外字段，用整个 body 作为 data
-        if self.data is None:
-            # Pydantic v2: __context 不直接暴露原始数据
-            pass
+    def get_config_data(self) -> dict:
+        """提取配置数据，兼容新旧两种格式"""
+        if self.data is not None:
+            return self.data
+        # 旧格式: 整个 body 就是配置 dict
+        return self.model_extra or {}
