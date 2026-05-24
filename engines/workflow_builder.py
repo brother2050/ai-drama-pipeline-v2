@@ -313,6 +313,24 @@ class WorkflowBuilder:
             logger.warning("未找到 KSampler 节点，无法注入 LoRA")
             return wf
 
+        # 找 CLIP 来源：CheckpointLoaderSimple 输出 1=clip，否则找 CLIPLoader/CLIPTextEncode
+        clip_source = None
+        clip_output_idx = 0
+        if wf[model_source].get("class_type") == "CheckpointLoaderSimple":
+            clip_source = model_source
+            clip_output_idx = 1
+        else:
+            # UNETLoader 不含 clip，找单独的 CLIPLoader
+            clip_source = find_first_node(wf, "DualCLIPLoader") or find_first_node(wf, "CLIPLoader")
+            if not clip_source:
+                # 找任何连接到 KSampler clip 输入的节点
+                for nid, node in wf.items():
+                    if nid == model_source or nid == ksampler:
+                        continue
+                    if node.get("class_type", "").startswith("CLIP"):
+                        clip_source = nid
+                        break
+
         # 创建 LoraLoader 节点
         lora_node_id = f"lora_{Path(lora_path).stem}"
         lora_name = os.path.basename(lora_path)
@@ -324,7 +342,7 @@ class WorkflowBuilder:
                 "strength_model": strength,
                 "strength_clip": strength,
                 "model": [model_source, 0],
-                "clip": [model_source, 1] if len(wf[model_source].get("outputs", [])) > 1 else [model_source, 0],
+                "clip": [clip_source, clip_output_idx] if clip_source else [model_source, 0],
             }
         }
 

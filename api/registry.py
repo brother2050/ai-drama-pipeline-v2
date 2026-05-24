@@ -112,11 +112,16 @@ class Container:
     def _backend_config(self, service_type: str, name: str) -> dict:
         models = self._config.get("models", {})
         key = name.replace("-", "_")
-        return {
+        cfg = {
             **models.get(key, {}),
             "timeouts": self._config.get("timeouts", {}),
             "project_dir": self._config.get("_project_dir", ""),
         }
+        # 也从顶层 service_type 段读取（如 training, llm 等）
+        service_cfg = self._config.get(service_type, {})
+        if isinstance(service_cfg, dict):
+            cfg.update(service_cfg)
+        return cfg
 
     def reload(self, new_config: dict) -> list[str]:
         self._config = new_config
