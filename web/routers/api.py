@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT))
 from web.schemas import (
     StepRequest, TTSRequest, PostRequest, MusicRequest,
     SubtitleRequest, PipelineRequest, CharacterData, SceneData,
-    ProjectCreate, ProjectSwitch,
+    ProjectCreate, ProjectSwitch, ConfigUpdate,
 )
 
 # ── 简易 Rate Limiting ──
@@ -387,10 +387,8 @@ def get_config():
 
 
 @router.post("/config")
-def update_config(data: dict):
-    # 基本校验：必须是 dict，不能包含危险键
-    if not isinstance(data, dict):
-        raise HTTPException(400, "配置必须是 JSON 对象")
+def update_config(req: ConfigUpdate):
+    data = req.data
     # 保存
     cfg_path = _cfg_path()
     from infra.config import save_config
@@ -571,8 +569,8 @@ def run_pipeline(req: PipelineRequest):
     from pipeline.tasks import preview_task, produce_task, post_task
     task_map = {
         "preview": (preview_task, [req.episode, req.level]),
-        "produce": (produce_task, [req.episode]),
-        "post": (post_task, [req.episode]),
+        "produce": (produce_task, [req.episode, req.vertical]),
+        "post": (post_task, [req.episode, req.vertical]),
     }
     entry = task_map.get(req.command)
     if not entry:

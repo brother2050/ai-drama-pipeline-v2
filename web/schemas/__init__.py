@@ -60,6 +60,7 @@ class PipelineRequest(BaseModel):
     episode: int = Field(..., ge=1)
     command: str = Field("produce", pattern=r"^(preview|produce|post)$")
     level: str = Field("draft", pattern=r"^(draft|standard|high)$")
+    vertical: bool = False
 
 
 # ── 角色 ──

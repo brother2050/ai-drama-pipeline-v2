@@ -30,11 +30,8 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
         # 优先用 synced.mp4（口型同步后的），其次 video.mp4
         synced = shot_dir / "synced.mp4"
         video = shot_dir / "video.mp4"
-        final = shot_dir / "final.mp4"
         if synced.exists():
             videos.append(synced)
-        elif final.exists():
-            videos.append(final)
         elif video.exists():
             videos.append(video)
 
@@ -83,12 +80,23 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
 
     # 横转竖
     if vertical:
+        from post.vertical import to_vertical
         vertical_out = out_dir / f"episode_{episode:02d}_vertical.mp4"
         try:
-            FFmpeg.to_vertical(str(concat_out), str(vertical_out))
+            to_vertical(str(concat_out), str(vertical_out), mode="face_track")
             logger.info(f"横转竖完成: {vertical_out}")
+            concat_out = vertical_out
         except Exception as e:
             logger.error(f"横转竖失败: {e}")
+
+    # 最终输出重命名为 final.mp4（统一命名，flow/episode.py 依赖此文件名）
+    final_out = out_dir / f"episode_{episode:02d}_final.mp4"
+    try:
+        import shutil
+        shutil.copy2(str(concat_out), str(final_out))
+        logger.info(f"最终输出: {final_out}")
+    except Exception as e:
+        logger.warning(f"复制到 final 失败: {e}")
 
     logger.info("后期合成完成")
 

@@ -28,15 +28,18 @@ app.conf.update(
     result_expires=86400,
     task_default_queue="drama",
     task_routes={
-        "pipeline.tts": {"queue": "drama"},
-        "pipeline.first_frame": {"queue": "drama"},
-        "pipeline.video": {"queue": "drama"},
-        "pipeline.lipsync": {"queue": "drama"},
+        "pipeline.step.tts": {"queue": "drama"},
+        "pipeline.step.first_frame": {"queue": "drama"},
+        "pipeline.step.video": {"queue": "drama"},
+        "pipeline.step.lipsync": {"queue": "drama"},
         "pipeline.shot": {"queue": "drama"},
         "pipeline.preview": {"queue": "drama"},
         "pipeline.produce": {"queue": "drama"},
         "pipeline.post": {"queue": "drama"},
         "pipeline.portraits": {"queue": "drama"},
+        "pipeline.tts_single": {"queue": "drama"},
+        "pipeline.music": {"queue": "drama"},
+        "pipeline.subtitle": {"queue": "drama"},
     },
 )
 

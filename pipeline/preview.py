@@ -110,23 +110,35 @@ def _process_shot(shot: dict, sm, container, cfg, shot_out: Path, preset: dict):
         except Exception as e:
             logger.warning(f"    ⚠ TTS 失败: {e}")
 
-    # 2) 首帧生成（需要 ComfyUI）
+    # 2) 首帧生成（需要 ComfyUI，使用 WorkflowBuilder 含 IP-Adapter）
     frame_path = shot_out / "frame.png"
     try:
-        from engines.prompt import build_prompt
-        action_en = translate_to_english(shot.get("action", ""), llm=None)
-        prompt = build_prompt({**shot, "action_en": action_en},
-                              character_desc=", ".join(char_descs),
-                              scene_desc=scene_desc,
-                              style=cfg.get("project.style", "cinematic"),
-                              genre=cfg.get("project.genre", "urban"))
+        from engines.workflow_builder import WorkflowBuilder
+        from engines.multi_char import MultiCharacterHandler
 
-        comfyui = container.get("image")
-        files = comfyui.generate({"prompt": {"positive": prompt}}, str(shot_out))
-        if files:
-            # 重命名为 frame.png
-            Path(files[0]).rename(frame_path)
-            logger.info(f"    ✅ 首帧: {frame_path.name}")
+        # 多角色 prompt
+        multi_char_prompt = ""
+        if len(char_ids) > 1:
+            mch = MultiCharacterHandler()
+            chars_data = [sm.get_character(cid) for cid in char_ids]
+            multi_char_prompt = mch.generate_multi_char_prompt([c for c in chars_data if c])
+
+        models = cfg.get("models", {})
+        wb = WorkflowBuilder(cfg.data, models, cfg.project_dir)
+        wb.load_workflows()
+        prompt, wf = wb.build_first_frame(
+            shot, character_desc=", ".join(char_descs),
+            scene_desc=scene_desc, multi_char_prompt=multi_char_prompt)
+
+        if wf:
+            comfyui = container.get("image")
+            files = comfyui.generate(wf, str(shot_out))
+            if files:
+                from pathlib import Path as P
+                P(files[0]).rename(frame_path)
+                logger.info(f"    ✅ 首帧: {frame_path.name}")
+        else:
+            logger.warning(f"    ⚠ 首帧工作流为空")
     except Exception as e:
         logger.warning(f"    ⚠ 首帧生成失败: {e}")
 
@@ -134,9 +146,20 @@ def _process_shot(shot: dict, sm, container, cfg, shot_out: Path, preset: dict):
     video_path = shot_out / "video.mp4"
     if frame_path.exists():
         try:
-            wf_builder = container.get("video")
-            # 简单的 img2video 工作流
-            logger.info(f"    ⚠ 视频生成需要 ComfyUI 工作流模板")
+            from engines.workflow_builder import WorkflowBuilder
+            models = cfg.get("models", {})
+            wb = WorkflowBuilder(cfg.data, models, cfg.project_dir)
+            wb.load_workflows()
+            video_wf = wb.build_video(str(frame_path))
+            if video_wf:
+                video_backend = container.get("video")
+                files = video_backend.generate(video_wf, str(shot_out))
+                if files:
+                    from pathlib import Path as P
+                    P(files[0]).rename(video_path)
+                    logger.info(f"    ✅ 视频: {video_path.name}")
+            else:
+                logger.warning(f"    ⚠ 视频工作流为空（缺少模板）")
         except Exception as e:
             logger.warning(f"    ⚠ 视频生成失败: {e}")
 

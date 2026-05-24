@@ -42,18 +42,6 @@ def _get_duration(path: str) -> float:
     return float(info.get("format", {}).get("duration", 0))
 
 
-def _get_audio_duration(path: str) -> float:
-    """获取音频流时长（秒）"""
-    from infra.ffmpeg import probe
-    info = probe(path)
-    for stream in info.get("streams", []):
-        if stream.get("codec_type") == "audio":
-            dur = stream.get("duration")
-            if dur:
-                return float(dur)
-    return float(info.get("format", {}).get("duration", 0))
-
-
 def build_concat_filter(inputs: list[str], output: str, transition: str = "crossfade",
                         duration: float = 0.5, timeout: int = 1200) -> str:
     """带转场的视频拼接

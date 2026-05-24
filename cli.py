@@ -251,8 +251,9 @@ def post(episode, vertical, config_path):
 
 @cli.command("all")
 @click.argument("episode", type=int, default=1)
+@click.option("--vertical", is_flag=True, help="横转竖")
 @click.option("-c", "--config", "config_path", default=None)
-def run_all(episode, config_path):
+def run_all(episode, vertical, config_path):
     """一键全流程（preview → produce → post）"""
     _ensure_deps()
     cfg = _resolve_config(config_path)
@@ -263,7 +264,12 @@ def run_all(episode, config_path):
         ("后期", "pipeline.post"),
     ], 1):
         console.print(f"[bold][{i}/3] {label}[/bold]")
-        _run_via_celery(task_name, cfg, episode)
+        if task_name == "pipeline.post":
+            _run_via_celery(task_name, cfg, episode, vertical=vertical)
+        elif task_name == "pipeline.produce":
+            _run_via_celery(task_name, cfg, episode, vertical=vertical)
+        else:
+            _run_via_celery(task_name, cfg, episode)
     console.print("\n[bold green]✅ 全流程完成！[/bold green]")
 
 

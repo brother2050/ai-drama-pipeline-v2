@@ -320,11 +320,11 @@ def test_effects():
     print("✅ 特效处理正常")
 
 
-# ── post/transitions.py ──
+# ── infra/transitions.py ──
 
 def test_transitions():
     """测试转场"""
-    from post.transitions import get_xfade_filter, TRANSITIONS
+    from infra.transitions import get_xfade_filter, TRANSITIONS
 
     f = get_xfade_filter("crossfade", 10.0, 0.5)
     assert "xfade=transition=fade" in f

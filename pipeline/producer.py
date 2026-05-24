@@ -102,10 +102,12 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path):
         except Exception as e:
             logger.warning(f"  ⚠ TTS 失败: {e}")
 
-    # ── 2. 首帧生成 ──
+    # ── 2. 首帧生成（使用 WorkflowBuilder 含 IP-Adapter）──
     frame_path = shot_out / "frame.png"
     try:
-        # 构建 prompt
+        from engines.workflow_builder import WorkflowBuilder
+        from engines.multi_char import MultiCharacterHandler
+
         char_descs = []
         for cid in char_ids:
             char = sm.get_character(cid)
@@ -117,20 +119,27 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path):
         scene = sm.get_scene(scene_id)
         scene_desc = translate_to_english(scene.get("description", ""), llm=None) if scene else ""
 
-        from engines.prompt import build_prompt
-        action_en = translate_to_english(shot.get("action", ""), llm=None)
-        prompt = build_prompt({**shot, "action_en": action_en},
-                              character_desc=", ".join(char_descs),
-                              scene_desc=scene_desc,
-                              style=cfg.get("project.style", "cinematic"),
-                              genre=cfg.get("project.genre", "urban"))
+        # 多角色 prompt
+        multi_char_prompt = ""
+        if len(char_ids) > 1:
+            mch = MultiCharacterHandler()
+            chars_data = [sm.get_character(cid) for cid in char_ids]
+            multi_char_prompt = mch.generate_multi_char_prompt([c for c in chars_data if c])
 
-        comfyui = container.get("image")
-        files = comfyui.generate({"prompt": {"positive": prompt}}, str(shot_out))
-        if files:
-            from pathlib import Path as P
-            P(files[0]).rename(frame_path)
-            logger.info(f"  ✅ 首帧完成")
+        models = cfg.get("models", {})
+        wb = WorkflowBuilder(cfg.data, models, cfg.project_dir)
+        wb.load_workflows()
+        prompt, wf = wb.build_first_frame(
+            shot, character_desc=", ".join(char_descs),
+            scene_desc=scene_desc, multi_char_prompt=multi_char_prompt)
+
+        if wf:
+            comfyui = container.get("image")
+            files = comfyui.generate(wf, str(shot_out))
+            if files:
+                from pathlib import Path as P
+                P(files[0]).rename(frame_path)
+                logger.info(f"  ✅ 首帧完成")
     except Exception as e:
         logger.warning(f"  ⚠ 首帧失败: {e}")
 
