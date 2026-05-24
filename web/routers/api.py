@@ -85,7 +85,7 @@ from web.schemas import (
 def _cfg() -> dict:
     cfg_path = ROOT / "config" / "project.yaml"
     if cfg_path.exists():
-        with open(cfg_path) as f:
+        with open(cfg_path, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
     return {}
 
@@ -437,7 +437,7 @@ def list_projects():
     result = []
     cfg = ROOT / "config" / "project.yaml"
     if cfg.exists():
-        with open(cfg) as f:
+        with open(cfg, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         result.append({"name": data.get("project", {}).get("name", "默认"),
                        "path": str(ROOT), "active": active is None})
@@ -446,7 +446,7 @@ def list_projects():
             continue
         cfg = d / "config" / "project.yaml"
         if cfg.exists():
-            with open(cfg) as f:
+            with open(cfg, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
             result.append({"name": data.get("project", {}).get("name", d.name),
                            "path": str(d), "active": active == str(d)})
@@ -477,7 +477,7 @@ def list_characters():
         for f in chars_dir.glob("*.yaml"):
             if f.stem.endswith(".example"):
                 continue
-            with open(f) as fh:
+            with open(f, encoding="utf-8") as fh:
                 data = yaml.safe_load(fh) or {}
             char = data.get("character", {})
             if char.get("id"):
@@ -515,7 +515,7 @@ def list_scenes():
         for f in scenes_dir.glob("*.yaml"):
             if f.stem.endswith(".example"):
                 continue
-            with open(f) as fh:
+            with open(f, encoding="utf-8") as fh:
                 data = yaml.safe_load(fh) or {}
             scene = data.get("scene", {})
             if scene.get("id"):

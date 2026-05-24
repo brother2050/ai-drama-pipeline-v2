@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 # GPU → 推荐配置
 GPU_PRESETS = {
     # (min_vram_mb, max_vram_mb): {overrides}
-    (0, 0): {"image_backend": "sd15", "video_backend": "animatediff", "resolution": [320, 180],
-             "image_steps": 8, "video_frames": 4, "note": "无 GPU / API 模式"},
+    (0, 8000): {"image_backend": "sd15", "video_backend": "animatediff", "resolution": [320, 180],
+             "image_steps": 8, "video_frames": 4, "note": "无 GPU / 低显存 / API 模式"},
     (8000, 16000): {"image_backend": "sd15", "video_backend": "animatediff",
                     "resolution": [512, 512], "image_steps": 20, "video_frames": 8},
     (16000, 24000): {"image_backend": "sd15", "video_backend": "animatediff",

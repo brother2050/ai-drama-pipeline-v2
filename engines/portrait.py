@@ -27,7 +27,7 @@ def ensure_portrait(char_id: str, config: dict, container=None) -> str:
         logger.warning(f"角色配置不存在: {char_file}")
         return ""
 
-    with open(char_file) as f:
+    with open(char_file, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     char = data.get("character", {})
     appearance = char.get("appearance", char_id)

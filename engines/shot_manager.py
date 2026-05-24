@@ -45,7 +45,7 @@ class ShotManager:
             if f.stem.endswith(".example"):
                 continue
             try:
-                with open(f) as fh:
+                with open(f, encoding="utf-8") as fh:
                     data = yaml.safe_load(fh) or {}
                 char = data.get("character", {})
                 if char.get("id"):
@@ -62,7 +62,7 @@ class ShotManager:
             if f.stem.endswith(".example"):
                 continue
             try:
-                with open(f) as fh:
+                with open(f, encoding="utf-8") as fh:
                     data = yaml.safe_load(fh) or {}
                 scene = data.get("scene", {})
                 if scene.get("id"):

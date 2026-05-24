@@ -84,6 +84,13 @@ class Config:
         "project.fps": (1, 120),
         "server.port": (1, 65535),
         "comfyui.timeout": (1, 3600),
+        "post_production.transition_duration": (0, 10),
+        "post_production.bgm_volume": (0, 1),
+        "timeouts.comfyui": (1, 7200),
+        "timeouts.tts": (1, 600),
+        "timeouts.lipsync": (1, 600),
+        "timeouts.llm": (1, 3600),
+        "timeouts.music": (1, 600),
     }
 
     def __init__(self, path: str | None = None):

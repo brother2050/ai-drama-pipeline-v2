@@ -12,20 +12,24 @@ _pool = None
 
 
 class SQLitePool:
-    """SQLite 连接池（轻量回退）"""
+    """SQLite 连接池（轻量回退，WAL 模式支持并发读写）"""
     def __init__(self, path: str):
         self._path = path
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        # 初始化 schema
+        # 初始化 schema + WAL 模式
         from infra.database.schema import init_schema
         conn = sqlite3.connect(self._path)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         init_schema(conn)
         conn.close()
 
     def connect(self):
-        conn = sqlite3.connect(self._path)
+        conn = sqlite3.connect(self._path, timeout=10)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         return conn
 
     def release(self, conn):
