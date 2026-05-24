@@ -76,7 +76,8 @@ def _db_record_step(config_path: str, episode: int, shot_id: str,
         status = result.get("status", "unknown")
         path = result.get("path", "")
         error = result.get("reason", "") if status in ("skipped", "error") else ""
-        upsert_status(pool, episode, shot_id, step, status=status, path=path, error=error)
+        elapsed = result.get("elapsed", 0.0)
+        upsert_status(pool, episode, shot_id, step, status=status, path=path, error=error, elapsed=elapsed)
     except Exception as e:
         logger.debug(f"DB 写入跳过: {e}")
 
@@ -121,7 +122,10 @@ def _run_tts(config_path: str, episode: int, shot_id: str) -> dict:
     char = sm.get_character(char_ids[0]) if char_ids else {}
     voice_config = char.get("voice", {})
 
-    tts.synthesize(dialogue, audio_path, voice_config=voice_config)
+    try:
+        tts.synthesize(dialogue, audio_path, voice_config=voice_config)
+    except Exception as e:
+        return {"shot_id": shot_id, "step": "tts", "status": "error", "reason": f"TTS 合成失败: {e}"}
     return {"shot_id": shot_id, "step": "tts", "status": "done", "path": audio_path}
 
 
@@ -248,7 +252,10 @@ def _run_video(config_path: str, episode: int, shot_id: str) -> dict:
                 "reason": "视频工作流为空（缺少模板）"}
 
     video_backend = cont.get("video")
-    files = video_backend.generate(video_wf, str(out_dir))
+    try:
+        files = video_backend.generate(video_wf, str(out_dir))
+    except Exception as e:
+        return {"shot_id": shot_id, "step": "video", "status": "error", "reason": f"视频生成失败: {e}"}
     video_path = str(out_dir / "video.mp4")
     if files:
         Path(files[0]).rename(video_path)
@@ -288,7 +295,10 @@ def _run_lipsync(config_path: str, episode: int, shot_id: str) -> dict:
 
     lipsync = cont.get("lipsync")
     synced_path = str(out_dir / "synced.mp4")
-    lipsync.sync(str(video_path), str(audio_path), synced_path)
+    try:
+        lipsync.sync(str(video_path), str(audio_path), synced_path)
+    except Exception as e:
+        return {"shot_id": shot_id, "step": "lipsync", "status": "error", "reason": f"口型同步失败: {e}"}
 
     return {"shot_id": shot_id, "step": "lipsync", "status": "done", "path": synced_path}
 
@@ -372,7 +382,10 @@ def shot_task(self, config_path: str, episode: int, shot_data: dict):
             "message": f"[{shot_id}] {step_name} ({i+1}/{len(steps)})"})
 
         try:
+            t0 = time.time()
             result = step_fn(config_path, episode, shot_id)
+            elapsed = round(time.time() - t0, 2)
+            result["elapsed"] = elapsed
             results[step_name] = result
 
             # 写入数据库

@@ -23,6 +23,16 @@ from engines.gpu_adapter import get_gpu_config
 logger = logging.getLogger(__name__)
 
 
+class _SimpleContainer:
+    """简易容器包装 — 只包装已实例化的后端，供 ensure_portrait 等使用"""
+    def __init__(self, image_backend):
+        self._image = image_backend
+    def get(self, service_type: str, name: str = None):
+        if service_type == "image":
+            return self._image
+        raise ValueError(f"SimpleContainer 不支持: {service_type}")
+
+
 class WorkflowBuilder:
     """ComfyUI 工作流构建器"""
 
@@ -302,8 +312,9 @@ class WorkflowBuilder:
         if refs:
             return sorted(refs)
 
-        # 尝试自动定妆照
-        portrait = ensure_portrait(char_id, self.config, None)
+        # 尝试自动定妆照（传入简易容器包装 comfyui 实例）
+        portrait = ensure_portrait(char_id, self.config,
+                                   _SimpleContainer(self.comfyui) if self.comfyui else None)
         if portrait:
             return [portrait]
 

@@ -113,6 +113,17 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
 
     logger.info("后期合成完成")
 
+    # 更新集状态到数据库
+    try:
+        from infra.database.pool import get_pool
+        from infra.database.episodes import upsert as db_upsert_episode
+        pool = get_pool()
+        db_upsert_episode(pool, episode, {
+            "title": f"第{episode}集", "status": "done", "shot_count": len(videos)
+        })
+    except Exception as e:
+        logger.debug(f"数据库状态更新跳过: {e}")
+
 
 def main():
     parser = argparse.ArgumentParser()

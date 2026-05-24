@@ -35,11 +35,20 @@ def ensure_portrait(char_id: str, config: dict, container=None) -> str:
     if container:
         try:
             comfyui = container.get("image")
-            prompt = f"portrait photo, {appearance}, high quality, detailed face"
-            portrait_dir.mkdir(parents=True, exist_ok=True)
-            files = comfyui.generate({"prompt": {"positive": prompt}}, str(portrait_dir))
-            if files:
-                return files[0]
+            # 使用 WorkflowBuilder 构建正确的定妆照工作流
+            from engines.workflow_builder import WorkflowBuilder
+            models = config.get("models", {})
+            wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui)
+            wb.load_workflows()
+            prompt_text = f"portrait photo, {appearance}, high quality, detailed face, 4k"
+            # 构建一个简单的首帧工作流（单角色，无场景）
+            fake_shot = {"characters": char_id, "emotion": "neutral",
+                         "shot_type": "特写", "camera": "固定"}
+            prompt, wf = wb.build_first_frame(fake_shot, character_desc=appearance)
+            if wf:
+                files = comfyui.generate(wf, str(portrait_dir))
+                if files:
+                    return files[0]
         except Exception as e:
             logger.error(f"定妆照生成失败: {e}")
 

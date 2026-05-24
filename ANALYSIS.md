@@ -36,6 +36,18 @@ Rate limit 定义了但从未调用、Rate limit 内存泄露、前端 XSS、add
 | 46 | 中间文件清理可能误删活跃文件 | ✅ 增加 concat_out 保护 |
 | 47 | infra/http.py ApiClient 未被使用 | ✅ 标注为共享工具 |
 
+### 第六轮（7项）— 深度逻辑修复
+
+| # | 问题 | 修复 |
+|---|------|------|
+| 48 | ensure_portrait 传 None container（自动定妆照永远不生成） | ✅ 传入 _SimpleContainer(comfyui) |
+| 49 | ensure_portrait 的 workflow 格式错误（非 ComfyUI API 格式） | ✅ 改用 WorkflowBuilder 构建 |
+| 50 | run_post 完成后不更新集状态到数据库 | ✅ 写入 episodes 表 |
+| 51 | _run_tts/_run_lipsync/_run_video 不包裹异常 | ✅ try/except 返回 error dict |
+| 52 | shot_task 不记录每步耗时 | ✅ time.time() 计时 + elapsed 字段 |
+| 53 | save_character/save_scene 不同步数据库 | ✅ YAML + DB 双写 |
+| 54 | delete_character/delete_scene 不同步数据库 | ✅ 文件 + DB 双删 |
+
 ---
 
 ## 🟡 已知限制（非 bug，设计取舍）

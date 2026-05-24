@@ -493,6 +493,16 @@ def save_character(req: CharacterData):
     char_id = data.pop("id")
     with open(chars_dir / f"{char_id}.yaml", "w") as f:
         yaml.dump({"character": {**data, "id": char_id}}, f, allow_unicode=True, default_flow_style=False)
+
+    # 同步更新数据库
+    try:
+        from infra.database.pool import get_pool
+        from infra.database.characters import upsert as db_upsert_char
+        pool = get_pool()
+        db_upsert_char(pool, char_id, data)
+    except Exception as e:
+        logger.debug(f"数据库同步跳过: {e}")
+
     return {"status": "ok", "id": char_id}
 
 
@@ -504,6 +514,16 @@ def delete_character(char_id: str):
     if not char_file.exists():
         raise HTTPException(404, f"角色 {char_id} 不存在")
     char_file.unlink()
+
+    # 同步删除数据库记录
+    try:
+        from infra.database.pool import get_pool
+        from infra.database.characters import delete as db_delete_char
+        pool = get_pool()
+        db_delete_char(pool, char_id)
+    except Exception as e:
+        logger.debug(f"数据库同步跳过: {e}")
+
     return {"status": "ok", "id": char_id}
 
 
@@ -531,6 +551,16 @@ def save_scene(req: SceneData):
     scene_id = data.pop("id")
     with open(scenes_dir / f"{scene_id}.yaml", "w") as f:
         yaml.dump({"scene": {**data, "id": scene_id}}, f, allow_unicode=True, default_flow_style=False)
+
+    # 同步更新数据库
+    try:
+        from infra.database.pool import get_pool
+        from infra.database.scenes import upsert as db_upsert_scene
+        pool = get_pool()
+        db_upsert_scene(pool, scene_id, data)
+    except Exception as e:
+        logger.debug(f"数据库同步跳过: {e}")
+
     return {"status": "ok", "id": scene_id}
 
 
@@ -542,6 +572,16 @@ def delete_scene(scene_id: str):
     if not scene_file.exists():
         raise HTTPException(404, f"场景 {scene_id} 不存在")
     scene_file.unlink()
+
+    # 同步删除数据库记录
+    try:
+        from infra.database.pool import get_pool
+        from infra.database.scenes import delete as db_delete_scene
+        pool = get_pool()
+        db_delete_scene(pool, scene_id)
+    except Exception as e:
+        logger.debug(f"数据库同步跳过: {e}")
+
     return {"status": "ok", "id": scene_id}
 
 
