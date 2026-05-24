@@ -1,10 +1,12 @@
-# 模型注册表 — 工作流文件映射 + 默认参数
+# ============================================================
+# 模型注册表 — 配置驱动的后端管理
+# 修改此文件即可切换模型，无需改代码
+# ============================================================
 
 image_backends:
   sd15:
     workflow: "01_first_frame_sd15.json"
     is_flux: false
-    sampler_node: "KSampler"
     default_params:
       width: 512
       height: 512
@@ -13,7 +15,6 @@ image_backends:
   flux:
     workflow: "01_first_frame_flux.json"
     is_flux: true
-    sampler_node: "KSampler"
     default_params:
       width: 1024
       height: 576
@@ -49,9 +50,5 @@ gpu_profiles:
     video_frames: 12
   a100:
     resolution: [1024, 576]
-    image_steps: 28
-    video_frames: 16
-  rtx4090:
-    resolution: [1280, 720]
     image_steps: 28
     video_frames: 16

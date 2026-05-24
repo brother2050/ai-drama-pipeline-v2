@@ -1,4 +1,4 @@
-"""集管理"""
+"""集管理 — 文件系统 + 数据库双查询"""
 from __future__ import annotations
 import logging
 from pathlib import Path
@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_episode_status(project_dir: str, episode: int) -> dict:
-    """获取集状态"""
+    """获取集状态（文件系统 + 数据库）"""
     out_dir = Path(project_dir) / "output" / f"e{episode:02d}"
     if not out_dir.exists():
         return {"episode": episode, "status": "not_started", "shots": 0}
@@ -29,8 +29,21 @@ def get_episode_status(project_dir: str, episode: int) -> dict:
     has_final = any(out_dir.glob("*_final.mp4"))
     has_concat = any(out_dir.glob("*_concat.mp4"))
 
+    # 从数据库补充生成状态详情
+    db_details = []
+    try:
+        from infra.database.pool import get_pool
+        from infra.database.generation import get_episode_statuses
+        pool = get_pool()
+        db_rows = get_episode_statuses(pool, episode)
+        if db_rows:
+            db_details = db_rows
+    except Exception:
+        pass
+
     return {"episode": episode,
             "status": "done" if has_final else ("in_progress" if has_concat or shot_dirs else "not_started"),
             "shots": len(shots_status),
             "final_video": str(next(out_dir.glob("*_final.mp4"), "")),
-            "details": shots_status}
+            "details": shots_status,
+            "db_details": db_details}

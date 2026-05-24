@@ -1,4 +1,4 @@
-"""字幕生成 — SRT 格式"""
+"""字幕生成 — SRT 格式（考虑转场重叠）"""
 from __future__ import annotations
 
 import logging
@@ -7,23 +7,46 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def generate_srt(shots: list[dict], output: str) -> str:
-    """从分镜表生成 SRT 字幕"""
+def generate_srt(shots: list[dict], output: str, *,
+                 transition_duration: float = 0.0) -> str:
+    """从分镜表生成 SRT 字幕
+
+    Args:
+        shots: 镜头列表
+        output: 输出 SRT 路径
+        transition_duration: 转场时长（秒），用于修正时间轴偏移
+    """
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     lines = []
     idx = 1
     current_time = 0.0
 
-    for shot in shots:
+    for i, shot in enumerate(shots):
         dialogue = shot.get("dialogue", "").strip()
         if not dialogue or dialogue == "......":
+            # 无台词的镜头仍消耗时间
+            duration = float(shot.get("duration", 4))
+            # 非首段镜头减去转场重叠
+            if i > 0 and transition_duration > 0:
+                current_time += duration - transition_duration
+            else:
+                current_time += duration
             continue
+
         duration = float(shot.get("duration", 4))
-        start = _format_srt_time(current_time)
-        end = _format_srt_time(current_time + duration)
-        lines.append(f"{idx}\n{start} --> {end}\n{dialogue}\n")
+        start = current_time
+        # 非首段镜头减去转场重叠
+        if i > 0 and transition_duration > 0:
+            start = max(0, current_time - transition_duration)
+            current_time += duration - transition_duration
+        else:
+            current_time += duration
+
+        end = start + duration
+        start_str = _format_srt_time(start)
+        end_str = _format_srt_time(end)
+        lines.append(f"{idx}\n{start_str} --> {end_str}\n{dialogue}\n")
         idx += 1
-        current_time += duration
 
     Path(output).write_text("\n".join(lines), encoding="utf-8")
     logger.info(f"字幕生成: {output} ({idx-1} 条)")

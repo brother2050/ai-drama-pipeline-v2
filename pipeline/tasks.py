@@ -66,6 +66,21 @@ def _check_available(tool_name: str, config_path: str) -> tuple[bool, str]:
     return result["available"], result.get("reason", "")
 
 
+def _db_record_step(config_path: str, episode: int, shot_id: str,
+                    step: str, result: dict) -> None:
+    """将步骤结果写入数据库（静默失败，不影响主流程）"""
+    try:
+        from infra.database.pool import get_pool
+        from infra.database.generation import upsert_status
+        pool = get_pool()
+        status = result.get("status", "unknown")
+        path = result.get("path", "")
+        error = result.get("reason", "") if status in ("skipped", "error") else ""
+        upsert_status(pool, episode, shot_id, step, status=status, path=path, error=error)
+    except Exception as e:
+        logger.debug(f"DB 写入跳过: {e}")
+
+
 # ══════════════════════════════════════════════════════════
 #  核心逻辑函数（纯函数，shot_task 直接调用）
 # ══════════════════════════════════════════════════════════
@@ -101,7 +116,8 @@ def _run_tts(config_path: str, episode: int, shot_id: str) -> dict:
     # 获取角色语音配置
     char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
     from engines.shot_manager import ShotManager
-    sm = ShotManager("", str(Path(cfg.project_dir) / "config"))
+    sb_path = str(Path(cfg.project_dir) / "storyboard" / "episodes.csv")
+    sm = ShotManager(sb_path, str(Path(cfg.project_dir) / "config"))
     char = sm.get_character(char_ids[0]) if char_ids else {}
     voice_config = char.get("voice", {})
 
@@ -137,7 +153,8 @@ def _run_first_frame(config_path: str, episode: int, shot_id: str) -> dict:
 
     # 角色/场景信息
     char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
-    sm = ShotManager("", str(Path(cfg.project_dir) / "config"))
+    sb_path = str(Path(cfg.project_dir) / "storyboard" / "episodes.csv")
+    sm = ShotManager(sb_path, str(Path(cfg.project_dir) / "config"))
     char_descs = []
     for cid in char_ids:
         c = sm.get_character(cid)
@@ -339,6 +356,9 @@ def shot_task(self, config_path: str, episode: int, shot_data: dict):
             result = step_fn(config_path, episode, shot_id)
             results[step_name] = result
 
+            # 写入数据库
+            _db_record_step(config_path, episode, shot_id, step_name, result)
+
             status = result.get("status", "")
             if status == "skipped":
                 logger.info(f"[{shot_id}] {step_name}: 跳过 — {result.get('reason', '')}")
@@ -485,7 +505,8 @@ def _run_subtitle(config_path: str, episode: int) -> dict:
     out_dir = Path(cfg.project_dir) / "output" / f"e{episode:02d}"
     out_dir.mkdir(parents=True, exist_ok=True)
     srt_path = str(out_dir / f"episode_{episode:02d}.srt")
-    generate_srt(shots, srt_path)
+    transition_duration = cfg.get("post_production.transition_duration", 0.5)
+    generate_srt(shots, srt_path, transition_duration=transition_duration)
     return {"path": srt_path, "count": len(shots)}
 
 
