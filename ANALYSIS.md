@@ -81,6 +81,15 @@ Rate limit 定义了但从未调用、Rate limit 内存泄露、前端 XSS、add
 | 71 | generate_srt transition_duration > duration 时 current_time 为负 | ✅ max(0, ...) 保护 |
 | 72 | deleteShotFromSB 硬编码中文确认框 | ✅ 改用 t() i18n |
 
+### 第十轮（5项）— 线程安全 & 边界输入
+
+| # | 问题 | 修复 |
+|---|------|------|
+| 73 | get_pool() 多线程竞态（双重检查缺失） | ✅ threading.Lock + double-check |
+| 74 | sanitize_filename(None) 崩溃 | ✅ 空值保护 |
+| 75 | truncate(None) 崩溃 | ✅ 空值保护 |
+| 76 | _format_srt_time(-1) 输出负时间 | ✅ max(0, seconds) 钳位 |
+
 ---
 
 ## 🟡 已知限制（非 bug，设计取舍）

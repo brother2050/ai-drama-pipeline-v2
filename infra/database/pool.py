@@ -2,11 +2,13 @@
 from __future__ import annotations
 import logging
 import os
+import threading
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 _pool = None
+_pool_lock = threading.Lock()
 
 
 class PgPool:
@@ -37,7 +39,11 @@ class PgPool:
 def get_pool() -> PgPool:
     """获取 PostgreSQL 连接池（必须配置 AI_DRAMA_DB_DSN）"""
     global _pool
-    if _pool is None:
+    if _pool is not None:
+        return _pool
+    with _pool_lock:
+        if _pool is not None:
+            return _pool
         dsn = os.environ.get("AI_DRAMA_DB_DSN", "")
         if not dsn:
             raise RuntimeError(

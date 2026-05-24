@@ -53,6 +53,7 @@ def generate_srt(shots: list[dict], output: str, *,
 
 
 def _format_srt_time(seconds: float) -> str:
+    seconds = max(0, seconds)
     h = int(seconds // 3600)
     m = int((seconds % 3600) // 60)
     s = int(seconds % 60)
