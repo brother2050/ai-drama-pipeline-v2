@@ -649,14 +649,16 @@ def save_storyboard(episode: int, data: dict):
 @router.post("/pipeline/run")
 def run_pipeline(req: PipelineRequest):
     from pipeline.tasks import preview_task, produce_task, post_task
-    if req.command == "preview":
-        return _submit_task(preview_task, _cfg_path(), req.episode, req.level)
-    elif req.command == "produce":
-        return _submit_task(produce_task, _cfg_path(), req.episode, vertical=req.vertical)
-    elif req.command == "post":
-        return _submit_task(post_task, _cfg_path(), req.episode, req.vertical)
-    else:
+    cfg = _cfg_path()
+    dispatch = {
+        "preview": lambda: _submit_task(preview_task, cfg, req.episode, req.level),
+        "produce": lambda: _submit_task(produce_task, cfg, req.episode, vertical=req.vertical),
+        "post":    lambda: _submit_task(post_task, cfg, req.episode, req.vertical),
+    }
+    handler = dispatch.get(req.command)
+    if not handler:
         raise HTTPException(400, f"未知命令: {req.command}")
+    return handler()
 
 
 @router.get("/pipeline/status/{episode}")
