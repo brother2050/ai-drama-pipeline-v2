@@ -1,0 +1,74 @@
+"""ComfyUI 图片/视频生成 — HTTP API"""
+from __future__ import annotations
+import json, logging, time, uuid
+from pathlib import Path
+import httpx
+from api.registry import BackendMeta, registry
+
+logger = logging.getLogger(__name__)
+
+class ComfyUI:
+    def __init__(self, config: dict):
+        self._url = config.get("url", "http://127.0.0.1:8188").rstrip("/")
+        self._timeout = config.get("timeouts", {}).get("comfyui", 300)
+        self._api_key = config.get("api_key", "")
+
+    @property
+    def name(self): return "comfyui"
+
+    def _headers(self) -> dict:
+        h = {"Content-Type": "application/json"}
+        if self._api_key:
+            h["Authorization"] = f"Bearer {self._api_key}"
+        return h
+
+    def generate(self, workflow: dict, output_dir: str) -> list[str]:
+        """提交工作流并等待结果，返回生成的文件路径列表"""
+        client_id = uuid.uuid4().hex
+        with httpx.Client(timeout=self._timeout) as c:
+            # 提交
+            r = c.post(f"{self._url}/prompt", json={"prompt": workflow, "client_id": client_id},
+                      headers=self._headers())
+            r.raise_for_status()
+            prompt_id = r.json()["prompt_id"]
+
+            # 等待完成
+            deadline = time.time() + self._timeout
+            while time.time() < deadline:
+                r = c.get(f"{self._url}/history/{prompt_id}")
+                if r.status_code == 200:
+                    history = r.json()
+                    if prompt_id in history:
+                        outputs = history[prompt_id].get("outputs", {})
+                        return self._download_outputs(c, outputs, output_dir)
+                time.sleep(2)
+            raise TimeoutError(f"ComfyUI workflow timeout ({self._timeout}s)")
+
+    def _download_outputs(self, c: httpx.Client, outputs: dict, output_dir: str) -> list[str]:
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        files = []
+        for node_out in outputs.values():
+            for img in node_out.get("images", []):
+                fname = img["filename"]
+                subfolder = img.get("subfolder", "")
+                url = f"{self._url}/view?filename={fname}&subfolder={subfolder}&type=output"
+                r = c.get(url)
+                r.raise_for_status()
+                out_path = Path(output_dir) / fname
+                out_path.write_bytes(r.content)
+                files.append(str(out_path))
+        return files
+
+    def health_check(self) -> tuple[bool, str]:
+        try:
+            with httpx.Client(timeout=5) as c:
+                r = c.get(f"{self._url}/system_stats")
+                return True, f"ComfyUI reachable (HTTP {r.status_code})"
+        except Exception as e:
+            return False, f"ComfyUI unreachable: {e}"
+
+    def shutdown(self): pass
+
+def _f(config): return ComfyUI(config)
+registry.register(BackendMeta(name="comfyui", service_type="image", factory=_f,
+    description="ComfyUI 图片/视频生成", priority=10, tags=["api"]))

@@ -1,0 +1,4 @@
+episode,shot_id,scene,characters,action,dialogue,camera,shot_type,duration,outfit,emotion
+1,001,living_room,linxia,坐在沙发上看手机,他怎么还不回消息...,缓慢推近,特写,4,home,worried
+1,002,living_room,linxia,起身走到窗前,......,跟随平移,中景,3,home,sad
+1,003,street,guchen,骑车赶路,马上就到了！,固定,全身,4,casual,determined

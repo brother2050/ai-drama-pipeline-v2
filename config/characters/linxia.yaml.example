@@ -1,0 +1,14 @@
+character:
+  id: "linxia"
+  name: "林夏"
+  gender: "female"
+  appearance: >-
+    20岁年轻女性，长发披肩，瓜子脸，大眼睛，
+    皮肤白皙，身材纤细
+  outfits:
+    home: >-
+      浅粉色居家睡衣，棉拖鞋，头发随意扎起
+    casual: >-
+      白色T恤，浅蓝色牛仔裤，白色帆布鞋，斜挎包
+  voice:
+    voice_description: "温柔恬静的年轻女性，声音柔和细腻，语速适中"

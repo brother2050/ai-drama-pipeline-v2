@@ -1,0 +1,61 @@
+# AI 短剧管线 v2 — 项目配置
+
+project:
+  name: "AI短剧"
+  episodes: 1
+  fps: 24
+  resolution: [1280, 720]
+  style: "cinematic"
+  genre: "urban"
+
+# ComfyUI 服务器地址（远程 API 或本地）
+comfyui:
+  url: "http://127.0.0.1:8188"
+  timeout: 300
+  api_key: ""
+
+# 模型后端选择
+models:
+  image_backend: "sd15"
+  video_backend: "animatediff"
+  tts_backend: "mimo-voicedesign"
+  lip_sync_backend: "musetalk"
+  music_backend: "template"
+
+  # TTS 服务地址
+  gpt_sovits:
+    api_url: "http://127.0.0.1:9880"
+
+  # 口型同步服务地址
+  musetalk:
+    api_url: "http://127.0.0.1:8080"
+  sadtalker:
+    api_url: "http://127.0.0.1:8082"
+
+# LLM 配置（可选）
+llm:
+  enabled: false
+  backend: "ollama"
+  base_url: "http://localhost:11434"
+  model: "qwen3:8b"
+
+# Web 服务器
+server:
+  port: 8888
+  host: "0.0.0.0"
+  cors_origin: "*"
+
+# 后期合成
+post_production:
+  transition: "crossfade"
+  transition_duration: 0.5
+  bgm_volume: 0.15
+  subtitle_platform: "douyin"
+
+# 超时配置
+timeouts:
+  comfyui: 300
+  tts: 60
+  lipsync: 120
+  llm: 300
+  music: 120

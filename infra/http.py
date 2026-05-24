@@ -1,0 +1,97 @@
+"""HTTP 客户端 — 统一远程 API 调用，基于 httpx"""
+
+from __future__ import annotations
+
+import logging
+import os
+from pathlib import Path
+from typing import Any
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
+__all__ = ["ApiClient"]
+
+
+class ApiClient:
+    """远程 HTTP API 客户端
+
+    特性:
+    - 连接池复用（httpx.Client）
+    - 统一超时/重试
+    - 文件上传/下载
+    - 健康检查
+    """
+
+    def __init__(self, base_url: str, *, timeout: float = 60, name: str = "api"):
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.name = name
+        self._client = httpx.Client(
+            base_url=self.base_url,
+            timeout=httpx.Timeout(timeout, connect=10),
+            follow_redirects=True,
+        )
+
+    def health_check(self) -> tuple[bool, str]:
+        """健康检查"""
+        for path in ("/health", "/", ""):
+            try:
+                r = self._client.get(path, timeout=5)
+                return True, f"{self.name}: reachable (HTTP {r.status_code})"
+            except Exception:
+                continue
+        return False, f"{self.name}: unreachable at {self.base_url}"
+
+    def get_json(self, path: str, **kwargs) -> Any:
+        r = self._client.get(path, **kwargs)
+        r.raise_for_status()
+        return r.json()
+
+    def post_json(self, path: str, data: dict, **kwargs) -> Any:
+        r = self._client.post(path, json=data, **kwargs)
+        r.raise_for_status()
+        return r.json()
+
+    def post_multipart(self, path: str, files: dict[str, str],
+                       data: dict[str, str] | None = None, **kwargs) -> bytes:
+        """上传文件并返回响应内容"""
+        upload_files = {}
+        for field, filepath in files.items():
+            upload_files[field] = (Path(filepath).name, open(filepath, "rb"))
+        try:
+            r = self._client.post(path, files=upload_files, data=data, **kwargs)
+            r.raise_for_status()
+            return r.content
+        finally:
+            for _, (_, fh) in upload_files.items():
+                fh.close()
+
+    def download(self, url: str, output: str, **kwargs) -> str:
+        """下载文件到本地"""
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        with self._client.stream("GET", url, **kwargs) as r:
+            r.raise_for_status()
+            with open(output, "wb") as f:
+                for chunk in r.iter_bytes(65536):
+                    f.write(chunk)
+        return output
+
+    def upload_and_download(self, path: str, upload_files: dict[str, str],
+                            data: dict[str, str] | None = None, output: str = "",
+                            **kwargs) -> bytes:
+        """上传文件 → 下载结果"""
+        return self.post_multipart(path, upload_files, data, **kwargs)
+
+    def close(self) -> None:
+        self._client.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def __repr__(self) -> str:
+        return f"ApiClient({self.base_url!r})"
