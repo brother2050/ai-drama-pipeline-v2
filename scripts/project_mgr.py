@@ -163,10 +163,18 @@ def _ensure_project_dirs(project_dir: Path) -> None:
 
 
 def _scaffold_default_config(project_dir: Path, name: str) -> None:
-    """为新项目生成默认配置文件（不覆盖已有文件）"""
-    # project.yaml
+    """为新项目生成默认配置文件（已存在时仅更新项目名称）"""
+    # project.yaml — 始终确保名称正确
     cfg_path = project_dir / "config" / "project.yaml"
-    if not cfg_path.exists():
+    if cfg_path.exists():
+        # 已有配置：只更新项目名称，不覆盖其他自定义内容
+        with open(cfg_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        data.setdefault("project", {})["name"] = name
+        with open(cfg_path, "w", encoding="utf-8") as f:
+            yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+    else:
+        # 无配置：从模板生成
         cfg_path.write_text(
             _DEFAULT_PROJECT_YAML.format(name=name),
             encoding="utf-8",
