@@ -69,10 +69,11 @@ def _resolve_config(config_path: str | None = None) -> str:
         cfg = Path(d) / "config" / "project.yaml"
         if cfg.exists():
             return str(cfg)
-    cfg = ROOT / "config" / "project.yaml"
+    # 回退到默认项目
+    cfg = ROOT / "projects" / "default" / "config" / "project.yaml"
     if cfg.exists():
         return str(cfg)
-    console.print("[red]❌ 未找到 config/project.yaml[/red]")
+    console.print("[red]❌ 未找到 config/project.yaml，请先初始化默认项目[/red]")
     sys.exit(1)
 
 

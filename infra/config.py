@@ -108,15 +108,24 @@ class Config:
 
     @staticmethod
     def _find_config() -> str:
-        """查找配置文件"""
-        candidates = [
-            Path.cwd() / "config" / "project.yaml",
-            Path(__file__).resolve().parent.parent / "config" / "project.yaml",
-        ]
-        for p in candidates:
-            if p.exists():
-                return str(p)
-        raise FileNotFoundError("未找到 config/project.yaml，请在项目目录下运行或使用 -c 指定路径")
+        """查找配置文件（活动项目优先，回退到 projects/default/）"""
+        root = Path(__file__).resolve().parent.parent
+        # 1. 检查 .active 指向的项目
+        active_file = root / "projects" / ".active"
+        if active_file.exists():
+            d = active_file.read_text().strip()
+            cfg = Path(d) / "config" / "project.yaml"
+            if cfg.exists():
+                return str(cfg)
+        # 2. 回退到默认项目
+        cfg = root / "projects" / "default" / "config" / "project.yaml"
+        if cfg.exists():
+            return str(cfg)
+        # 3. 兼容旧结构（根目录 config/）
+        cfg = root / "config" / "project.yaml"
+        if cfg.exists():
+            return str(cfg)
+        raise FileNotFoundError("未找到 config/project.yaml，请先初始化默认项目")
 
     def _merge(self, path: str) -> dict:
         """合并默认配置 + 文件配置"""

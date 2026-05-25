@@ -19,7 +19,7 @@ def test_config_load():
     """测试配置加载"""
     from infra.config import Config, load_config, save_config
 
-    cfg_path = str(ROOT / "config" / "project.yaml")
+    cfg_path = str(ROOT / "projects" / "default" / "config" / "project.yaml")
     cfg = Config(cfg_path)
     assert cfg.get("project.name") == "AI短剧"
     assert cfg.get("models.tts_backend") == "mimo-voicedesign"
@@ -502,7 +502,7 @@ def test_config_validation():
     """测试配置校验"""
     from infra.config import Config
 
-    cfg_path = str(ROOT / "config" / "project.yaml")
+    cfg_path = str(ROOT / "projects" / "default" / "config" / "project.yaml")
     if Path(cfg_path).exists():
         cfg = Config(cfg_path)
         # 默认配置应该通过
@@ -547,7 +547,7 @@ def test_model_registry():
     """测试模型注册表"""
     from flow.model_registry import ModelRegistry
 
-    reg = ModelRegistry(str(ROOT / "config" / "project.yaml"))
+    reg = ModelRegistry(str(ROOT / "projects" / "default" / "config" / "project.yaml"))
 
     assert "sd15" in reg.valid_image_backends()
     assert "animatediff" in reg.valid_video_backends()

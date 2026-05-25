@@ -39,6 +39,10 @@ class ModelRegistry:
     def __init__(self, config_path: str):
         config_dir = Path(config_path).resolve().parent
         registry_path = config_dir / "models_registry.yaml"
+        if not registry_path.exists():
+            # 回退到根目录 config/（全局注册表）
+            root = Path(__file__).resolve().parent.parent
+            registry_path = root / "config" / "models_registry.yaml"
         self._data = self._load(str(registry_path))
 
     @staticmethod

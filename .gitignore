@@ -12,4 +12,5 @@ output/
 *.log
 .DS_Store
 Thumbs.db
-projects/
+projects/*
+!projects/default/

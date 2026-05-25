@@ -80,7 +80,7 @@ from web.schemas import (
 # ── 工具函数 ──
 
 def _cfg() -> dict:
-    cfg_path = ROOT / "config" / "project.yaml"
+    cfg_path = _active_project_dir() / "config" / "project.yaml"
     if cfg_path.exists():
         with open(cfg_path, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
@@ -88,7 +88,7 @@ def _cfg() -> dict:
 
 
 def _cfg_path() -> str:
-    return str(ROOT / "config" / "project.yaml")
+    return str(_active_project_dir() / "config" / "project.yaml")
 
 
 def _port_ok(port: int) -> bool:
@@ -471,16 +471,10 @@ def list_projects():
     projects_dir.mkdir(exist_ok=True)
     active_file = projects_dir / ".active"
     active_path = active_file.read_text().strip() if active_file.exists() else None
+    # 未设置 .active 时默认指向 projects/default/
+    if not active_path:
+        active_path = str(projects_dir / "default")
     result = []
-    # 默认项目（根目录）
-    cfg = ROOT / "config" / "project.yaml"
-    default_name = "默认"
-    if cfg.exists():
-        with open(cfg, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        default_name = data.get("project", {}).get("name", "默认")
-    result.append({"name": default_name, "path": str(ROOT), "active": active_path is None, "isDefault": True})
-    # 子项目
     for d in sorted(projects_dir.iterdir()):
         if not d.is_dir() or d.name.startswith("."):
             continue
@@ -489,9 +483,15 @@ def list_projects():
             with open(cfg, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
             name = data.get("project", {}).get("name", d.name)
-            result.append({"name": name, "path": str(d), "active": active_path == str(d), "isDefault": False})
         else:
-            result.append({"name": d.name, "path": str(d), "active": active_path == str(d), "isDefault": False})
+            name = d.name
+        result.append({"name": name, "path": str(d), "active": active_path == str(d), "isDefault": d.name == "default"})
+    default_name = "默认"
+    default_cfg = projects_dir / "default" / "config" / "project.yaml"
+    if default_cfg.exists():
+        with open(default_cfg, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        default_name = data.get("project", {}).get("name", "默认")
     return {"projects": result, "defaultName": default_name}
 
 
@@ -504,24 +504,26 @@ def create_project(req: ProjectCreate):
 
 
 @router.post("/projects/switch")
-def switch_project(req: ProjectSwitch, default_name: str = ""):
+def switch_project(req: ProjectSwitch):
     from scripts.project_mgr import switch_project
     from rich.console import Console
-    # 通过名称查找项目
     projects_dir = ROOT / "projects"
-    # 先查子项目
+    # 直接按目录名匹配
     project_dir = projects_dir / req.name
     if project_dir.exists() and project_dir.is_dir():
         switch_project(req.name, ROOT, Console())
         return {"status": "ok"}
-    # 再查默认项目（根目录的config中读到的名称可能不同）
-    cfg = ROOT / "config" / "project.yaml"
-    if cfg.exists():
-        with open(cfg, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        if req.name == data.get("project", {}).get("name", "默认"):
-            switch_project("default", ROOT, Console())
-            return {"status": "ok"}
+    # 按项目名称匹配（遍历 config/project.yaml）
+    for d in projects_dir.iterdir():
+        if not d.is_dir() or d.name.startswith("."):
+            continue
+        cfg = d / "config" / "project.yaml"
+        if cfg.exists():
+            with open(cfg, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            if req.name == data.get("project", {}).get("name", ""):
+                switch_project(d.name, ROOT, Console())
+                return {"status": "ok"}
     raise HTTPException(404, f"项目 '{req.name}' 不存在")
 
 
@@ -529,13 +531,8 @@ def switch_project(req: ProjectSwitch, default_name: str = ""):
 def delete_project(name: str):
     if not re.match(r"^[a-zA-Z0-9_\-\u4e00-\u9fff]+$", name):
         raise HTTPException(400, "无效的项目名")
-    # 不允许删除默认项目
-    cfg = ROOT / "config" / "project.yaml"
-    if cfg.exists():
-        with open(cfg, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        if name == data.get("project", {}).get("name", "默认"):
-            raise HTTPException(400, "不能删除默认项目")
+    if name == "default":
+        raise HTTPException(400, "不能删除默认项目")
     from scripts.project_mgr import delete_project
     from rich.console import Console
     try:
@@ -547,9 +544,19 @@ def delete_project(name: str):
 
 # ── 通用 YAML CRUD 工厂 ──
 
+def _active_project_dir() -> Path:
+    """返回当前活动项目目录"""
+    active_file = ROOT / "projects" / ".active"
+    if active_file.exists():
+        d = Path(active_file.read_text().strip())
+        if d.exists():
+            return d
+    return ROOT / "projects" / "default"
+
+
 def _yaml_list(yaml_dir: str, entity_key: str) -> list[dict]:
     """通用 YAML 实体列表读取"""
-    d = ROOT / "config" / yaml_dir
+    d = _active_project_dir() / "config" / yaml_dir
     if not d.exists():
         return []
     result = []
@@ -570,7 +577,7 @@ def _yaml_list(yaml_dir: str, entity_key: str) -> list[dict]:
 def _yaml_save(yaml_dir: str, entity_key: str, entity_id: str, data: dict,
                db_upsert=None) -> None:
     """通用 YAML 实体保存（YAML + DB 双写）"""
-    d = ROOT / "config" / yaml_dir
+    d = _active_project_dir() / "config" / yaml_dir
     d.mkdir(parents=True, exist_ok=True)
     with open(d / f"{entity_id}.yaml", "w") as f:
         yaml.dump({entity_key: {**data, "id": entity_id}}, f,
@@ -585,7 +592,7 @@ def _yaml_save(yaml_dir: str, entity_key: str, entity_id: str, data: dict,
 
 def _yaml_delete(yaml_dir: str, entity_id: str, label: str, db_delete=None) -> None:
     """通用 YAML 实体删除（文件 + DB）"""
-    path = ROOT / "config" / yaml_dir / f"{entity_id}.yaml"
+    path = _active_project_dir() / "config" / yaml_dir / f"{entity_id}.yaml"
     if not path.exists():
         raise HTTPException(404, f"{label} {entity_id} 不存在")
     path.unlink()
