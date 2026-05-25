@@ -57,11 +57,13 @@ async function api(path, opts = {}) {
 }
 
 async function pollTask(taskId, onProgress) {
+  let delay = 500;
   for (let i = 0; i < MAX_POLL; i++) {
     const info = await api(`/tasks/${taskId}`);
     if (onProgress) onProgress(info);
     if (['success', 'failed', 'cancelled'].includes(info.status)) return info;
-    await new Promise(r => setTimeout(r, 800));
+    await new Promise(r => setTimeout(r, delay));
+    delay = Math.min(delay * 1.5, 5000); // 指数退避，上限5秒
   }
   return { status: 'timeout', error: t('toast.timeout') };
 }
@@ -122,9 +124,11 @@ function _crudTable(cols, items, editFn, delFn) {
   return `<table><thead><tr>${ths}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-function _crudPage(title, cols, items, editFn, delFn, newFn) {
+function _crudPage(title, cols, items, editFn, delFn, newFn, emptyHint) {
+  const table = _crudTable(cols, items, editFn, delFn);
+  const hint = !items.length && emptyHint ? `<p class="dim" style="margin-top:0.5rem;font-size:0.85rem">${emptyHint}</p>` : '';
   return `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem">
-    <h2>${title}</h2><button class="btn btn-success" onclick="${newFn}()">+ ${t('btn.add').replace('+ ', '')}</button></div>${_crudTable(cols, items, editFn, delFn)}</div>`;
+    <h2>${title}</h2><button class="btn btn-success" onclick="${newFn}()">+ ${t('btn.add').replace('+ ', '')}</button></div>${table}${hint}</div>`;
 }
 
 async function _crudCreate(endpoint, extra, reload) {
@@ -225,6 +229,8 @@ function renderWB(episodes) {
       <span class="dim" style="margin:0 0.3rem">|</span>
       <button class="btn btn-outline" onclick="runPortraits()">📸 ${t('wb.gen_portraits').replace('📸 ', '')}</button>
       <button class="btn btn-outline" onclick="runPost()">🎞️ ${t('wb.post_process').replace('🎞️ ', '')}</button>
+      <button class="btn btn-outline" onclick="runMusic()">🎵 ${t('wb.gen_music').replace('🎵 ', '')}</button>
+      <button class="btn btn-outline" onclick="runSubtitle()">📝 ${t('wb.gen_subtitle').replace('📝 ', '')}</button>
       <button class="btn btn-primary" onclick="runAll()">🚀 ${t('wb.run_all').replace('🚀 ', '')}</button>
     </div></div>
     <div id="wb-shots-grid" class="wb-shots-grid"></div>
@@ -289,7 +295,9 @@ function editShot(idx) {
     <div class="edit-field"><label>${t('edit.scene')}</label><input id="ed-scene" value="${esc(s.scene || '')}"></div>
     <div class="edit-field"><label>${t('edit.characters')}</label><input id="ed-chars" value="${esc(s.characters || '')}"></div>
     <div class="edit-field"><label>${t('edit.action')}</label><textarea id="ed-action" rows="2">${esc(s.action || '')}</textarea></div>
+    <div class="edit-field"><label>${t('sb.action_en')}</label><textarea id="ed-action-en" rows="2">${esc(s.action_en || '')}</textarea></div>
     <div class="edit-field"><label>${t('edit.dialogue')}</label><textarea id="ed-dialogue" rows="2">${esc(s.dialogue || '')}</textarea></div>
+    <div class="edit-field"><label>${t('sb.dialogue_en')}</label><textarea id="ed-dialogue-en" rows="2">${esc(s.dialogue_en || '')}</textarea></div>
     <div class="edit-field-row">
       <div class="edit-field"><label>${t('edit.camera')}</label><select id="ed-camera">${_selectOpts(CAMERAS, s.camera)}</select></div>
       <div class="edit-field"><label>${t('edit.shot_type')}</label><select id="ed-shottype">${_selectOpts(SHOT_TYPES, s.shot_type)}</select></div>
@@ -300,7 +308,7 @@ function editShot(idx) {
 
 async function saveShot(idx) {
   const s = shots[idx];
-  for (const [k, id] of [['scene', 'ed-scene'], ['characters', 'ed-chars'], ['action', 'ed-action'], ['dialogue', 'ed-dialogue'], ['camera', 'ed-camera'], ['shot_type', 'ed-shottype'], ['duration', 'ed-dur'], ['emotion', 'ed-emo']])
+  for (const [k, id] of [['scene', 'ed-scene'], ['characters', 'ed-chars'], ['action', 'ed-action'], ['action_en', 'ed-action-en'], ['dialogue', 'ed-dialogue'], ['dialogue_en', 'ed-dialogue-en'], ['camera', 'ed-camera'], ['shot_type', 'ed-shottype'], ['duration', 'ed-dur'], ['emotion', 'ed-emo']])
     s[k] = document.getElementById(id)?.value || (k === 'duration' ? 4 : k === 'emotion' ? 'neutral' : '');
   pushUndo(`编辑镜头 ${s.shot_id || idx + 1}`);
   try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } }); invalidateCache(`storyboard/${ep}`); invalidateCache(`res/${ep}`); toast(t('toast.saved')); document.getElementById('edit-overlay')?.remove(); renderShotsGrid(); } catch (e) { toast(e.message, 'error'); }
@@ -341,13 +349,12 @@ async function batchRun(step) {
   batchCancelled = false;
   const statusEl = document.getElementById('wb-batch-status');
   statusEl.style.display = 'block';
-  let done = 0, fail = 0, skip = 0;
-  for (let i = 0; i < shots.length; i++) {
-    if (batchCancelled) { statusEl.innerHTML = _batchSummary(done, skip, fail, true); toast(t('toast.cancelled')); return; }
+  const concurrency = parseInt(localStorage.getItem('drama_concurrency') || '1');
+  let done = 0, fail = 0, skip = 0, idx = 0;
+
+  async function processShot(i) {
+    if (batchCancelled) return;
     const sid = _shotId(shots[i], i);
-    statusEl.innerHTML = `<div class="batch-progress"><div class="batch-bar"><div class="batch-fill" style="width:${(i / shots.length) * 100}%"></div></div>
-      <div class="batch-text">[${i + 1}/${shots.length}] ${sid} — ${t('batch.progress', { step: names[step] })}</div>
-      <button class="btn btn-sm btn-danger" onclick="batchCancelled=true" style="margin-top:0.3rem">${t('batch.cancel_btn')}</button></div>`;
     try {
       const { task_id } = await api(`/steps/${step}`, { method: 'POST', body: { episode: ep, shot_id: sid } });
       const result = await pollTask(task_id);
@@ -357,6 +364,34 @@ async function batchRun(step) {
       } else fail++;
     } catch { fail++; }
   }
+
+  if (concurrency <= 1) {
+    // 串行
+    for (let i = 0; i < shots.length; i++) {
+      if (batchCancelled) break;
+      const sid = _shotId(shots[i], i);
+      statusEl.innerHTML = `<div class="batch-progress"><div class="batch-bar"><div class="batch-fill" style="width:${(i / shots.length) * 100}%"></div></div>
+        <div class="batch-text">[${i + 1}/${shots.length}] ${sid} — ${t('batch.progress', { step: names[step] })}</div>
+        <button class="btn btn-sm btn-danger" onclick="batchCancelled=true" style="margin-top:0.3rem">${t('batch.cancel_btn')}</button></div>`;
+      await processShot(i);
+    }
+  } else {
+    // 并发
+    const pool = new Set();
+    for (let i = 0; i < shots.length; i++) {
+      if (batchCancelled) break;
+      const sid = _shotId(shots[i], i);
+      statusEl.innerHTML = `<div class="batch-progress"><div class="batch-bar"><div class="batch-fill" style="width:${(i / shots.length) * 100}%"></div></div>
+        <div class="batch-text">[${i + 1}/${shots.length}] ${sid} — ${names[step]} (${t('batch.concurrent')}: ${concurrency})</div>
+        <button class="btn btn-sm btn-danger" onclick="batchCancelled=true" style="margin-top:0.3rem">${t('batch.cancel_btn')}</button></div>`;
+      const p = processShot(i).then(() => pool.delete(p));
+      pool.add(p);
+      if (pool.size >= concurrency) await Promise.race(pool);
+    }
+    await Promise.all(pool);
+  }
+
+  if (batchCancelled) { statusEl.innerHTML = _batchSummary(done, skip, fail, true); toast(t('toast.cancelled')); return; }
   statusEl.innerHTML = _batchSummary(done, skip, fail, false);
   toast(t('batch.complete', { done, skip, fail }));
 }
@@ -402,6 +437,30 @@ async function runAll() {
   toast('✅ ' + t('wb.run_all'));
 }
 
+async function runMusic() {
+  const duration = prompt(t('wb.music_duration') + ':', '60');
+  if (!duration) return;
+  const mood = prompt(t('wb.music_mood') + ':', 'neutral');
+  try {
+    const { task_id } = await api('/tools/music', { method: 'POST', body: { duration: parseFloat(duration), mood: mood || 'neutral' } });
+    toast('⏳ ' + t('wb.gen_music'));
+    const result = await pollTask(task_id);
+    if (result.status === 'success') toast('✅ ' + t('wb.gen_music'));
+    else toast('❌ ' + (result.error || t('wb.shot_fail')), 'error');
+  } catch (e) { toast('❌ ' + e.message, 'error'); }
+}
+
+async function runSubtitle() {
+  if (!confirm(t('wb.gen_subtitle') + '?')) return;
+  try {
+    const { task_id } = await api('/tools/subtitle', { method: 'POST', body: { episode: ep } });
+    toast('⏳ ' + t('wb.gen_subtitle'));
+    const result = await pollTask(task_id);
+    if (result.status === 'success') toast('✅ ' + t('wb.gen_subtitle'));
+    else toast('❌ ' + (result.error || t('wb.shot_fail')), 'error');
+  } catch (e) { toast('❌ ' + e.message, 'error'); }
+}
+
 // ══════════════════════════════════════════════════════════
 // 角色管理
 // ══════════════════════════════════════════════════════════
@@ -413,7 +472,7 @@ const CHAR_COLS = [
 
 async function loadCharacters() {
   const el = document.getElementById('page-characters');
-  try { const d = await cachedFetch('characters', () => api('/characters')); el.innerHTML = _crudPage(t('char.title'), CHAR_COLS, d.characters || [], 'editChar', 'deleteChar', 'newChar'); } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
+  try { const d = await cachedFetch('characters', () => api('/characters')); el.innerHTML = _crudPage(t('char.title'), CHAR_COLS, d.characters || [], 'editChar', 'deleteChar', 'newChar', t('char.empty_hint')); } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 function newChar() {
   _showOverlay('new-char-overlay', `+ ${t('char.title').replace(/👤\s?/, '')}`, `
@@ -472,7 +531,7 @@ const SCENE_COLS = [
 
 async function loadScenes() {
   const el = document.getElementById('page-scenes');
-  try { const d = await cachedFetch('scenes', () => api('/scenes')); el.innerHTML = _crudPage(t('scene.title'), SCENE_COLS, d.scenes || [], 'editScene', 'deleteScene', 'newScene'); } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
+  try { const d = await cachedFetch('scenes', () => api('/scenes')); el.innerHTML = _crudPage(t('scene.title'), SCENE_COLS, d.scenes || [], 'editScene', 'deleteScene', 'newScene', t('scene.empty_hint')); } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 function newScene() {
   _showOverlay('new-scene-overlay', `+ ${t('scene.title').replace(/🏔️\s?/, '')}`, `
@@ -510,7 +569,7 @@ function val(id) { return document.getElementById(id)?.value || ''; }
 // 分镜表
 // ══════════════════════════════════════════════════════════
 
-const SB_FIELDS = ['scene', 'characters', 'action', 'dialogue', 'camera', 'shot_type', 'duration'];
+const SB_FIELDS = ['scene', 'characters', 'action', 'dialogue', 'camera', 'shot_type', 'duration', 'emotion'];
 
 async function loadStoryboard() {
   const el = document.getElementById('page-storyboard');
@@ -524,12 +583,13 @@ async function loadStoryboard() {
       <td><select class="sb-inline-input" data-idx="${i}" data-field="camera" onchange="updateShotField(this)">${_selectOpts(CAMERAS, s.camera)}</select></td>
       <td><select class="sb-inline-input" data-idx="${i}" data-field="shot_type" onchange="updateShotField(this)">${_selectOpts(SHOT_TYPES, s.shot_type)}</select></td>
       <td><input class="sb-inline-input" type="number" value="${s.duration || 4}" min="1" max="30" data-idx="${i}" data-field="duration" onchange="updateShotField(this)"></td>
+      <td><select class="sb-inline-input" data-idx="${i}" data-field="emotion" onchange="updateShotField(this)">${_selectOpts(EMOTIONS, s.emotion)}</select></td>
       <td><button class="btn btn-xs btn-danger" onclick="deleteShotFromSB(${i})">🗑️</button></td></tr>`).join('');
     const epSelector = _episodeSelectHtml(episodes, 'switchEpisode');
     el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${t('sb.title')}</h2>
       <div style="display:flex;gap:0.5rem;align-items:center">${epSelector}<button class="btn btn-primary" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline').replace('🎬 ', '')}</button><button class="btn btn-success" onclick="addShot()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>
-      <div style="overflow-x:auto"><table><thead><tr><th>${t('sb.shot_id')}</th><th>${t('edit.scene')}</th><th>${t('edit.characters')}</th><th>${t('edit.action')}</th><th>${t('edit.dialogue')}</th><th>${t('edit.camera')}</th><th>${t('edit.shot_type')}</th><th>${t('edit.duration')}</th><th></th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="9" class="dim" style="text-align:center">${t('sb.none')}</td></tr>`}</tbody></table></div></div>`;
+      <div style="overflow-x:auto"><table><thead><tr><th>${t('sb.shot_id')}</th><th>${t('edit.scene')}</th><th>${t('edit.characters')}</th><th>${t('edit.action')}</th><th>${t('edit.dialogue')}</th><th>${t('edit.camera')}</th><th>${t('edit.shot_type')}</th><th>${t('edit.duration')}</th><th>${t('sb.emotion')}</th><th></th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="10" class="dim" style="text-align:center">${t('sb.none')}</td></tr>`}</tbody></table></div></div>`;
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 
@@ -617,6 +677,13 @@ async function loadSettings() {
         <div class="config-section"><h3>🎨 ComfyUI</h3>
           <div class="form-row"><label>${t('set.address')}</label><input id="cfg-comfyui" value="${esc(cfg.comfyui?.url || '')}"></div>
           <div class="tool-status-inline"><span class="status-dot ${tools.comfyui?.available ? 'ok' : 'err'}"></span>${tools.comfyui?.available ? t('dash.available') : tools.comfyui?.reason || t('dash.unavailable')}</div></div>
+        <div class="config-section"><h3>⚡ ${t('batch.concurrent')}</h3>
+          <div class="form-row"><label>${t('batch.concurrent')}</label><select id="cfg-concurrency" onchange="localStorage.setItem('drama_concurrency',this.value)">
+            <option value="1" ${(localStorage.getItem('drama_concurrency')||'1')==='1'?'selected':''}>1 (串行)</option>
+            <option value="2" ${localStorage.getItem('drama_concurrency')==='2'?'selected':''}>2</option>
+            <option value="3" ${localStorage.getItem('drama_concurrency')==='3'?'selected':''}>3</option>
+            <option value="5" ${localStorage.getItem('drama_concurrency')==='5'?'selected':''}>5</option>
+          </select></div></div>
         <button class="btn btn-primary" style="margin-top:1rem" onclick="saveCfg()">💾 ${t('btn.save').replace('💾 ', '')}</button></div>`;
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }

@@ -194,6 +194,7 @@ const I18N = {
   'batch.close_btn': { zh: '关闭', en: 'Close' },
   'batch.progress': { zh: '{step}...', en: '{step}...' },
   'batch.complete': { zh: '批量完成: {done}成功 {skip}跳过 {fail}失败', en: 'Batch done: {done} OK {skip} skip {fail} fail' },
+  'batch.concurrent': { zh: '并发数', en: 'Concurrency' },
 
   // 步骤名
   'step.tts': { zh: 'TTS', en: 'TTS' },
@@ -210,6 +211,9 @@ const I18N = {
   'sb.saved': { zh: '✅ 已保存', en: '✅ Saved' },
   'sb.deleted': { zh: '✅ 已删除', en: '✅ Deleted' },
   'sb.added': { zh: '已添加', en: 'Added' },
+  'sb.emotion': { zh: '情绪', en: 'Emotion' },
+  'sb.action_en': { zh: '动作(英)', en: 'Action(EN)' },
+  'sb.dialogue_en': { zh: '台词(英)', en: 'Dialogue(EN)' },
 
   // 管线 - 单镜头执行结果
   'wb.shot_done': { zh: '完成', en: 'Done' },
@@ -224,6 +228,16 @@ const I18N = {
   'wb.batch_ok': { zh: '✅', en: '✅' },
   'wb.batch_skip': { zh: '⏭', en: '⏭' },
   'wb.batch_fail': { zh: '❌', en: '❌' },
+
+  // 空状态引导
+  'char.empty_hint': { zh: '点击上方按钮创建第一个角色', en: 'Click the button above to create your first character' },
+  'scene.empty_hint': { zh: '点击上方按钮创建第一个场景', en: 'Click the button above to create your first scene' },
+
+  // 配乐/字幕
+  'wb.gen_music': { zh: '🎵 配乐', en: '🎵 Music' },
+  'wb.gen_subtitle': { zh: '📝 字幕', en: '📝 Subtitle' },
+  'wb.music_duration': { zh: '时长(秒)', en: 'Duration(s)' },
+  'wb.music_mood': { zh: '情绪', en: 'Mood' },
 };
 
 // 当前语言（默认中文）
