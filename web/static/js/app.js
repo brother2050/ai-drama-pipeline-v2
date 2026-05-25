@@ -11,6 +11,27 @@ const MAX_POLL = 300;
 let ep = 1, shots = [], activeShot = 0, batchCancelled = false;
 const _undoStack = [], _redoStack = [];
 
+// ── 集数选择器 ──
+async function loadEpisodeSelector() {
+  try {
+    const d = await api('/episodes');
+    return d.episodes || [1];
+  } catch { return [1]; }
+}
+
+function _episodeSelectHtml(episodes, onChangeFn) {
+  const opts = episodes.map(e => `<option value="${e}" ${e === ep ? 'selected' : ''}>第 ${e} 集</option>`).join('');
+  return `<select class="btn btn-outline" style="padding:.3rem .6rem;font-size:.82rem" onchange="${onChangeFn}(this.value)">${opts}</select>`;
+}
+
+function switchEpisode(val) {
+  ep = parseInt(val) || 1;
+  invalidateCache(`storyboard/${ep}`);
+  const p = document.querySelector('.page.active');
+  if (p?.id === 'page-storyboard') loadStoryboard();
+  else if (p?.id === 'page-pipeline') loadPipeline();
+}
+
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function debounce(fn, ms = 300) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 function toast(msg, type = 'success') { const el = document.createElement('div'); el.className = `toast toast-${type}`; el.textContent = msg; document.body.appendChild(el); setTimeout(() => el.remove(), 3500); }
@@ -185,16 +206,18 @@ async function loadPipeline() {
   const el = document.getElementById('page-pipeline');
   el.innerHTML = '<div class="card"><h2>⏳ 加载...</h2></div>';
   try {
+    const episodes = await loadEpisodeSelector();
     const d = await cachedFetch(`storyboard/${ep}`, () => api(`/storyboard/${ep}`));
     shots = d.shots || [];
     if (!shots.length) { el.innerHTML = `<div class="card"><h2>暂无分镜</h2><p class="dim">先在分镜表添加镜头</p><button class="btn btn-primary" style="margin-top:0.5rem" onclick="navTo('storyboard')">去编辑</button></div>`; return; }
-    renderWB();
+    renderWB(episodes);
   } catch (e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${esc(e.message)}</p></div>`; }
 }
 
-function renderWB() {
+function renderWB(episodes) {
   const el = document.getElementById('page-pipeline');
-  el.innerHTML = `<div class="wb-top-bar"><h2>🎬 第${ep}集 · ${shots.length} 个镜头</h2>
+  const epSelector = _episodeSelectHtml(episodes || [ep], 'switchEpisode');
+  el.innerHTML = `<div class="wb-top-bar"><div style="display:flex;align-items:center;gap:0.5rem"><h2>🎬 生产管线</h2>${epSelector}<span class="dim" style="font-size:.85rem">${shots.length} 个镜头</span></div>
     <div class="wb-batch-btns">
       <button class="btn btn-outline" onclick="undo()" title="Ctrl+Z">↩ 撤销</button>
       <button class="btn btn-outline" onclick="redo()" title="Ctrl+Shift+Z">↪ 重做</button>
@@ -398,6 +421,7 @@ const SB_FIELDS = ['scene', 'characters', 'action', 'dialogue', 'camera', 'shot_
 async function loadStoryboard() {
   const el = document.getElementById('page-storyboard');
   try {
+    const episodes = await loadEpisodeSelector();
     const d = await cachedFetch(`storyboard/${ep}`, () => api(`/storyboard/${ep}`));
     const ss = d.shots || [];
     const rows = ss.map((s, i) => `<tr>
@@ -407,8 +431,9 @@ async function loadStoryboard() {
       <td><select class="sb-inline-input" data-idx="${i}" data-field="shot_type" onchange="updateShotField(this)">${_selectOpts(SHOT_TYPES, s.shot_type)}</select></td>
       <td><input class="sb-inline-input" type="number" value="${s.duration || 4}" min="1" max="30" data-idx="${i}" data-field="duration" onchange="updateShotField(this)"></td>
       <td><button class="btn btn-xs btn-danger" onclick="deleteShotFromSB(${i})">🗑️</button></td></tr>`).join('');
-    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>📝 分镜表</h2>
-      <div><button class="btn btn-primary" onclick="navTo('pipeline')">🎬 工作台</button><button class="btn btn-success" style="margin-left:0.5rem" onclick="addShot()">+ 添加</button></div></div>
+    const epSelector = _episodeSelectHtml(episodes, 'switchEpisode');
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>📝 分镜表</h2>
+      <div style="display:flex;gap:0.5rem;align-items:center">${epSelector}<button class="btn btn-primary" onclick="navTo('pipeline')">🎬 工作台</button><button class="btn btn-success" onclick="addShot()">+ 添加</button></div></div>
       <div style="overflow-x:auto"><table><thead><tr><th>镜号</th><th>场景</th><th>角色</th><th>动作</th><th>台词</th><th>运镜</th><th>景别</th><th>时长</th><th></th></tr></thead>
       <tbody>${rows || '<tr><td colspan="9" class="dim" style="text-align:center">暂无</td></tr>'}</tbody></table></div></div>`;
   } catch (e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${esc(e.message)}</p></div>`; }

@@ -585,6 +585,26 @@ def delete_scene(scene_id: str):
     return {"status": "ok", "id": scene_id}
 
 
+@router.get("/episodes")
+def get_episodes():
+    """获取可用集数列表"""
+    sb_path = ROOT / "storyboard" / "episodes.csv"
+    if not sb_path.exists():
+        return {"episodes": [1], "current": 1}
+    ep_set = set()
+    with open(sb_path, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            try:
+                ep = int(row.get("episode", 0) or 0)
+            except (ValueError, TypeError):
+                continue
+            if ep > 0:
+                ep_set.add(ep)
+    if not ep_set:
+        ep_set = {1}
+    return {"episodes": sorted(ep_set), "current": min(ep_set)}
+
+
 @router.get("/storyboard/{episode}")
 def get_storyboard(episode: int):
     if episode < 1:
