@@ -305,6 +305,8 @@ def _test_llm(cfg: dict, result: dict) -> dict:
 
     if not base_url:
         return {"ok": False, "name": name, "message": "未配置 API URL", **result}
+    if not api_key and backend != "ollama":
+        return {"ok": False, "name": name, "message": "未配置 API Key", **result}
 
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
     import httpx
@@ -318,13 +320,19 @@ def _test_llm(cfg: dict, result: dict) -> dict:
             if not check_url.endswith("/v1"):
                 check_url += "/v1"
             r = httpx.get(f"{check_url}/models", headers=headers, timeout=5)
-            if r.status_code == 401:
-                return {"ok": False, "name": name, "message": "API Key 无效 (401 Unauthorized)", **result}
-            if r.status_code == 403:
-                return {"ok": False, "name": name, "message": "API Key 无权限 (403 Forbidden)", **result}
-            data = r.json() if r.status_code == 200 else {}
+            if r.status_code in (401, 403):
+                return {"ok": False, "name": name, "message": f"API Key 无效 ({r.status_code})", **result}
+            if r.status_code == 404:
+                return {"ok": False, "name": name, "message": f"接口不存在 (404)，检查 API URL: {check_url}", **result}
+            if r.status_code != 200:
+                return {"ok": False, "name": name, "message": f"HTTP {r.status_code}", **result}
+            data = r.json()
             count = len(data.get("data", []))
             return {"ok": True, "name": name, "message": f"LLM 连接成功 · {count} 模型", **result}
+    except httpx.ConnectError:
+        return {"ok": False, "name": name, "message": f"连接被拒绝: {base_url}", **result}
+    except httpx.TimeoutException:
+        return {"ok": False, "name": name, "message": f"连接超时: {base_url}", **result}
     except Exception as e:
         return {"ok": False, "name": name, "message": f"连接失败: {e}", **result}
 
