@@ -470,14 +470,17 @@ def list_projects():
     projects_dir = ROOT / "projects"
     projects_dir.mkdir(exist_ok=True)
     active_file = projects_dir / ".active"
-    active = active_file.read_text().strip() if active_file.exists() else None
+    active_path = active_file.read_text().strip() if active_file.exists() else None
     result = []
+    # 默认项目（根目录）
     cfg = ROOT / "config" / "project.yaml"
+    default_name = "默认"
     if cfg.exists():
         with open(cfg, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
-        result.append({"name": data.get("project", {}).get("name", "默认"),
-                       "path": str(ROOT), "active": active is None})
+        default_name = data.get("project", {}).get("name", "默认")
+    result.append({"name": default_name, "path": str(ROOT), "active": active_path is None, "isDefault": True})
+    # 子项目
     for d in sorted(projects_dir.iterdir()):
         if not d.is_dir() or d.name.startswith("."):
             continue
@@ -485,9 +488,11 @@ def list_projects():
         if cfg.exists():
             with open(cfg, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
-            result.append({"name": data.get("project", {}).get("name", d.name),
-                           "path": str(d), "active": active == str(d)})
-    return {"projects": result}
+            name = data.get("project", {}).get("name", d.name)
+            result.append({"name": name, "path": str(d), "active": active_path == str(d), "isDefault": False})
+        else:
+            result.append({"name": d.name, "path": str(d), "active": active_path == str(d), "isDefault": False})
+    return {"projects": result, "defaultName": default_name}
 
 
 @router.post("/projects/new")
@@ -499,22 +504,38 @@ def create_project(req: ProjectCreate):
 
 
 @router.post("/projects/switch")
-def switch_project(req: ProjectSwitch):
+def switch_project(req: ProjectSwitch, default_name: str = ""):
     from scripts.project_mgr import switch_project
     from rich.console import Console
-    # 校验项目存在性（default/默认 表示切回根目录）
-    if req.name not in ("default", "默认"):
-        project_dir = ROOT / "projects" / req.name
-        if not project_dir.exists():
-            raise HTTPException(404, f"项目 '{req.name}' 不存在")
-    switch_project(req.name, ROOT, Console())
-    return {"status": "ok"}
+    # 通过名称查找项目
+    projects_dir = ROOT / "projects"
+    # 先查子项目
+    project_dir = projects_dir / req.name
+    if project_dir.exists() and project_dir.is_dir():
+        switch_project(req.name, ROOT, Console())
+        return {"status": "ok"}
+    # 再查默认项目（根目录的config中读到的名称可能不同）
+    cfg = ROOT / "config" / "project.yaml"
+    if cfg.exists():
+        with open(cfg, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        if req.name == data.get("project", {}).get("name", "默认"):
+            switch_project("default", ROOT, Console())
+            return {"status": "ok"}
+    raise HTTPException(404, f"项目 '{req.name}' 不存在")
 
 
 @router.delete("/projects/{name}")
 def delete_project(name: str):
     if not re.match(r"^[a-zA-Z0-9_\-\u4e00-\u9fff]+$", name):
         raise HTTPException(400, "无效的项目名")
+    # 不允许删除默认项目
+    cfg = ROOT / "config" / "project.yaml"
+    if cfg.exists():
+        with open(cfg, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        if name == data.get("project", {}).get("name", "默认"):
+            raise HTTPException(400, "不能删除默认项目")
     from scripts.project_mgr import delete_project
     from rich.console import Console
     try:

@@ -674,9 +674,8 @@ async function loadProjects() {
   try {
     const d = await api('/projects');
     const rows = (d.projects || []).map(p => {
-      const isDefault = d.projects.indexOf(p) === 0;
-      const switchBtn = p.active ? '' : `<button class="btn btn-sm btn-primary" onclick="switchProj('${esc(p.name)}', '${esc(p.path)}')">${t('common.switch')}</button> `;
-      const deleteBtn = (!p.active && !isDefault) ? `<button class="btn btn-sm btn-danger" onclick="deleteProj('${esc(p.name)}')">🗑️</button>` : '';
+      const switchBtn = p.active ? '' : `<button class="btn btn-sm btn-primary" onclick="switchProj('${esc(p.name)}')">${t('common.switch')}</button> `;
+      const deleteBtn = (!p.active && !p.isDefault) ? `<button class="btn btn-sm btn-danger" onclick="deleteProj('${esc(p.name)}')">🗑️</button>` : '';
       return `<tr><td>${p.active ? '→' : ''}</td><td>${esc(p.name)}</td><td class="dim" style="font-size:0.75rem">${esc(p.path)}</td><td>${p.active ? `<span class="badge badge-green">${t('common.current')}</span>` : switchBtn + deleteBtn}</td></tr>`;
     }).join('');
     el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>${t('proj.title')}</h2><button class="btn btn-success" onclick="newProj()">+ ${t('btn.add').replace('+ ', '')}</button></div>
@@ -684,11 +683,8 @@ async function loadProjects() {
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 function newProj() { const n = prompt(t('proj.input_name')); if (!n) return; api('/projects/new', { method: 'POST', body: { name: n } }).then(() => { toast(t('toast.created')); loadProjects(); }).catch(e => toast(e.message, 'error')); }
-function switchProj(name, path) {
-  // 如果有path且不在projects/下，说明是默认项目（根目录）
-  const isDefault = path && !path.includes('/projects/');
-  const switchName = isDefault ? 'default' : name;
-  api('/projects/switch', { method: 'POST', body: { name: switchName } }).then(() => {
+function switchProj(name) {
+  api('/projects/switch', { method: 'POST', body: { name } }).then(() => {
     _cache.clear();
     _undoStack.length = 0;
     _redoStack.length = 0;
