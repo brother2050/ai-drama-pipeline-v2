@@ -755,7 +755,7 @@ async function loadSettings() {
           <div class="form-row"><label>${t('set.backend')}</label><select id="cfg-llm-backend"><option value="openai" ${llm.backend==='openai'?'selected':''}>OpenAI 兼容 (SiliconFlow / Zhipu / ...)</option><option value="ollama" ${llm.backend==='ollama'?'selected':''}>Ollama</option></select></div>
           <div class="form-row"><label>API URL</label><input id="cfg-llm-url" value="${esc(llm.base_url || '')}"></div>
           <div class="form-row"><label>${t('set.llm_model')}</label><input id="cfg-llm-model" value="${esc(llm.model || '')}"></div>
-          <div class="form-row"><label>API Key</label><input id="cfg-llm-key" placeholder="${lang==='zh'?'留空不修改':'Leave empty to keep'}" value=""></div>
+          <div class="form-row"><label>API Key</label><input id="cfg-llm-key" value="${esc(llm.api_key || '')}"></div>
           <div class="tool-status-inline"><span class="status-dot ${tools.llm?.available ? 'ok' : 'err'}"></span>${tools.llm?.available ? t('dash.available') : tools.llm?.reason || t('dash.unavailable')}
             <button class="btn btn-xs btn-outline" onclick="testTool('llm')" id="test-btn-llm">🔌 ${t('set.test')}</button>
             <span id="test-result-llm" class="dim" style="font-size:0.8rem;margin-left:0.3rem"></span></div></div>
@@ -788,9 +788,7 @@ async function saveCfg() {
     sys.comfyui = { url: val('cfg-comfyui') };
     // LLM
     const llmEnabled = val('cfg-llm-enabled') === 'true';
-    const llmKey = val('cfg-llm-key');
-    sys.llm = { enabled: llmEnabled, backend: val('cfg-llm-backend'), base_url: val('cfg-llm-url'), model: val('cfg-llm-model') };
-    if (llmKey) sys.llm.api_key = llmKey;
+    sys.llm = { enabled: llmEnabled, backend: val('cfg-llm-backend'), base_url: val('cfg-llm-url'), model: val('cfg-llm-model'), api_key: val('cfg-llm-key') };
 
     await api('/system/config', { method: 'POST', body: sys });
     toast(t('toast.saved'));
