@@ -192,6 +192,7 @@ const I18N = {
   'set.llm': { zh: 'LLM', en: 'LLM' },
   'set.llm_enabled': { zh: '启用', en: 'Enabled' },
   'set.llm_model': { zh: '模型', en: 'Model' },
+  'set.test': { zh: '测试连接', en: 'Test' },
 
   // 批量补充
   'batch.cancel_btn': { zh: '⏹ 取消', en: '⏹ Cancel' },

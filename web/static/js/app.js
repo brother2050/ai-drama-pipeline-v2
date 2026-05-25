@@ -709,10 +709,13 @@ function deleteProj(n) {
 // ══════════════════════════════════════════════════════════
 
 function _backendSection(label, icon, idPrefix, backends, backend, url, available, reason) {
+  const toolName = idPrefix === 'lipsync' ? 'lipsync' : idPrefix;
   return `<div class="config-section"><h3>${icon} ${label}</h3>
     <div class="form-row"><label>${t('set.backend')}</label><select id="cfg-${idPrefix}" onchange="_updateUrl('${idPrefix}')">${backends.map(b => `<option value="${b}" ${backend === b ? 'selected' : ''}>${b}</option>`).join('')}</select></div>
     <div class="form-row"><label>${t('set.address')}</label><input id="cfg-${idPrefix}-url" value="${esc(url)}"></div>
-    <div class="tool-status-inline"><span class="status-dot ${available ? 'ok' : 'err'}"></span>${available ? t('dash.available') : reason || t('dash.unavailable')}</div></div>`;
+    <div class="tool-status-inline"><span class="status-dot ${available ? 'ok' : 'err'}"></span>${available ? t('dash.available') : reason || t('dash.unavailable')}
+      <button class="btn btn-xs btn-outline" onclick="testTool('${toolName}')" id="test-btn-${toolName}">🔌 ${t('set.test')}</button>
+      <span id="test-result-${toolName}" class="dim" style="font-size:0.8rem;margin-left:0.3rem"></span></div></div>`;
 }
 
 function _updateUrl(prefix) {
@@ -744,14 +747,18 @@ async function loadSettings() {
         ${_backendSection(t('set.lipsync'), '👄', 'lipsync', ['musetalk', 'sadtalker', 'wav2lip'], ls.backend, ls.url, tools.lipsync?.available, tools.lipsync?.reason)}
         <div class="config-section"><h3>🎨 ComfyUI</h3>
           <div class="form-row"><label>${t('set.address')}</label><input id="cfg-comfyui" value="${esc(sysCfg.comfyui?.url || '')}"></div>
-          <div class="tool-status-inline"><span class="status-dot ${tools.comfyui?.available ? 'ok' : 'err'}"></span>${tools.comfyui?.available ? t('dash.available') : tools.comfyui?.reason || t('dash.unavailable')}</div></div>
+          <div class="tool-status-inline"><span class="status-dot ${tools.comfyui?.available ? 'ok' : 'err'}"></span>${tools.comfyui?.available ? t('dash.available') : tools.comfyui?.reason || t('dash.unavailable')}
+            <button class="btn btn-xs btn-outline" onclick="testTool('comfyui')" id="test-btn-comfyui">🔌 ${t('set.test')}</button>
+            <span id="test-result-comfyui" class="dim" style="font-size:0.8rem;margin-left:0.3rem"></span></div></div>
         <div class="config-section"><h3>🧠 ${t('set.llm')}</h3>
           <div class="form-row"><label>${t('set.llm_enabled')}</label><select id="cfg-llm-enabled"><option value="false" ${!llm.enabled ? 'selected' : ''}>${lang==='zh'?'关闭':'Off'}</option><option value="true" ${llm.enabled ? 'selected' : ''}>${lang==='zh'?'开启':'On'}</option></select></div>
           <div class="form-row"><label>${t('set.backend')}</label><select id="cfg-llm-backend"><option value="openai" ${llm.backend==='openai'?'selected':''}>OpenAI 兼容 (SiliconFlow / Zhipu / ...)</option><option value="ollama" ${llm.backend==='ollama'?'selected':''}>Ollama</option></select></div>
           <div class="form-row"><label>API URL</label><input id="cfg-llm-url" value="${esc(llm.base_url || '')}"></div>
           <div class="form-row"><label>${t('set.llm_model')}</label><input id="cfg-llm-model" value="${esc(llm.model || '')}"></div>
-          <div class="form-row"><label>API Key</label><input id="cfg-llm-key" type="password" placeholder="${lang==='zh'?'留空不修改':'Leave empty to keep'}" value=""></div>
-          <div class="tool-status-inline"><span class="status-dot ${tools.llm?.available ? 'ok' : 'err'}"></span>${tools.llm?.available ? t('dash.available') : tools.llm?.reason || t('dash.unavailable')}</div></div>
+          <div class="form-row"><label>API Key</label><input id="cfg-llm-key" placeholder="${lang==='zh'?'留空不修改':'Leave empty to keep'}" value=""></div>
+          <div class="tool-status-inline"><span class="status-dot ${tools.llm?.available ? 'ok' : 'err'}"></span>${tools.llm?.available ? t('dash.available') : tools.llm?.reason || t('dash.unavailable')}
+            <button class="btn btn-xs btn-outline" onclick="testTool('llm')" id="test-btn-llm">🔌 ${t('set.test')}</button>
+            <span id="test-result-llm" class="dim" style="font-size:0.8rem;margin-left:0.3rem"></span></div></div>
         <div class="config-section"><h3>⚡ ${t('batch.concurrent')}</h3>
           <div class="form-row"><label>${t('batch.concurrent')}</label><select id="cfg-concurrency" onchange="localStorage.setItem('drama_concurrency',this.value)">
             <option value="1" ${(localStorage.getItem('drama_concurrency')||'1')==='1'?'selected':''}>1</option>
@@ -789,6 +796,29 @@ async function saveCfg() {
     toast(t('toast.saved'));
     invalidateCache('sysconfig');
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── 工具测试 ──
+
+async function testTool(name) {
+  const btn = document.getElementById(`test-btn-${name}`);
+  const resultEl = document.getElementById(`test-result-${name}`);
+  if (btn) btn.disabled = true;
+  if (resultEl) resultEl.innerHTML = '⏳ 测试中...';
+  try {
+    const r = await api(`/tools/${name}/test`, { method: 'POST' });
+    if (r.ok) {
+      if (resultEl) resultEl.innerHTML = `<span style="color:#22c55e">✅ ${esc(r.message)}</span>`;
+      toast(`✅ ${name}: ${r.message}`);
+    } else {
+      if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">❌ ${esc(r.message)}</span>`;
+      toast(`❌ ${name}: ${r.message}`, 'error');
+    }
+  } catch (e) {
+    if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">❌ ${esc(e.message)}</span>`;
+    toast(`❌ ${name}: ${e.message}`, 'error');
+  }
+  if (btn) btn.disabled = false;
 }
 
 applyI18n();

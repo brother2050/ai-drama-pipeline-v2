@@ -206,6 +206,97 @@ def check_tool(name: str):
     return {"name": name, **result}
 
 
+@router.post("/tools/{name}/test")
+def test_tool(name: str):
+    """测试三方工具连接（实际发请求验证）"""
+    cfg = _cfg()
+    result = _check_tool(name, cfg)
+    if not result.get("available"):
+        return {"ok": False, "name": name, "message": result.get("reason", "不可用"), **result}
+
+    # 工具可用，再做一次实际连接测试
+    try:
+        if name == "tts":
+            backend = cfg.get("models", {}).get("tts_backend", "mimo-voicedesign")
+            if "mimo" in backend:
+                return {"ok": True, "name": name, "message": f"MIMO API Key 已配置", **result}
+            api_url = cfg.get("models", {}).get(backend.replace("-", "_"), {}).get("api_url", "")
+            import httpx
+            r = httpx.get(api_url, timeout=5)
+            return {"ok": True, "name": name, "message": f"连接成功 (HTTP {r.status_code})", **result}
+
+        elif name == "comfyui":
+            url = cfg.get("comfyui", {}).get("url", "http://127.0.0.1:8188")
+            import httpx
+            r = httpx.get(f"{url}/system_stats", timeout=5)
+            data = r.json() if r.status_code == 200 else {}
+            vram = data.get("devices", [{}])[0].get("vram_total", 0) if data.get("devices") else 0
+            msg = f"连接成功" + (f" · VRAM {vram // 1024 // 1024}MB" if vram else "")
+            return {"ok": True, "name": name, "message": msg, **result}
+
+        elif name == "lipsync":
+            backend = cfg.get("models", {}).get("lip_sync_backend", "musetalk")
+            api_url = cfg.get("models", {}).get(backend.replace("-", "_"), {}).get("api_url", "")
+            import httpx
+            r = httpx.get(api_url, timeout=5)
+            return {"ok": True, "name": name, "message": f"{backend} 连接成功 (HTTP {r.status_code})", **result}
+
+        elif name == "llm":
+            llm_cfg = cfg.get("llm", {})
+            base_url = llm_cfg.get("base_url", "")
+            backend = llm_cfg.get("backend", "ollama")
+            import httpx
+            if backend == "ollama":
+                r = httpx.get(f"{base_url}/api/tags", timeout=5)
+                models = [m.get("name", "") for m in r.json().get("models", [])]
+                return {"ok": True, "name": name, "message": f"Ollama 连接成功 · {len(models)} 模型", "models": models, **result}
+            else:
+                check_url = base_url.rstrip("/")
+                if not check_url.endswith("/v1"):
+                    check_url += "/v1"
+                r = httpx.get(f"{check_url}/models", timeout=5)
+                data = r.json() if r.status_code == 200 else {}
+                count = len(data.get("data", []))
+                return {"ok": True, "name": name, "message": f"LLM 连接成功 · {count} 模型", **result}
+
+        elif name == "music":
+            backend = cfg.get("models", {}).get("music_backend", "template")
+            if backend == "template":
+                import subprocess
+                v = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, timeout=5)
+                ver = v.stdout.split("\n")[0] if v.returncode == 0 else "unknown"
+                return {"ok": True, "name": name, "message": f"ffmpeg: {ver}", **result}
+            api_url = cfg.get("models", {}).get(backend, {}).get("api_url", "")
+            import httpx
+            r = httpx.get(api_url, timeout=5)
+            return {"ok": True, "name": name, "message": f"{backend} 连接成功", **result}
+
+        elif name == "ffmpeg":
+            import subprocess
+            v = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, timeout=5)
+            ver = v.stdout.split("\n")[0] if v.returncode == 0 else "unknown"
+            return {"ok": True, "name": name, "message": ver, **result}
+
+        elif name == "redis":
+            import socket
+            with socket.create_connection(("127.0.0.1", 6379), timeout=3) as s:
+                s.send(b"PING\r\n")
+                resp = s.recv(64)
+            return {"ok": True, "name": name, "message": f"Redis PONG: {resp.decode().strip()}", **result}
+
+        elif name == "celery":
+            from pipeline.celery_app import app
+            insp = app.control.inspect(timeout=3)
+            active = insp.active() or {}
+            workers = list(active.keys())
+            return {"ok": True, "name": name, "message": f"Celery Worker: {', '.join(workers) or 'none'}", **result}
+
+        return {"ok": True, "name": name, "message": "可用", **result}
+
+    except Exception as e:
+        return {"ok": False, "name": name, "message": f"测试失败: {e}", **result}
+
+
 # ── 单步执行 ──
 
 @router.post("/steps/tts")
@@ -370,18 +461,7 @@ def get_system_config():
         return {}
     with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
-    # 脱敏
-    def _mask(d: dict) -> dict:
-        masked = {}
-        for k, v in d.items():
-            if isinstance(v, dict):
-                masked[k] = _mask(v)
-            elif any(s in k.lower() for s in ('key', 'token', 'secret', 'password')):
-                masked[k] = "***" if v else ""
-            else:
-                masked[k] = v
-        return masked
-    return _mask(cfg)
+    return cfg
 
 
 @router.post("/system/config")
@@ -393,10 +473,7 @@ def update_system_config(data: dict = Body(...)):
         existing = load_config(path)
     except Exception:
         existing = {}
-    def _strip_masked(d: dict) -> dict:
-        return {k: (_strip_masked(v) if isinstance(v, dict) else v)
-                for k, v in d.items() if v != "***"}
-    merged = _deep_merge(existing, _strip_masked(data))
+    merged = _deep_merge(existing, data)
     save_config(path, merged)
     return {"status": "ok"}
 
@@ -404,18 +481,7 @@ def update_system_config(data: dict = Body(...)):
 @router.get("/config")
 def get_config():
     cfg = _cfg()
-    # 脱敏：隐藏 API key 等敏感字段
-    def _mask(d: dict) -> dict:
-        masked = {}
-        for k, v in d.items():
-            if isinstance(v, dict):
-                masked[k] = _mask(v)
-            elif any(s in k.lower() for s in ('key', 'token', 'secret', 'password')):
-                masked[k] = "***" if v else ""
-            else:
-                masked[k] = v
-        return masked
-    return _mask(cfg)
+    return cfg
 
 
 @router.post("/config")
@@ -434,11 +500,7 @@ def update_config(req: ConfigUpdate):
         existing = load_config(cfg_path)
     except Exception:
         existing = {}
-    # 过滤脱敏占位符，防止 "***" 覆盖真实值
-    def _strip_masked(d: dict) -> dict:
-        return {k: (_strip_masked(v) if isinstance(v, dict) else v)
-                for k, v in d.items() if v != "***"}
-    merged = _deep_merge(existing, _strip_masked(data))
+    merged = _deep_merge(existing, data)
     save_config(cfg_path, merged)
     # 注意: Container 在每次请求/任务时按需创建，下次会自动读取新配置
     return {"status": "ok"}
