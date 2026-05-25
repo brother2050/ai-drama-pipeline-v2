@@ -455,7 +455,11 @@ def update_config(req: ConfigUpdate):
         existing = load_config(cfg_path)
     except Exception:
         existing = {}
-    merged = _deep_merge(existing, data)
+    # 过滤脱敏占位符，防止 "***" 覆盖真实值
+    def _strip_masked(d: dict) -> dict:
+        return {k: (_strip_masked(v) if isinstance(v, dict) else v)
+                for k, v in d.items() if v != "***"}
+    merged = _deep_merge(existing, _strip_masked(data))
     save_config(cfg_path, merged)
     # 注意: Container 在每次请求/任务时按需创建，下次会自动读取新配置
     return {"status": "ok"}
