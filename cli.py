@@ -399,11 +399,10 @@ def project_delete(name):
 def env():
     """显示环境信息"""
     import platform
-    from infra.gpu import detect_gpu
-    gpu = detect_gpu()
+    # GPU 检测已移除 — 由三方工具管理
     console.print(f"[cyan]OS:[/cyan]     {platform.system()} {platform.release()}")
     console.print(f"[cyan]Python:[/cyan] {platform.python_version()}")
-    console.print(f"[cyan]GPU:[/cyan]    {gpu['name']} ({gpu['vram_mb']}MB)" if gpu["available"] else "[cyan]GPU:[/cyan]    不可用（API 模式不受影响）")
+    console.print("[cyan]GPU:[/cyan]    由三方工具管理（本地不检测）")
     console.print(f"[cyan]Redis:[/cyan]  {'✅ 运行中' if _port_open(6379) else '❌ 未运行'}")
 
 

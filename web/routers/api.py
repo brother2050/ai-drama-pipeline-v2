@@ -189,11 +189,10 @@ def system_status():
 
 @router.get("/system/env")
 def system_env():
-    from infra.gpu import detect_gpu
+    # GPU 检测已移除 — 由三方工具管理
     import platform
-    gpu = detect_gpu()
     return {"os": f"{platform.system()} {platform.release()}",
-            "python": platform.python_version(), "gpu": gpu}
+            "python": platform.python_version(), "gpu": {"name": "N/A", "available": false, "note": "由三方工具管理"}}
 
 
 # ══════════════════════════════════════════════════════════
