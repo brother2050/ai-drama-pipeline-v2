@@ -222,6 +222,11 @@ def test_tool(name: str):
     """测试三方工具连接（实际发请求验证）"""
     cfg = _merged_cfg()
     result = _check_tool(name, cfg)
+
+    # LLM 特殊处理：不管 enabled 状态，直接测连接
+    if name == "llm":
+        return _test_llm(cfg, result)
+
     if not result.get("available"):
         return {"ok": False, "name": name, "message": result.get("reason", "不可用"), **result}
 
@@ -251,26 +256,6 @@ def test_tool(name: str):
             import httpx
             r = httpx.get(api_url, timeout=5)
             return {"ok": True, "name": name, "message": f"{backend} 连接成功 (HTTP {r.status_code})", **result}
-
-        elif name == "llm":
-            llm_cfg = cfg.get("llm", {})
-            base_url = llm_cfg.get("base_url", "")
-            backend = llm_cfg.get("backend", "ollama")
-            api_key = llm_cfg.get("api_key", "")
-            headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
-            import httpx
-            if backend == "ollama":
-                r = httpx.get(f"{base_url}/api/tags", timeout=5)
-                models = [m.get("name", "") for m in r.json().get("models", [])]
-                return {"ok": True, "name": name, "message": f"Ollama 连接成功 · {len(models)} 模型", "models": models, **result}
-            else:
-                check_url = base_url.rstrip("/")
-                if not check_url.endswith("/v1"):
-                    check_url += "/v1"
-                r = httpx.get(f"{check_url}/models", headers=headers, timeout=5)
-                data = r.json() if r.status_code == 200 else {}
-                count = len(data.get("data", []))
-                return {"ok": True, "name": name, "message": f"LLM 连接成功 · {count} 模型", **result}
 
         elif name == "music":
             backend = cfg.get("models", {}).get("music_backend", "template")
@@ -308,6 +293,40 @@ def test_tool(name: str):
 
     except Exception as e:
         return {"ok": False, "name": name, "message": f"测试失败: {e}", **result}
+
+
+def _test_llm(cfg: dict, result: dict) -> dict:
+    """LLM 连接测试（忽略 enabled 开关，直接测）"""
+    name = "llm"
+    llm_cfg = cfg.get("llm", {})
+    base_url = llm_cfg.get("base_url", "")
+    backend = llm_cfg.get("backend", "ollama")
+    api_key = llm_cfg.get("api_key", "")
+
+    if not base_url:
+        return {"ok": False, "name": name, "message": "未配置 API URL", **result}
+
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+    import httpx
+    try:
+        if backend == "ollama":
+            r = httpx.get(f"{base_url}/api/tags", timeout=5)
+            models = [m.get("name", "") for m in r.json().get("models", [])]
+            return {"ok": True, "name": name, "message": f"Ollama 连接成功 · {len(models)} 模型", "models": models, **result}
+        else:
+            check_url = base_url.rstrip("/")
+            if not check_url.endswith("/v1"):
+                check_url += "/v1"
+            r = httpx.get(f"{check_url}/models", headers=headers, timeout=5)
+            if r.status_code == 401:
+                return {"ok": False, "name": name, "message": "API Key 无效 (401 Unauthorized)", **result}
+            if r.status_code == 403:
+                return {"ok": False, "name": name, "message": "API Key 无权限 (403 Forbidden)", **result}
+            data = r.json() if r.status_code == 200 else {}
+            count = len(data.get("data", []))
+            return {"ok": True, "name": name, "message": f"LLM 连接成功 · {count} 模型", **result}
+    except Exception as e:
+        return {"ok": False, "name": name, "message": f"连接失败: {e}", **result}
 
 
 # ── 单步执行 ──
