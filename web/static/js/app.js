@@ -673,22 +673,28 @@ async function loadProjects() {
   el.innerHTML = `<div class="card"><h2>${t('common.loading')}</h2></div>`;
   try {
     const d = await api('/projects');
-    const rows = (d.projects || []).map(p => `<tr><td>${p.active ? '→' : ''}</td><td>${p.name}</td><td class="dim" style="font-size:0.75rem">${p.path}</td><td>${p.active ? `<span class="badge badge-green">${t('common.current')}</span>` : `<button class="btn btn-sm btn-primary" onclick="switchProj('${p.name}')">${t('common.switch')}</button> <button class="btn btn-sm btn-danger" onclick="deleteProj('${p.name}')">🗑️</button>`}</td></tr>`).join('');
+    const rows = (d.projects || []).map(p => {
+      const isDefault = d.projects.indexOf(p) === 0;
+      const switchBtn = p.active ? '' : `<button class="btn btn-sm btn-primary" onclick="switchProj('${esc(p.name)}', '${esc(p.path)}')">${t('common.switch')}</button> `;
+      const deleteBtn = (!p.active && !isDefault) ? `<button class="btn btn-sm btn-danger" onclick="deleteProj('${esc(p.name)}')">🗑️</button>` : '';
+      return `<tr><td>${p.active ? '→' : ''}</td><td>${esc(p.name)}</td><td class="dim" style="font-size:0.75rem">${esc(p.path)}</td><td>${p.active ? `<span class="badge badge-green">${t('common.current')}</span>` : switchBtn + deleteBtn}</td></tr>`;
+    }).join('');
     el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>${t('proj.title')}</h2><button class="btn btn-success" onclick="newProj()">+ ${t('btn.add').replace('+ ', '')}</button></div>
       <table><thead><tr><th></th><th>${t('common.name')}</th><th>${t('common.path')}</th><th>${t('common.status')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 function newProj() { const n = prompt(t('proj.input_name')); if (!n) return; api('/projects/new', { method: 'POST', body: { name: n } }).then(() => { toast(t('toast.created')); loadProjects(); }).catch(e => toast(e.message, 'error')); }
-function switchProj(n) {
-  api('/projects/switch', { method: 'POST', body: { name: n } }).then(() => {
-    // 清除所有缓存
+function switchProj(name, path) {
+  // 如果有path且不在projects/下，说明是默认项目（根目录）
+  const isDefault = path && !path.includes('/projects/');
+  const switchName = isDefault ? 'default' : name;
+  api('/projects/switch', { method: 'POST', body: { name: switchName } }).then(() => {
     _cache.clear();
     _undoStack.length = 0;
     _redoStack.length = 0;
     ep = 1;
     toast(t('toast.switched'));
     loadProjects();
-    // 重载当前活动页面
     const p = document.querySelector('.page.active');
     if (p) { const pageName = p.id.replace('page-', ''); if (PAGES[pageName]) PAGES[pageName](); }
   }).catch(e => toast(e.message, 'error'));

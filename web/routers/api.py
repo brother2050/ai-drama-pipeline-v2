@@ -502,7 +502,7 @@ def create_project(req: ProjectCreate):
 def switch_project(req: ProjectSwitch):
     from scripts.project_mgr import switch_project
     from rich.console import Console
-    # 校验项目存在性
+    # 校验项目存在性（default/默认 表示切回根目录）
     if req.name not in ("default", "默认"):
         project_dir = ROOT / "projects" / req.name
         if not project_dir.exists():
