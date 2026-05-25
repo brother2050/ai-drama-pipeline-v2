@@ -57,21 +57,27 @@ class WorkflowBuilder:
             except Exception:
                 pass
 
+        # 确保 registry 可用（懒加载内置默认）
+        if not self.registry:
+            from flow.model_registry import ModelRegistry
+            self.registry = ModelRegistry(
+                os.path.join(self.project_dir, "config", "project.yaml"))
+
         # 首帧工作流
         img_backend = self.models.get("image_backend", "sd15")
-        if self.registry:
-            wf_name = self.registry.get_image_workflow(img_backend)
-        else:
-            wf_name = "01_first_frame_sd15.json" if img_backend != "flux" else "01_first_frame_flux.json"
+        wf_name = self.registry.get_image_workflow(img_backend)
+        if not wf_name:
+            logger.warning(f"未知 image_backend '{img_backend}'，回退到 sd15")
+            wf_name = self.registry.get_image_workflow("sd15") or "01_first_frame_sd15.json"
         self.first_frame_wf = self._load_wf(wf_name)
         self.first_frame_wf = resolve_node_aliases(self.first_frame_wf, available_nodes)
 
         # 视频工作流
         video_backend = self.models.get("video_backend", "animatediff")
-        if self.registry:
-            video_wf_name = self.registry.get_video_workflow(video_backend)
-        else:
-            video_wf_name = "02_img2video.json" if video_backend == "animatediff" else "03_img2video_cogvideo.json"
+        video_wf_name = self.registry.get_video_workflow(video_backend)
+        if not video_wf_name:
+            logger.warning(f"未知 video_backend '{video_backend}'，回退到 animatediff")
+            video_wf_name = self.registry.get_video_workflow("animatediff") or "02_img2video.json"
         self.video_wf = self._load_wf(video_wf_name)
         self.video_wf = resolve_node_aliases(self.video_wf, available_nodes)
 
