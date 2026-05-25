@@ -314,7 +314,11 @@ def _find_shot_for_api(episode: int, shot_id: str) -> dict | None:
         return None
     with open(sb_path, encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            if int(row.get("episode", 0)) == episode and row.get("shot_id") == shot_id:
+            try:
+                ep = int(row.get("episode", 0) or 0)
+            except (ValueError, TypeError):
+                continue
+            if ep == episode and row.get("shot_id") == shot_id:
                 return dict(row)
     return None
 

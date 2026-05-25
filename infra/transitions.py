@@ -98,9 +98,8 @@ def build_concat_filter(inputs: list[str], output: str, transition: str = "cross
             if i == 1:
                 offset = max(0, durations[0] - duration)
             else:
-                # offset = sum(durations[:i+1]) - duration * i
-                # 即: 累积时长减去所有已完成转场的重叠量
-                offset = sum(durations[:i + 1]) - duration * i
+                # offset = 前 i 段视频时长之和 - i 次转场重叠
+                offset = sum(durations[:i]) - duration * i
                 offset = max(0, offset)
 
             out_label = f"v{i}" if i < len(inputs) - 1 else "v"

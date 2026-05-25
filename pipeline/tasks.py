@@ -98,14 +98,12 @@ def _try_mark_running_atomic(config_path: str, episode: int, shot_id: str, step:
         from infra.database.pool import get_pool, placeholder
         pool = get_pool()
         conn = pool.connect()
+        cur = conn.cursor()
+        lock_key = hash(f"gen:{episode}:{shot_id}:{step}") & 0x7FFFFFFF
         try:
-            cur = conn.cursor()
-            # 用 episode + shot_id + step 生成唯一的 advisory lock key
-            lock_key = hash(f"gen:{episode}:{shot_id}:{step}") & 0x7FFFFFFF
             cur.execute("SELECT pg_try_advisory_lock(%s)", (lock_key,))
             locked = cur.fetchone()[0]
             if not locked:
-                pool.release(conn)
                 return False
             try:
                 # 查询当前状态，FOR UPDATE 防止并发修改
@@ -119,28 +117,25 @@ def _try_mark_running_atomic(config_path: str, episode: int, shot_id: str, step:
                 if row:
                     status, age = row[0], row[1] or 0
                     if status == "running" and age < 600:
-                        # 正在运行且未超时，拒绝
-                        cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
-                        pool.release(conn)
                         return False
-                    # 已完成或超时，更新为 running
                     cur.execute(f"""
                         UPDATE generation_status SET status='running', updated_at=CURRENT_TIMESTAMP
                         WHERE episode={placeholder()} AND shot_id={placeholder()} AND stage={placeholder()}
                     """, (episode, shot_id, step))
                 else:
-                    # 首次执行，插入记录
                     cur.execute(f"""
                         INSERT INTO generation_status (episode, shot_id, stage, status, updated_at)
                         VALUES ({placeholder()}, {placeholder()}, {placeholder()}, 'running', CURRENT_TIMESTAMP)
                     """, (episode, shot_id, step))
                 conn.commit()
-                cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
-                pool.release(conn)
                 return True
-            except Exception:
-                cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
-                raise
+            finally:
+                # 确保 advisory lock 总是被释放
+                try:
+                    cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
+                    conn.commit()
+                except Exception:
+                    pass
         finally:
             pool.release(conn)
     except Exception:

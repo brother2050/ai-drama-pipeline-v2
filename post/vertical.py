@@ -82,10 +82,12 @@ def to_vertical(video: str, output: str, mode: str = "face_track") -> str:
         if face_pos:
             cx, cy = face_pos
             logger.info(f"检测到人脸中心: ({cx}, {cy})")
-            # 计算裁剪区域，以人脸为中心
-            crop_w = int(w * target_h / target_w)  # 保持目标宽高比的裁剪宽度
+            # 以目标 9:16 比例计算裁剪区域
+            crop_h = h  # 保持原始高度
+            crop_w = int(crop_h * target_w / target_h)  # 对应的裁剪宽度
+            crop_w = min(crop_w, w)  # 不超过源宽度
             crop_x = max(0, min(cx - crop_w // 2, w - crop_w))
-            vf = (f"crop={crop_w}:{h}:{crop_x}:0,scale={target_w}:{target_h}")
+            vf = (f"crop={crop_w}:{crop_h}:{crop_x}:0,scale={target_w}:{target_h}")
         else:
             logger.info("未检测到人脸，使用模糊背景模式")
             vf = (f"split[original][blur];[blur]scale={target_w}:{target_h},boxblur=20[bg];"

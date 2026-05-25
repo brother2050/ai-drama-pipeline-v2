@@ -73,11 +73,12 @@ class ShotManager:
     def _resolve_refs(self):
         """解析角色/场景名→ID"""
         name_to_id = {c.get("name", ""): cid for cid, c in self.characters.items()}
-        scene_name_to_id = {s.get("name", ""): sid for sid, s in self.scenes.items()}
         for shot in self.shots:
             chars = shot.get("characters", "")
             if chars and chars not in self.characters:
-                resolved = name_to_id.get(chars, chars)
+                # 支持 "+" 分隔的多角色名解析
+                parts = [c.strip() for c in chars.split("+")]
+                resolved = "+".join(name_to_id.get(p, p) for p in parts)
                 shot["characters"] = resolved
 
     def get_character(self, char_id: str) -> dict:
@@ -87,7 +88,15 @@ class ShotManager:
         return self.scenes.get(scene_id, {})
 
     def get_shots_for_episode(self, episode: int) -> list[dict]:
-        return [s for s in self.shots if int(s.get("episode", 0)) == episode]
+        result = []
+        for s in self.shots:
+            try:
+                ep = int(s.get("episode", 0) or 0)
+            except (ValueError, TypeError):
+                continue
+            if ep == episode:
+                result.append(s)
+        return result
 
     def validate(self) -> list[str]:
         errors = []
