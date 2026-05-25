@@ -186,29 +186,6 @@ def _scaffold_default_config(project_dir: Path, name: str) -> None:
         sb_path.write_text(_DEFAULT_STORYBOARD_CSV, encoding="utf-8")
 
 
-def _copy_template_if_exists(project_dir: Path, template_dir: Path) -> bool:
-    """从模板目录复制内容到项目目录（不覆盖已有文件），返回是否使用了模板"""
-    if not template_dir.exists():
-        return False
-
-    for src in template_dir.rglob("*"):
-        if src.is_dir():
-            continue
-        rel = src.relative_to(template_dir)
-
-        # .example 文件：去掉后缀复制为实际文件
-        if src.stem.endswith(".example"):
-            dst = project_dir / rel.parent / src.stem
-        else:
-            dst = project_dir / rel
-
-        # 确保父目录存在
-        dst.parent.mkdir(parents=True, exist_ok=True)
-
-        if not dst.exists():
-            shutil.copy2(src, dst)
-    return True
-
 
 def list_projects(console):
     root = Path(__file__).resolve().parent.parent
@@ -262,7 +239,7 @@ def list_projects(console):
 
 
 def create_project(name: str, root: Path, console):
-    """创建新项目 — 完全独立的目录结构 + 默认配置"""
+    """创建新项目 — 干净的目录结构 + 项目配置（不带模板数据）"""
     projects_dir = root / "projects"
     projects_dir.mkdir(exist_ok=True)
     project_dir = projects_dir / name
@@ -273,14 +250,10 @@ def create_project(name: str, root: Path, console):
     # 1. 创建完整目录结构
     _ensure_project_dirs(project_dir)
 
-    # 2. 尝试从默认模板复制已有内容（角色示例、场景示例等）
-    default_dir = projects_dir / DEFAULT_PROJECT
-    used_template = _copy_template_if_exists(project_dir, default_dir)
-
-    # 3. 生成默认配置文件（不覆盖模板已复制的）
+    # 2. 生成项目配置（只写 project.yaml + 空分镜表，不复制模板数据）
     _scaffold_default_config(project_dir, name)
 
-    # 4. 设置为活动项目
+    # 3. 设置为活动项目
     (projects_dir / ".active").write_text(str(project_dir))
 
     console.print(f"[green]✅ 项目 '{name}' 已创建并设为当前[/green]")
