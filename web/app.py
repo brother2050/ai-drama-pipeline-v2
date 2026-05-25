@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -37,8 +38,9 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="AI 短剧工作台 v2", version="2.0", lifespan=lifespan)
 
-    # CORS
-    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+    # CORS（可通过 CORS_ORIGINS 环境变量配置，逗号分隔）
+    allowed_origins = os.environ.get("CORS_ORIGINS", "*").split(",")
+    app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=["*"], allow_headers=["*"])
 
     # 全局异常处理
     @app.exception_handler(Exception)

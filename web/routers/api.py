@@ -127,13 +127,15 @@ def _safe_path(base: Path, *parts: str) -> Path:
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
-    """深度合并 override 到 base 中（原地修改 base）"""
+    """深度合并 override 到 base 中（返回新 dict，不修改原对象）"""
+    import copy
+    result = copy.deepcopy(base)
     for key, value in override.items():
-        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-            _deep_merge(base[key], value)
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
         else:
-            base[key] = value
-    return base
+            result[key] = value
+    return result
 
 
 def _check_tool(name: str, cfg: dict) -> dict:
@@ -351,7 +353,8 @@ def run_post(req: PostRequest):
 def run_music(req: MusicRequest):
     """配乐生成"""
     from pipeline.tasks import music_task
-    output = str(ROOT / "output" / "bgm.wav")
+    import time
+    output = str(ROOT / "output" / f"bgm_{int(time.time())}.wav")
     return _submit_task(music_task, _cfg_path(), req.duration, req.mood, output)
 
 
@@ -421,7 +424,19 @@ def cancel_task(task_id: str):
 
 @router.get("/config")
 def get_config():
-    return _cfg()
+    cfg = _cfg()
+    # 脱敏：隐藏 API key 等敏感字段
+    def _mask(d: dict) -> dict:
+        masked = {}
+        for k, v in d.items():
+            if isinstance(v, dict):
+                masked[k] = _mask(v)
+            elif any(s in k.lower() for s in ('key', 'token', 'secret', 'password')):
+                masked[k] = "***" if v else ""
+            else:
+                masked[k] = v
+        return masked
+    return _mask(cfg)
 
 
 @router.post("/config")
@@ -440,8 +455,8 @@ def update_config(req: ConfigUpdate):
         existing = load_config(cfg_path)
     except Exception:
         existing = {}
-    _deep_merge(existing, data)
-    save_config(cfg_path, existing)
+    merged = _deep_merge(existing, data)
+    save_config(cfg_path, merged)
     # 注意: Container 在每次请求/任务时按需创建，下次会自动读取新配置
     return {"status": "ok"}
 
@@ -483,6 +498,11 @@ def create_project(req: ProjectCreate):
 def switch_project(req: ProjectSwitch):
     from scripts.project_mgr import switch_project
     from rich.console import Console
+    # 校验项目存在性
+    if req.name not in ("default", "默认"):
+        project_dir = ROOT / "projects" / req.name
+        if not project_dir.exists():
+            raise HTTPException(404, f"项目 '{req.name}' 不存在")
     switch_project(req.name, ROOT, Console())
     return {"status": "ok"}
 
@@ -640,6 +660,8 @@ def save_storyboard(episode: int, data: dict):
     shots = data.get("shots", [])
     if not isinstance(shots, list):
         raise HTTPException(400, "shots 必须是数组")
+    if len(shots) > 500:
+        raise HTTPException(400, "shots 数组过大，最多 500 个镜头")
 
     # 校验每个镜头的 shot_id 格式
     for shot in shots:
