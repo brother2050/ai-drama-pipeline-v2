@@ -322,14 +322,14 @@ async function saveShot(idx) {
   const s = shots[idx];
   for (const [k, id] of [['scene', 'ed-scene'], ['characters', 'ed-chars'], ['action', 'ed-action'], ['action_en', 'ed-action-en'], ['dialogue', 'ed-dialogue'], ['dialogue_en', 'ed-dialogue-en'], ['camera', 'ed-camera'], ['shot_type', 'ed-shottype'], ['duration', 'ed-dur'], ['emotion', 'ed-emo']])
     s[k] = document.getElementById(id)?.value || (k === 'duration' ? 4 : k === 'emotion' ? 'neutral' : '');
-  pushUndo(`编辑镜头 ${s.shot_id || idx + 1}`);
+  pushUndo(`${t('edit.shot_title')} ${s.shot_id || idx + 1}`);
   try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } }); invalidateCache(`storyboard/${ep}`); invalidateCache(`res/${ep}`); toast(t('toast.saved')); document.getElementById('edit-overlay')?.remove(); renderShotsGrid(); } catch (e) { toast(e.message, 'error'); }
 }
 
 async function deleteShot(idx) {
   const sid = _shotId(shots[idx], idx);
   if (!confirm(t('confirm.delete_shot', { id: sid }))) return;
-  pushUndo(`删除镜头 ${sid}`); shots.splice(idx, 1);
+  pushUndo(`${t('btn.delete')} ${sid}`); shots.splice(idx, 1);
   try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.deleted')); renderShotsGrid(); } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -446,8 +446,10 @@ async function runAll() {
   const statusEl = document.getElementById('wb-batch-status');
   statusEl.style.display = 'block';
   const stages = ['preview', 'produce', 'post'];
-  for (const cmd of stages) {
-    statusEl.innerHTML = `<div class="batch-progress"><div class="batch-text">⏳ ${cmd}...</div></div>`;
+  for (let i = 0; i < stages.length; i++) {
+    const cmd = stages[i];
+    statusEl.innerHTML = `<div class="batch-progress"><div class="batch-bar"><div class="batch-fill" style="width:${(i / stages.length) * 100}%"></div></div>
+      <div class="batch-text">[${i + 1}/${stages.length}] ${cmd}...</div></div>`;
     try {
       const { task_id } = await api('/pipeline/run', { method: 'POST', body: { episode: ep, command: cmd } });
       const result = await pollTask(task_id);
@@ -520,6 +522,7 @@ async function saveNewChar() {
 function deleteChar(id) { _crudDelete('characters', id, t('char.title').replace(/👤\s?/, ''), loadCharacters); }
 
 async function editChar(id) {
+  try {
   const c = ((await cachedFetch('characters', () => api('/characters'))).characters || []).find(x => x.id === id);
   if (!c) { toast(t('char.not_found'), 'error'); return; }
   const voiceKey = c.voice?.key || '';
@@ -530,6 +533,7 @@ async function editChar(id) {
     <div class="edit-field"><label>${t('char.appearance')}</label><textarea id="ec-appearance" rows="3">${esc(c.appearance || '')}</textarea></div>
     <div class="edit-field"><label>${t('char.voice_key')}</label><input id="ec-voice" value="${esc(voiceKey)}" placeholder="e.g. male-1"></div>
     <div class="edit-field"><label>${t('char.outfit_desc')}</label><textarea id="ec-outfits" rows="2">${esc(outfitDesc)}</textarea></div>`, `saveCharEdit('${id}')`);
+  } catch (e) { toast(e.message, 'error'); }
 }
 function saveCharEdit(id) {
   const voiceVal = val('ec-voice');
@@ -574,12 +578,14 @@ async function saveNewScene() {
 function deleteScene(id) { _crudDelete('scenes', id, t('scene.title').replace(/🏔️\s?/, ''), loadScenes); }
 
 async function editScene(id) {
+  try {
   const s = ((await cachedFetch('scenes', () => api('/scenes'))).scenes || []).find(x => x.id === id);
   if (!s) { toast(t('scene.not_found'), 'error'); return; }
   _showOverlay('edit-scene-overlay', `${t('scene.edit_title')} ${id}`, `
     <div class="edit-field"><label>${t('scene.name')}</label><input id="es-name" value="${esc(s.name || '')}"></div>
     <div class="edit-field"><label>${t('scene.desc')}</label><textarea id="es-desc" rows="3">${esc(s.description || '')}</textarea></div>
     <div class="edit-field"><label>${t('scene.lighting')}</label><input id="es-lighting" value="${esc(s.lighting || '')}"></div>`, `saveSceneEdit('${id}')`);
+  } catch (e) { toast(e.message, 'error'); }
 }
 function saveSceneEdit(id) { _crudSave('scenes', id, () => ({ name: val('es-name'), description: val('es-desc'), lighting: val('es-lighting') }), 'edit-scene-overlay', loadScenes); }
 
@@ -630,7 +636,7 @@ function updateShotField() { _sbDirty = true; _debouncedSaveSB(); }
 async function deleteShotFromSB(idx) {
   const current = (await api(`/storyboard/${ep}`)).shots || [];
   if (!confirm(t('confirm.delete_shot', { id: current[idx]?.shot_id || idx + 1 }))) return;
-  pushUndo(`删除镜头 ${current[idx]?.shot_id || idx + 1}`); current.splice(idx, 1);
+  pushUndo(`${t('btn.delete')} ${current[idx]?.shot_id || idx + 1}`); current.splice(idx, 1);
   try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: current } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.deleted')); loadStoryboard(); } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -638,7 +644,7 @@ async function addShot() {
   const existing = (await api(`/storyboard/${ep}`)).shots || [];
   const maxNum = Math.max(0, ...existing.map(s => parseInt(s.shot_id, 10)).filter(n => !isNaN(n)));
   const newId = String(maxNum + 1).padStart(3, '0');
-  pushUndo(`添加镜头 ${newId}`);
+  pushUndo(`${t('btn.add')} ${newId}`);
   try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: [...existing, { episode: ep, shot_id: newId, scene: '', characters: '', action: '', dialogue: '', camera: CAMERAS[0], shot_type: SHOT_TYPES[2], duration: 4, emotion: 'neutral', outfit: '', action_en: '', dialogue_en: '' }] } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.created')); loadStoryboard(); } catch (e) { toast(e.message, 'error'); }
 }
 
