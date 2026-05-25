@@ -36,7 +36,7 @@ function switchEpisode(val) {
 }
 
 function addEpisode() {
-  const input = prompt(t('proj.input_name') || '集数:', '');
+  const input = prompt('Episode #:', '');
   if (!input) return;
   const newEp = parseInt(input);
   if (!newEp || newEp < 1) { toast('Invalid episode number', 'error'); return; }
@@ -148,12 +148,6 @@ function _crudPage(title, cols, items, editFn, delFn, newFn, emptyHint) {
     <h2>${title}</h2><button class="btn btn-success" onclick="${newFn}()">+ ${t('btn.add').replace('+ ', '')}</button></div>${table}${hint}</div>`;
 }
 
-async function _crudCreate(endpoint, extra, reload) {
-  const id = prompt('ID:'); if (!id) return;
-  if (!/^[a-zA-Z0-9_-]+$/.test(id)) { toast('ID invalid', 'error'); return; }
-  const name = prompt(t('common.name') + ':'); if (!name) return;
-  try { await api(`/${endpoint}`, { method: 'POST', body: { id, name, ...extra } }); invalidateCache(endpoint); toast(t('toast.created')); reload(); } catch (e) { toast(e.message, 'error'); }
-}
 async function _crudDelete(endpoint, id, label, reload) {
   if (!confirm(`${label} ${id}？`)) return;
   try { await api(`/${endpoint}/${id}`, { method: 'DELETE' }); invalidateCache(endpoint); toast(t('toast.deleted')); reload(); } catch (e) { toast(e.message, 'error'); }
@@ -232,7 +226,7 @@ async function loadPipeline() {
     shots = d.shots || [];
     if (!shots.length) { el.innerHTML = `<div class="card"><h2>${t('wb.no_storyboard')}</h2><p class="dim">${t('wb.add_shots_first')}</p><button class="btn btn-primary" style="margin-top:0.5rem" onclick="navTo('storyboard')">${t('wb.go_edit_btn')}</button></div>`; return; }
     renderWB(episodes);
-  } catch (e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${esc(e.message)}</p></div>`; }
+  } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 
 function renderWB(episodes) {
@@ -242,7 +236,7 @@ function renderWB(episodes) {
     <div class="wb-batch-btns">
       <button class="btn btn-outline" onclick="undo()" title="Ctrl+Z">↩ ${t('undo.undo')}</button>
       <button class="btn btn-outline" onclick="redo()" title="Ctrl+Shift+Z">↪ ${t('undo.redo')}</button>
-      ${STEP_BTNS.map(b => `<button class="btn btn-outline" onclick="batchRun('${b.step}')">${b.icon} ${t('btn.add').replace('+ ', '')} ${b.label}</button>`).join('')}
+      ${STEP_BTNS.map(b => `<button class="btn btn-outline" onclick="batchRun('${b.step}')">${b.icon} ${t('wb.batch_label')} ${b.label}</button>`).join('')}
       <span class="dim" style="margin:0 0.3rem">|</span>
       <button class="btn btn-outline" onclick="runPortraits()">📸 ${t('wb.gen_portraits').replace('📸 ', '')}</button>
       <button class="btn btn-outline" onclick="runPost()">🎞️ ${t('wb.post_process').replace('🎞️ ', '')}</button>
@@ -438,7 +432,7 @@ async function runPost() {
 }
 
 async function runAll() {
-  if (!confirm(t('wb.run_all') + '? ' + t('batch.confirm', { step: t('wb.run_all'), n: shots.length }))) return;
+  if (!confirm(t('wb.run_all') + '?')) return;
   const statusEl = document.getElementById('wb-batch-status');
   statusEl.style.display = 'block';
   const stages = ['preview', 'produce', 'post'];
@@ -633,7 +627,7 @@ async function addShot() {
   const maxNum = Math.max(0, ...existing.map(s => parseInt(s.shot_id, 10)).filter(n => !isNaN(n)));
   const newId = String(maxNum + 1).padStart(3, '0');
   pushUndo(`添加镜头 ${newId}`);
-  try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: [...existing, { episode: ep, shot_id: newId, scene: '', characters: '', action: '', dialogue: '......', camera: '固定', shot_type: '中景', duration: 4, emotion: 'neutral', outfit: '', action_en: '', dialogue_en: '' }] } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.created')); loadStoryboard(); } catch (e) { toast(e.message, 'error'); }
+  try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: [...existing, { episode: ep, shot_id: newId, scene: '', characters: '', action: '', dialogue: '', camera: CAMERAS[0], shot_type: SHOT_TYPES[2], duration: 4, emotion: 'neutral', outfit: '', action_en: '', dialogue_en: '' }] } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.created')); loadStoryboard(); } catch (e) { toast(e.message, 'error'); }
 }
 
 // ══════════════════════════════════════════════════════════
