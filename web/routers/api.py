@@ -97,11 +97,16 @@ from web.schemas import (
 # ── 工具函数 ──
 
 def _cfg() -> dict:
-    cfg_path = _active_project_dir() / "config" / "project.yaml"
-    if cfg_path.exists():
-        with open(cfg_path, encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    return {}
+    from infra.config import Config
+    cfg_path = _cfg_path()
+    try:
+        return Config(cfg_path).data
+    except Exception:
+        # 回退：直接读文件
+        if os.path.isfile(cfg_path):
+            with open(cfg_path, encoding="utf-8") as f:
+                return yaml.safe_load(f) or {}
+        return {}
 
 
 def _cfg_path() -> str:
@@ -348,6 +353,49 @@ def cancel_task(task_id: str):
 # ══════════════════════════════════════════════════════════
 # 配置 / 项目 / 角色 / 场景 / 分镜
 # ══════════════════════════════════════════════════════════
+
+def _sys_cfg_path() -> str:
+    return str(ROOT / "config" / "system.yaml")
+
+
+@router.get("/system/config")
+def get_system_config():
+    """读取系统全局配置"""
+    path = _sys_cfg_path()
+    if not os.path.isfile(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+    # 脱敏
+    def _mask(d: dict) -> dict:
+        masked = {}
+        for k, v in d.items():
+            if isinstance(v, dict):
+                masked[k] = _mask(v)
+            elif any(s in k.lower() for s in ('key', 'token', 'secret', 'password')):
+                masked[k] = "***" if v else ""
+            else:
+                masked[k] = v
+        return masked
+    return _mask(cfg)
+
+
+@router.post("/system/config")
+def update_system_config(data: dict):
+    """更新系统全局配置"""
+    from infra.config import save_config, load_config
+    path = _sys_cfg_path()
+    try:
+        existing = load_config(path)
+    except Exception:
+        existing = {}
+    def _strip_masked(d: dict) -> dict:
+        return {k: (_strip_masked(v) if isinstance(v, dict) else v)
+                for k, v in d.items() if v != "***"}
+    merged = _deep_merge(existing, _strip_masked(data))
+    save_config(path, merged)
+    return {"status": "ok"}
+
 
 @router.get("/config")
 def get_config():

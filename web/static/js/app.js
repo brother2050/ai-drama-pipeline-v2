@@ -717,7 +717,7 @@ function _backendSection(label, icon, idPrefix, backends, backend, url, availabl
 
 function _updateUrl(prefix) {
   const key = val(`cfg-${prefix}`).replace(/-/g, '_');
-  const cfg = _cache.get('config')?.data || {};
+  const cfg = _cache.get('sysconfig')?.data || {};
   const inp = document.getElementById(`cfg-${prefix}-url`);
   if (inp) inp.value = cfg.models?.[key]?.api_url || '';
 }
@@ -730,20 +730,28 @@ function _resolveBackendUrl(cfg, prefix) {
 async function loadSettings() {
   const el = document.getElementById('page-settings');
   try {
-    const [cfg, env, td] = await Promise.all([api('/config'), api('/system/env'), api('/tools')]);
-    _cache.set('config', { data: cfg, ts: Date.now() });
+    const [sysCfg, env, td] = await Promise.all([api('/system/config'), api('/system/env'), api('/tools')]);
+    _cache.set('sysconfig', { data: sysCfg, ts: Date.now() });
     const tools = td.tools || {}, lang = localStorage.getItem('drama_lang') || 'zh';
-    const tts = _resolveBackendUrl(cfg, 'tts'), ls = _resolveBackendUrl(cfg, 'lip_sync');
+    const tts = _resolveBackendUrl(sysCfg, 'tts'), ls = _resolveBackendUrl(sysCfg, 'lip_sync');
+    const llm = sysCfg.llm || {};
     el.innerHTML = `
       <div class="card"><h2>🌐 语言 / Language</h2><div class="form-row"><label>Language</label>
         <select id="cfg-lang" onchange="setLang(this.value);loadSettings()"><option value="zh" ${lang === 'zh' ? 'selected' : ''}>中文</option><option value="en" ${lang === 'en' ? 'selected' : ''}>English</option></select></div></div>
       <div class="card"><h2>💻 ${t('set.env')}</h2><div class="info-grid"><div><span class="dim">${t('set.os')}:</span> ${env.os}</div><div><span class="dim">${t('set.python')}:</span> ${env.python}</div><div><span class="dim">${t('set.gpu')}:</span> ${env.gpu.available ? env.gpu.name + ' (' + env.gpu.vram_mb + 'MB)' : t('set.gpu_unavailable')}</div></div></div>
-      <div class="card"><h2>🔧 ${t('set.config')}</h2>
+      <div class="card"><h2>🔧 系统配置</h2>
         ${_backendSection(t('set.tts'), '🎤', 'tts', ['mimo-voicedesign', 'mimo-voiceclone', 'gpt-sovits', 'cosyvoice', 'fish-speech'], tts.backend, tts.url, tools.tts?.available, tools.tts?.reason)}
         ${_backendSection(t('set.lipsync'), '👄', 'lipsync', ['musetalk', 'sadtalker', 'wav2lip'], ls.backend, ls.url, tools.lipsync?.available, tools.lipsync?.reason)}
         <div class="config-section"><h3>🎨 ComfyUI</h3>
-          <div class="form-row"><label>${t('set.address')}</label><input id="cfg-comfyui" value="${esc(cfg.comfyui?.url || '')}"></div>
+          <div class="form-row"><label>${t('set.address')}</label><input id="cfg-comfyui" value="${esc(sysCfg.comfyui?.url || '')}"></div>
           <div class="tool-status-inline"><span class="status-dot ${tools.comfyui?.available ? 'ok' : 'err'}"></span>${tools.comfyui?.available ? t('dash.available') : tools.comfyui?.reason || t('dash.unavailable')}</div></div>
+        <div class="config-section"><h3>🧠 LLM</h3>
+          <div class="form-row"><label>启用</label><select id="cfg-llm-enabled"><option value="false" ${!llm.enabled ? 'selected' : ''}>关闭</option><option value="true" ${llm.enabled ? 'selected' : ''}>开启</option></select></div>
+          <div class="form-row"><label>${t('set.backend')}</label><select id="cfg-llm-backend"><option value="ollama" ${llm.backend==='ollama'?'selected':''}>ollama</option><option value="openai" ${llm.backend==='openai'?'selected':''}>openai</option><option value="zhipu" ${llm.backend==='zhipu'?'selected':''}>zhipu</option></select></div>
+          <div class="form-row"><label>API 地址</label><input id="cfg-llm-url" value="${esc(llm.base_url || '')}"></div>
+          <div class="form-row"><label>模型</label><input id="cfg-llm-model" value="${esc(llm.model || '')}"></div>
+          <div class="form-row"><label>API Key</label><input id="cfg-llm-key" type="password" placeholder="留空不修改" value=""></div>
+          <div class="tool-status-inline"><span class="status-dot ${tools.llm?.available ? 'ok' : 'err'}"></span>${tools.llm?.available ? t('dash.available') : tools.llm?.reason || t('dash.unavailable')}</div></div>
         <div class="config-section"><h3>⚡ ${t('batch.concurrent')}</h3>
           <div class="form-row"><label>${t('batch.concurrent')}</label><select id="cfg-concurrency" onchange="localStorage.setItem('drama_concurrency',this.value)">
             <option value="1" ${(localStorage.getItem('drama_concurrency')||'1')==='1'?'selected':''}>1</option>
@@ -757,14 +765,29 @@ async function loadSettings() {
 
 async function saveCfg() {
   try {
-    const cfg = await api('/config'); cfg.models = cfg.models || {};
-    for (const [prefix, idPrefix] of [['tts', 'tts'], ['lip_sync', 'lipsync']]) {
-      const backend = val(`cfg-${idPrefix}`); cfg.models[`${prefix}_backend`] = backend;
-      const key = backend.replace(/-/g, '_'); cfg.models[key] = cfg.models[key] || {}; cfg.models[key].api_url = val(`cfg-${idPrefix}-url`);
-    }
-    cfg.comfyui = cfg.comfyui || {}; cfg.comfyui.url = val('cfg-comfyui');
-    await api('/config', { method: 'POST', body: cfg }); toast(t('toast.saved'));
-    invalidateCache('config');
+    const sys = {};
+    // TTS
+    const ttsBackend = val('cfg-tts');
+    sys.models = sys.models || {};
+    sys.models.tts_backend = ttsBackend;
+    const ttsKey = ttsBackend.replace(/-/g, '_');
+    sys.models[ttsKey] = { api_url: val('cfg-tts-url') };
+    // LipSync
+    const lsBackend = val('cfg-lipsync');
+    sys.models.lip_sync_backend = lsBackend;
+    const lsKey = lsBackend.replace(/-/g, '_');
+    sys.models[lsKey] = { api_url: val('cfg-lipsync-url') };
+    // ComfyUI
+    sys.comfyui = { url: val('cfg-comfyui') };
+    // LLM
+    const llmEnabled = val('cfg-llm-enabled') === 'true';
+    const llmKey = val('cfg-llm-key');
+    sys.llm = { enabled: llmEnabled, backend: val('cfg-llm-backend'), base_url: val('cfg-llm-url'), model: val('cfg-llm-model') };
+    if (llmKey) sys.llm.api_key = llmKey;
+
+    await api('/system/config', { method: 'POST', body: sys });
+    toast(t('toast.saved'));
+    invalidateCache('sysconfig');
   } catch (e) { toast(e.message, 'error'); }
 }
 

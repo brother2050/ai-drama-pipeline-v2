@@ -1,0 +1,71 @@
+# ============================================================
+# 系统全局配置 — 所有项目共享
+# 项目级 project.yaml 可覆盖此处的值
+# ============================================================
+
+# ComfyUI 服务器地址
+comfyui:
+  url: "http://127.0.0.1:8188"
+  timeout: 300
+  api_key: ""
+
+# 模型后端选择
+models:
+  image_backend: "sd15"
+  video_backend: "animatediff"
+  tts_backend: "mimo-voicedesign"
+  lip_sync_backend: "musetalk"
+  music_backend: "template"
+
+  # TTS 服务地址
+  gpt_sovits:
+    api_url: "http://127.0.0.1:9880"
+
+  # 口型同步服务地址
+  musetalk:
+    api_url: "http://127.0.0.1:8080"
+  sadtalker:
+    api_url: "http://127.0.0.1:8082"
+  wav2lip:
+    api_url: "http://127.0.0.1:8084"
+
+# LLM 配置
+llm:
+  enabled: false
+  backend: "ollama"
+  base_url: "http://localhost:11434"
+  model: "qwen3:8b"
+  api_key: ""
+
+# LoRA 训练
+training:
+  enabled: false
+  backend: "fluxgym"
+  api_url: "http://127.0.0.1:7860"
+  poll_interval: 10
+  defaults:
+    steps: 1000
+    learning_rate: 0.0001
+    rank: 16
+    resolution: "512x768"
+
+# Web 服务器
+server:
+  port: 8888
+  host: "0.0.0.0"
+  cors_origin: "*"
+
+# 后期合成
+post_production:
+  transition: "crossfade"
+  transition_duration: 0.5
+  bgm_volume: 0.15
+  subtitle_platform: "douyin"
+
+# 超时配置
+timeouts:
+  comfyui: 300
+  tts: 60
+  lipsync: 120
+  llm: 300
+  music: 120

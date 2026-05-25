@@ -68,12 +68,17 @@ class Config:
     """统一配置对象 — 聚合 project.yaml + .env + 默认值"""
 
     # 默认配置（project.name 不设默认值，由 REQUIRED_FIELDS 强制要求）
+    # 系统全局配置路径
+    SYSTEM_CONFIG = None  # 延迟设置
+
     DEFAULTS: dict[str, Any] = {
         "project": {"episodes": 1, "fps": 24, "resolution": [1280, 720],
                      "style": "cinematic", "genre": "urban"},
         "comfyui": {"url": "http://127.0.0.1:8188", "timeout": 300, "api_key": ""},
         "models": {"tts_backend": "mimo-voicedesign", "lip_sync_backend": "musetalk",
                    "music_backend": "template", "image_backend": "sd15", "video_backend": "animatediff"},
+        "llm": {"enabled": False, "backend": "ollama", "base_url": "http://localhost:11434",
+                "model": "qwen3:8b", "api_key": ""},
         "server": {"port": 8888, "host": "0.0.0.0", "cors_origin": "*"},
         "timeouts": {"comfyui": 300, "tts": 60, "lipsync": 120, "llm": 300, "music": 120},
     }
@@ -99,6 +104,11 @@ class Config:
 
     def __init__(self, path: str | None = None):
         self._path = path or self._find_config()
+        # 设置系统配置路径
+        if Config.SYSTEM_CONFIG is None:
+            Config.SYSTEM_CONFIG = str(
+                Path(__file__).resolve().parent.parent / "config" / "system.yaml"
+            )
         self._data = self._merge(self._path)
         self._project_dir = str(Path(self._path).resolve().parent.parent) if self._path else os.getcwd()
         # 注入 project_dir 供后端使用（Container._backend_config 依赖此键）
@@ -128,8 +138,14 @@ class Config:
         raise FileNotFoundError("未找到 config/project.yaml，请先初始化默认项目")
 
     def _merge(self, path: str) -> dict:
-        """合并默认配置 + 文件配置"""
+        """合并默认配置 + 系统全局配置 + 项目配置"""
         merged = copy.deepcopy(self.DEFAULTS)
+        # 1. 合并系统全局配置
+        sys_path = getattr(Config, 'SYSTEM_CONFIG', None)
+        if sys_path and os.path.isfile(sys_path):
+            sys_data = load_config(sys_path)
+            self._deep_merge(merged, sys_data)
+        # 2. 合并项目配置（覆盖系统配置）
         if path and os.path.isfile(path):
             file_data = load_config(path)
             self._deep_merge(merged, file_data)
