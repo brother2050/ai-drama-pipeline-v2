@@ -32,9 +32,9 @@ models:
 # LLM 配置
 llm:
   enabled: false
-  backend: "ollama"
-  base_url: "http://localhost:11434"
-  model: "qwen3:8b"
+  backend: "openai"
+  base_url: "https://api.siliconflow.cn"
+  model: "Qwen/Qwen2.5-7B-Instruct"
   api_key: ""
 
 # LoRA 训练

@@ -102,11 +102,17 @@ class Container:
             return inst
 
     def _resolve(self, service_type: str) -> str:
+        # 1. 优先从 models 段读取（如 tts_backend, image_backend）
         models = self._config.get("models", {})
         cfg_key = self._TYPE_KEY.get(service_type, f"{service_type}_backend")
         name = models.get(cfg_key)
         if name:
             return name
+        # 2. 从顶层 service_type 段读取（如 llm.backend, training.backend）
+        svc_cfg = self._config.get(service_type, {})
+        if isinstance(svc_cfg, dict) and svc_cfg.get("backend"):
+            return svc_cfg["backend"]
+        # 3. 自动选择
         return registry.auto_select(service_type, self._config)
 
     def _backend_config(self, service_type: str, name: str) -> dict:

@@ -747,7 +747,7 @@ async function loadSettings() {
           <div class="tool-status-inline"><span class="status-dot ${tools.comfyui?.available ? 'ok' : 'err'}"></span>${tools.comfyui?.available ? t('dash.available') : tools.comfyui?.reason || t('dash.unavailable')}</div></div>
         <div class="config-section"><h3>🧠 ${t('set.llm')}</h3>
           <div class="form-row"><label>${t('set.llm_enabled')}</label><select id="cfg-llm-enabled"><option value="false" ${!llm.enabled ? 'selected' : ''}>${lang==='zh'?'关闭':'Off'}</option><option value="true" ${llm.enabled ? 'selected' : ''}>${lang==='zh'?'开启':'On'}</option></select></div>
-          <div class="form-row"><label>${t('set.backend')}</label><select id="cfg-llm-backend"><option value="ollama" ${llm.backend==='ollama'?'selected':''}>ollama</option><option value="openai" ${llm.backend==='openai'?'selected':''}>openai</option><option value="zhipu" ${llm.backend==='zhipu'?'selected':''}>zhipu</option></select></div>
+          <div class="form-row"><label>${t('set.backend')}</label><select id="cfg-llm-backend"><option value="openai" ${llm.backend==='openai'?'selected':''}>OpenAI 兼容 (SiliconFlow / Zhipu / ...)</option><option value="ollama" ${llm.backend==='ollama'?'selected':''}>Ollama</option></select></div>
           <div class="form-row"><label>API URL</label><input id="cfg-llm-url" value="${esc(llm.base_url || '')}"></div>
           <div class="form-row"><label>${t('set.llm_model')}</label><input id="cfg-llm-model" value="${esc(llm.model || '')}"></div>
           <div class="form-row"><label>API Key</label><input id="cfg-llm-key" type="password" placeholder="${lang==='zh'?'留空不修改':'Leave empty to keep'}" value=""></div>

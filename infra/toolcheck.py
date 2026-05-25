@@ -67,13 +67,26 @@ def check_tool(name: str, cfg: dict) -> dict:
 
     elif name == "llm":
         llm_cfg = cfg.get("llm", {})
-        if not llm_cfg.get("enabled"):
+        base_url = llm_cfg.get("base_url", "http://localhost:11434")
+        backend = llm_cfg.get("backend", "ollama")
+        enabled = llm_cfg.get("enabled")
+        # Ollama 用 /api/tags，OpenAI 兼容用 /v1/models
+        if backend == "ollama":
+            service_ok = _url_ok(base_url, "/api/tags")
+        else:
+            # SiliconFlow / OpenAI / Zhipu 等 OpenAI 兼容 API
+            check_url = base_url.rstrip("/")
+            if not check_url.endswith("/v1"):
+                check_url = check_url + "/v1"
+            service_ok = _url_ok(check_url, "/models")
+        if not enabled:
+            if service_ok:
+                return {"available": False, "backend": backend, "type": "cloud",
+                        "url": base_url, "reason": "服务已就绪，但未启用（请在设置中开启）"}
             return {"available": False, "backend": "disabled", "type": "cloud",
                     "reason": "LLM 未启用"}
-        base_url = llm_cfg.get("base_url", "http://localhost:11434")
-        ok = _url_ok(base_url, "/api/tags")
-        return {"available": ok, "backend": llm_cfg.get("backend", "ollama"), "type": "gpu",
-                "url": base_url, "reason": "" if ok else "LLM 服务不可达"}
+        return {"available": service_ok, "backend": backend, "type": "cloud",
+                "url": base_url, "reason": "" if service_ok else f"LLM 服务不可达 ({base_url})"}
 
     elif name == "music":
         backend = cfg.get("models", {}).get("music_backend", "template")
