@@ -1,8 +1,3 @@
-# 角色配置示例 — 复制此文件，去掉 .example 后缀，填入角色信息
-#
-# 文件名即角色 ID（如 zhangsan.yaml → id: zhangsan）
-# 分镜表中的 characters 字段引用此 ID
-
 character:
   id: "linxia"
   name: "林夏"

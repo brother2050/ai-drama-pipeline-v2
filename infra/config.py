@@ -67,9 +67,9 @@ def save_config(path: str, data: dict[str, Any]) -> None:
 class Config:
     """统一配置对象 — 聚合 project.yaml + .env + 默认值"""
 
-    # 默认配置
+    # 默认配置（project.name 不设默认值，由 REQUIRED_FIELDS 强制要求）
     DEFAULTS: dict[str, Any] = {
-        "project": {"name": "AI短剧", "episodes": 1, "fps": 24, "resolution": [1280, 720],
+        "project": {"episodes": 1, "fps": 24, "resolution": [1280, 720],
                      "style": "cinematic", "genre": "urban"},
         "comfyui": {"url": "http://127.0.0.1:8188", "timeout": 300, "api_key": ""},
         "models": {"tts_backend": "mimo-voicedesign", "lip_sync_backend": "musetalk",

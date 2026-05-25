@@ -194,18 +194,18 @@ def _copy_template_if_exists(project_dir: Path, template_dir: Path) -> bool:
     for src in template_dir.rglob("*"):
         if src.is_dir():
             continue
-        # 跳过 .example 后缀的文件（只作为参考）
-        if src.stem.endswith(".example"):
-            # 但把 .example 去掉后作为实际示例复制
-            dst = project_dir / src.relative_to(template_dir).parent / src.stem
-            if not dst.exists():
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dst)
-            continue
         rel = src.relative_to(template_dir)
-        dst = project_dir / rel
+
+        # .example 文件：去掉后缀复制为实际文件
+        if src.stem.endswith(".example"):
+            dst = project_dir / rel.parent / src.stem
+        else:
+            dst = project_dir / rel
+
+        # 确保父目录存在
+        dst.parent.mkdir(parents=True, exist_ok=True)
+
         if not dst.exists():
-            dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
     return True
 
