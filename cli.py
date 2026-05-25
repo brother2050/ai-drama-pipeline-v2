@@ -427,5 +427,270 @@ def clean(logs, cache):
         console.print("[yellow]请指定: --logs 或 --cache[/yellow]")
 
 
+# ── AI 生成 ──
+
+@cli.group()
+def generate():
+    """🤖 AI 内容生成（需要 LLM 服务）"""
+    pass
+
+
+def _get_llm(config_path: str | None = None):
+    """获取 LLM 实例"""
+    _load_env()
+    cfg_file = _resolve_config(config_path)
+    from infra.config import Config
+    cfg = Config(cfg_file)
+
+    llm_cfg = cfg.get("llm", {})
+    if not llm_cfg.get("enabled"):
+        console.print("[red]❌ LLM 未启用。请在 project.yaml 中设置 llm.enabled: true[/red]")
+        sys.exit(1)
+
+    from api import _ensure_registered; _ensure_registered()
+    from api.registry import Container
+    cont = Container(cfg.data)
+    try:
+        return cont.get("llm"), cfg, cfg_file
+    except Exception as e:
+        console.print(f"[red]❌ LLM 初始化失败: {e}[/red]")
+        sys.exit(1)
+
+
+@generate.command("storyboard")
+@click.argument("episode", type=int, default=1)
+@click.option("-o", "--outline", default=None, help="大纲文件路径（txt/md）")
+@click.option("--text", default=None, help="直接输入大纲文本")
+@click.option("-d", "--duration", type=int, default=90, help="目标时长（秒，默认 90）")
+@click.option("-c", "--config", "config_path", default=None)
+@click.option("--append", is_flag=True, help="追加到现有分镜表（不覆盖）")
+def gen_storyboard(episode, outline, text, duration, config_path, append):
+    """📝 从剧情大纲生成分镜表"""
+    # 读取大纲
+    if text:
+        outline_text = text
+    elif outline:
+        p = Path(outline)
+        if not p.exists():
+            console.print(f"[red]❌ 文件不存在: {outline}[/red]")
+            sys.exit(1)
+        outline_text = p.read_text(encoding="utf-8")
+    else:
+        console.print("[yellow]请提供大纲: --outline <文件> 或 --text <文本>[/yellow]")
+        sys.exit(1)
+
+    if not outline_text.strip():
+        console.print("[red]❌ 大纲为空[/red]")
+        sys.exit(1)
+
+    llm, cfg, cfg_file = _get_llm(config_path)
+
+    # 加载已有角色和场景
+    from engines.llm_generator import generate_storyboard
+    project_dir = Path(cfg_file).parent.parent
+    characters = _load_yaml_entities(project_dir / "config" / "characters", "character")
+    scenes = _load_yaml_entities(project_dir / "config" / "scenes", "scene")
+
+    console.print(f"\n[bold cyan]📝 生成分镜表 — 第{episode}集[/bold cyan]")
+    console.print(f"[dim]大纲: {len(outline_text)} 字 | 目标: {duration}s | 角色: {len(characters)} | 场景: {len(scenes)}[/dim]\n")
+
+    shots = generate_storyboard(llm, outline_text, characters, scenes, episode, duration)
+
+    if not shots:
+        console.print("[red]❌ 生成失败，未获得有效分镜[/red]")
+        sys.exit(1)
+
+    # 保存
+    sb_path = project_dir / "storyboard" / "episodes.csv"
+    _save_storyboard_csv(sb_path, shots, episode, append)
+
+    total_sec = sum(int(s.get("duration", 4)) for s in shots)
+    console.print(f"\n[bold green]✅ 生成完成！[/bold green]")
+    console.print(f"  镜头数: {len(shots)}")
+    console.print(f"  总时长: {total_sec} 秒 ({total_sec/60:.1f} 分钟)")
+    console.print(f"  保存至: {sb_path}")
+
+    # 显示预览表
+    _print_shots_preview(shots)
+
+
+@generate.command("characters")
+@click.option("-d", "--desc", multiple=True, required=True, help="角色描述（可多次指定）")
+@click.option("-c", "--config", "config_path", default=None)
+def gen_characters(desc, config_path):
+    """👤 从描述生成角色配置"""
+    llm, cfg, cfg_file = _get_llm(config_path)
+    from engines.llm_generator import generate_characters
+
+    console.print(f"\n[bold cyan]👤 生成角色配置[/bold cyan]")
+    console.print(f"[dim]共 {len(desc)} 个角色描述[/dim]\n")
+
+    chars = generate_characters(llm, list(desc))
+    if not chars:
+        console.print("[red]❌ 生成失败[/red]")
+        sys.exit(1)
+
+    # 保存
+    project_dir = Path(cfg_file).parent.parent
+    char_dir = project_dir / "config" / "characters"
+    char_dir.mkdir(parents=True, exist_ok=True)
+
+    import yaml
+    for char in chars:
+        cid = char.get("id", "unknown")
+        path = char_dir / f"{cid}.yaml"
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.dump({"character": char}, f, allow_unicode=True, default_flow_style=False)
+        console.print(f"  ✅ {char.get('name', '?')} ({cid}) → {path.name}")
+
+    console.print(f"\n[bold green]✅ 生成 {len(chars)} 个角色[/bold green]")
+
+
+@generate.command("scenes")
+@click.option("-d", "--desc", multiple=True, required=True, help="场景描述（可多次指定）")
+@click.option("-c", "--config", "config_path", default=None)
+def gen_scenes(desc, config_path):
+    """🏔️ 从描述生成场景配置"""
+    llm, cfg, cfg_file = _get_llm(config_path)
+    from engines.llm_generator import generate_scenes
+
+    console.print(f"\n[bold cyan]🏔️ 生成场景配置[/bold cyan]")
+    console.print(f"[dim]共 {len(desc)} 个场景描述[/dim]\n")
+
+    scene_list = generate_scenes(llm, list(desc))
+    if not scene_list:
+        console.print("[red]❌ 生成失败[/red]")
+        sys.exit(1)
+
+    project_dir = Path(cfg_file).parent.parent
+    scene_dir = project_dir / "config" / "scenes"
+    scene_dir.mkdir(parents=True, exist_ok=True)
+
+    import yaml
+    for scene in scene_list:
+        sid = scene.get("id", "unknown")
+        path = scene_dir / f"{sid}.yaml"
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.dump({"scene": scene}, f, allow_unicode=True, default_flow_style=False)
+        console.print(f"  ✅ {scene.get('name', '?')} ({sid}) → {path.name}")
+
+    console.print(f"\n[bold green]✅ 生成 {len(scene_list)} 个场景[/bold green]")
+
+
+@generate.command("all")
+@click.argument("episode", type=int, default=1)
+@click.option("-o", "--outline", required=True, help="大纲文件路径")
+@click.option("-d", "--duration", type=int, default=90, help="目标时长（秒）")
+@click.option("-c", "--config", "config_path", default=None)
+def gen_all(episode, outline, duration, config_path):
+    """🚀 一键生成：大纲 → 角色 + 场景 + 分镜"""
+    p = Path(outline)
+    if not p.exists():
+        console.print(f"[red]❌ 文件不存在: {outline}[/red]")
+        sys.exit(1)
+
+    llm, cfg, cfg_file = _get_llm(config_path)
+    outline_text = p.read_text(encoding="utf-8")
+
+    console.print(f"\n[bold cyan]━━━ AI 全量生成 第{episode}集 ━━━[/bold cyan]\n")
+
+    # 1) 让 LLM 从大纲中提取角色和场景描述，然后生成配置
+    from engines.llm_generator import generate_storyboard, generate_characters, generate_scenes
+
+    # 先生成分镜（会自动使用已有角色/场景）
+    project_dir = Path(cfg_file).parent.parent
+    characters = _load_yaml_entities(project_dir / "config" / "characters", "character")
+    scenes = _load_yaml_entities(project_dir / "config" / "scenes", "scene")
+
+    console.print("[bold][1/3] 生成分镜表...[/bold]")
+    shots = generate_storyboard(llm, outline_text, characters, scenes, episode, duration)
+
+    if shots:
+        sb_path = project_dir / "storyboard" / "episodes.csv"
+        _save_storyboard_csv(sb_path, shots, episode, False)
+        console.print(f"  ✅ {len(shots)} 个镜头")
+    else:
+        console.print("  ⚠ 分镜生成失败")
+
+    console.print("\n[bold green]✅ 全量生成完成！[/bold green]")
+
+    if shots:
+        total_sec = sum(int(s.get("duration", 4)) for s in shots)
+        console.print(f"  分镜: {len(shots)} 镜头, {total_sec}秒")
+        _print_shots_preview(shots)
+
+
+def _load_yaml_entities(directory: Path, key: str) -> list[dict]:
+    """加载目录下所有 YAML 实体"""
+    import yaml
+    if not directory.exists():
+        return []
+    result = []
+    for f in directory.glob("*.yaml"):
+        if f.stem.endswith(".example"):
+            continue
+        try:
+            with open(f, encoding="utf-8") as fh:
+                data = yaml.safe_load(fh) or {}
+            entity = data.get(key, {})
+            if entity.get("id"):
+                result.append(entity)
+        except Exception:
+            continue
+    return result
+
+
+def _save_storyboard_csv(path: Path, shots: list[dict], episode: int, append: bool):
+    """保存分镜到 CSV"""
+    import csv
+    fieldnames = ["episode", "shot_id", "scene", "characters", "action", "dialogue",
+                  "camera", "shot_type", "duration", "outfit", "emotion",
+                  "action_en", "dialogue_en"]
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    existing = []
+    if append and path.exists():
+        with open(path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                if int(row.get("episode", 0)) != episode:
+                    existing.append(row)
+
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(existing + shots)
+
+
+def _print_shots_preview(shots: list[dict]):
+    """打印分镜预览表"""
+    table = Table(title="分镜预览", show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("场景", width=12)
+    table.add_column("角色", width=12)
+    table.add_column("动作", width=25)
+    table.add_column("台词", width=20)
+    table.add_column("景别", width=8)
+    table.add_column("情绪", width=8)
+    table.add_column("时长", width=4, justify="right")
+
+    for shot in shots[:20]:  # 最多显示 20 个
+        table.add_row(
+            shot.get("shot_id", "?"),
+            shot.get("scene", ""),
+            shot.get("characters", ""),
+            (shot.get("action", "")[:22] + "...") if len(shot.get("action", "")) > 22 else shot.get("action", ""),
+            (shot.get("dialogue", "")[:17] + "...") if len(shot.get("dialogue", "")) > 17 else shot.get("dialogue", ""),
+            shot.get("shot_type", ""),
+            shot.get("emotion", ""),
+            str(shot.get("duration", "")),
+        )
+
+    if len(shots) > 20:
+        table.add_row("...", "", "", f"还有 {len(shots)-20} 个镜头", "", "", "", "")
+
+    console.print(table)
+
+
 if __name__ == "__main__":
     cli()

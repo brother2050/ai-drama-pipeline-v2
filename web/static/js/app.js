@@ -511,7 +511,15 @@ const CHAR_COLS = [
 
 async function loadCharacters() {
   const el = document.getElementById('page-characters');
-  try { const d = await cachedFetch('characters', () => api('/characters')); el.innerHTML = _crudPage(t('char.title'), CHAR_COLS, d.characters || [], 'editChar', 'deleteChar', 'newChar', t('char.empty_hint')); } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
+  try {
+    const d = await cachedFetch('characters', () => api('/characters'));
+    const cols = CHAR_COLS;
+    const items = d.characters || [];
+    const table = _crudTable(cols, items, 'editChar', 'deleteChar');
+    const hint = !items.length && t('char.empty_hint') ? `<p class="dim" style="margin-top:0.5rem;font-size:0.85rem">${t('char.empty_hint')}</p>` : '';
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem">
+      <h2>${t('char.title')}</h2><div style="display:flex;gap:0.5rem"><button class="btn btn-outline btn-ai" onclick="showAIGenCharacter()">🤖 AI 生成</button><button class="btn btn-success" onclick="newChar()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>${table}${hint}</div>`;
+  } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 function newChar() {
   _showOverlay('new-char-overlay', `+ ${t('char.title').replace(/👤\s?/, '')}`, `
@@ -572,7 +580,15 @@ const SCENE_COLS = [
 
 async function loadScenes() {
   const el = document.getElementById('page-scenes');
-  try { const d = await cachedFetch('scenes', () => api('/scenes')); el.innerHTML = _crudPage(t('scene.title'), SCENE_COLS, d.scenes || [], 'editScene', 'deleteScene', 'newScene', t('scene.empty_hint')); } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
+  try {
+    const d = await cachedFetch('scenes', () => api('/scenes'));
+    const cols = SCENE_COLS;
+    const items = d.scenes || [];
+    const table = _crudTable(cols, items, 'editScene', 'deleteScene');
+    const hint = !items.length && t('scene.empty_hint') ? `<p class="dim" style="margin-top:0.5rem;font-size:0.85rem">${t('scene.empty_hint')}</p>` : '';
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem">
+      <h2>${t('scene.title')}</h2><div style="display:flex;gap:0.5rem"><button class="btn btn-outline btn-ai" onclick="showAIGenScene()">🤖 AI 生成</button><button class="btn btn-success" onclick="newScene()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>${table}${hint}</div>`;
+  } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 function newScene() {
   _showOverlay('new-scene-overlay', `+ ${t('scene.title').replace(/🏔️\s?/, '')}`, `
@@ -614,6 +630,126 @@ function val(id) { return document.getElementById(id)?.value || ''; }
 
 const SB_FIELDS = ['scene', 'characters', 'action', 'dialogue', 'camera', 'shot_type', 'duration', 'emotion'];
 
+// ══════════════════════════════════════════════════════════
+// AI 生成
+// ══════════════════════════════════════════════════════════
+
+function showAIGenStoryboard() {
+  _showOverlay('ai-gen-sb-overlay', '🤖 AI 生成分镜表', `
+    <div class="edit-field"><label>剧情大纲</label>
+      <textarea id="ai-sb-outline" rows="8" placeholder="输入剧情大纲，例如：\n\n林夏独自在家等顾辰来给她过生日，等了很久他都没回消息，她很失落。顾辰骑车赶路，终于到了。开门后两人对视，顾辰送上花，林夏感动落泪。"></textarea></div>
+    <div class="edit-field-row">
+      <div class="edit-field"><label>集数</label><input id="ai-sb-ep" type="number" value="${ep}" min="1"></div>
+      <div class="edit-field"><label>目标时长(秒)</label><input id="ai-sb-dur" type="number" value="90" min="10" max="600"></div>
+    </div>
+    <div class="edit-field"><label><input type="checkbox" id="ai-sb-append"> 追加到现有分镜表（不覆盖）</label></div>
+    <div id="ai-sb-status" class="dim" style="margin-top:0.5rem"></div>`, `doAIGenStoryboard()`);
+}
+
+async function doAIGenStoryboard() {
+  const outline = document.getElementById('ai-sb-outline')?.value?.trim();
+  if (!outline || outline.length < 10) { toast('请输入至少 10 字的剧情大纲', 'error'); return; }
+  const episode = parseInt(document.getElementById('ai-sb-ep')?.value) || ep;
+  const duration = parseInt(document.getElementById('ai-sb-dur')?.value) || 90;
+  const append = document.getElementById('ai-sb-append')?.checked || false;
+  const statusEl = document.getElementById('ai-sb-status');
+
+  if (statusEl) statusEl.innerHTML = '⏳ AI 正在生成分镜，请稍候...';
+
+  try {
+    const result = await api('/llm/storyboard', {
+      method: 'POST',
+      body: { episode, outline, duration, append },
+    });
+
+    if (result.status === 'ok' && result.shots?.length) {
+      const totalSec = result.total_duration || 0;
+      if (statusEl) statusEl.innerHTML = `✅ 生成 ${result.count} 个镜头，共 ${totalSec} 秒`;
+      toast(`✅ 已生成 ${result.count} 个镜头`);
+      invalidateCache(`storyboard/${episode}`);
+      invalidateCache('episodes');
+      // 刷新分镜表页面
+      setTimeout(() => {
+        document.getElementById('ai-gen-sb-overlay')?.remove();
+        ep = episode;
+        const p = document.querySelector('.page.active');
+        if (p?.id === 'page-storyboard') loadStoryboard();
+        else if (p?.id === 'page-pipeline') loadPipeline();
+      }, 1500);
+    } else {
+      if (statusEl) statusEl.innerHTML = '❌ 生成失败，未获得有效分镜';
+      toast('❌ 生成失败', 'error');
+    }
+  } catch (e) {
+    if (statusEl) statusEl.innerHTML = `❌ ${e.message}`;
+    toast(`❌ ${e.message}`, 'error');
+  }
+}
+
+function showAIGenCharacter() {
+  _showOverlay('ai-gen-char-overlay', '🤖 AI 生成角色', `
+    <div class="edit-field"><label>角色描述（每行一个角色）</label>
+      <textarea id="ai-char-desc" rows="6" placeholder="输入角色描述，例如：\n\n22岁温柔女生，长发，喜欢穿浅色衣服，说话轻声细语\n25岁帅气男生，短发阳光，运动型，性格开朗"></textarea></div>
+    <div id="ai-char-status" class="dim" style="margin-top:0.5rem"></div>`, `doAIGenCharacter()`);
+}
+
+async function doAIGenCharacter() {
+  const descText = document.getElementById('ai-char-desc')?.value?.trim();
+  if (!descText) { toast('请输入角色描述', 'error'); return; }
+  const descriptions = descText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+  if (!descriptions.length) { toast('请输入至少一个角色描述', 'error'); return; }
+  const statusEl = document.getElementById('ai-char-status');
+  if (statusEl) statusEl.innerHTML = `⏳ 正在生成 ${descriptions.length} 个角色...`;
+
+  try {
+    const result = await api('/llm/characters', { method: 'POST', body: { descriptions } });
+    if (result.status === 'ok' && result.characters?.length) {
+      if (statusEl) statusEl.innerHTML = `✅ 生成 ${result.count} 个角色`;
+      toast(`✅ 已生成 ${result.count} 个角色`);
+      invalidateCache('characters');
+      setTimeout(() => { document.getElementById('ai-gen-char-overlay')?.remove(); loadCharacters(); }, 1500);
+    } else {
+      if (statusEl) statusEl.innerHTML = '❌ 生成失败';
+      toast('❌ 生成失败', 'error');
+    }
+  } catch (e) {
+    if (statusEl) statusEl.innerHTML = `❌ ${e.message}`;
+    toast(`❌ ${e.message}`, 'error');
+  }
+}
+
+function showAIGenScene() {
+  _showOverlay('ai-gen-scene-overlay', '🤖 AI 生成场景', `
+    <div class="edit-field"><label>场景描述（每行一个场景）</label>
+      <textarea id="ai-scene-desc" rows="6" placeholder="输入场景描述，例如：\n\n现代简约客厅，米色沙发，落地窗暖光\n繁华商业街，霓虹灯闪烁，人来人往"></textarea></div>
+    <div id="ai-scene-status" class="dim" style="margin-top:0.5rem"></div>`, `doAIGenScene()`);
+}
+
+async function doAIGenScene() {
+  const descText = document.getElementById('ai-scene-desc')?.value?.trim();
+  if (!descText) { toast('请输入场景描述', 'error'); return; }
+  const descriptions = descText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+  if (!descriptions.length) { toast('请输入至少一个场景描述', 'error'); return; }
+  const statusEl = document.getElementById('ai-scene-status');
+  if (statusEl) statusEl.innerHTML = `⏳ 正在生成 ${descriptions.length} 个场景...`;
+
+  try {
+    const result = await api('/llm/scenes', { method: 'POST', body: { descriptions } });
+    if (result.status === 'ok' && result.scenes?.length) {
+      if (statusEl) statusEl.innerHTML = `✅ 生成 ${result.count} 个场景`;
+      toast(`✅ 已生成 ${result.count} 个场景`);
+      invalidateCache('scenes');
+      setTimeout(() => { document.getElementById('ai-gen-scene-overlay')?.remove(); loadScenes(); }, 1500);
+    } else {
+      if (statusEl) statusEl.innerHTML = '❌ 生成失败';
+      toast('❌ 生成失败', 'error');
+    }
+  } catch (e) {
+    if (statusEl) statusEl.innerHTML = `❌ ${e.message}`;
+    toast(`❌ ${e.message}`, 'error');
+  }
+}
+
 async function loadStoryboard() {
   const el = document.getElementById('page-storyboard');
   try {
@@ -630,7 +766,7 @@ async function loadStoryboard() {
       <td><button class="btn btn-xs btn-danger" onclick="deleteShotFromSB(${i})">🗑️</button></td></tr>`).join('');
     const epSelector = _episodeSelectHtml(episodes, 'switchEpisode');
     el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${t('sb.title')}</h2>
-      <div style="display:flex;gap:0.5rem;align-items:center">${epSelector}<button class="btn btn-primary" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline').replace('🎬 ', '')}</button><button class="btn btn-success" onclick="addShot()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>
+      <div style="display:flex;gap:0.5rem;align-items:center">${epSelector}<button class="btn btn-outline btn-ai" onclick="showAIGenStoryboard()">🤖 AI 生成分镜</button><button class="btn btn-primary" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline').replace('🎬 ', '')}</button><button class="btn btn-success" onclick="addShot()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>
       <div style="overflow-x:auto"><table><thead><tr><th>${t('sb.shot_id')}</th><th>${t('edit.scene')}</th><th>${t('edit.characters')}</th><th>${t('edit.action')}</th><th>${t('edit.dialogue')}</th><th>${t('edit.camera')}</th><th>${t('edit.shot_type')}</th><th>${t('edit.duration')}</th><th>${t('sb.emotion')}</th><th></th></tr></thead>
       <tbody>${rows || `<tr><td colspan="10" class="dim" style="text-align:center">${t('sb.none')}</td></tr>`}</tbody></table></div></div>`;
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }

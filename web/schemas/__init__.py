@@ -8,6 +8,7 @@ __all__ = [
     "StepRequest", "TTSRequest", "PostRequest", "MusicRequest",
     "SubtitleRequest", "PipelineRequest", "CharacterData", "SceneData",
     "ProjectCreate", "ProjectSwitch", "ConfigUpdate",
+    "StoryboardGenRequest", "CharacterGenRequest", "SceneGenRequest",
 ]
 
 
@@ -141,3 +142,30 @@ class ConfigUpdate(BaseModel):
             return self.data
         # 旧格式: 整个 body 就是配置 dict
         return self.model_extra or {}
+
+
+# ── LLM 生成 ──
+
+class StoryboardGenRequest(BaseModel):
+    episode: int = Field(1, ge=1, description="集数")
+    outline: str = Field(..., min_length=10, max_length=10000, description="剧情大纲")
+    duration: int = Field(90, ge=10, le=600, description="目标时长（秒）")
+    append: bool = Field(False, description="追加到现有分镜表")
+
+
+class CharacterGenRequest(BaseModel):
+    descriptions: list[str] = Field(..., min_length=1, max_length=10, description="角色描述列表")
+
+    @field_validator("descriptions")
+    @classmethod
+    def validate_descs(cls, v: list[str]) -> list[str]:
+        return [d.strip() for d in v if d.strip()]
+
+
+class SceneGenRequest(BaseModel):
+    descriptions: list[str] = Field(..., min_length=1, max_length=10, description="场景描述列表")
+
+    @field_validator("descriptions")
+    @classmethod
+    def validate_descs(cls, v: list[str]) -> list[str]:
+        return [d.strip() for d in v if d.strip()]

@@ -92,6 +92,7 @@ from web.schemas import (
     StepRequest, TTSRequest, PostRequest, MusicRequest,
     SubtitleRequest, PipelineRequest, CharacterData, SceneData,
     ProjectCreate, ProjectSwitch, ConfigUpdate,
+    StoryboardGenRequest, CharacterGenRequest, SceneGenRequest,
 )
 
 # ── 工具函数 ──
@@ -817,6 +818,152 @@ def save_storyboard(episode: int, data: dict):
         logger.debug(f"数据库同步跳过: {e}")
 
     return {"status": "ok", "count": len(shots)}
+
+
+# ══════════════════════════════════════════════════════════
+# LLM 内容生成
+# ══════════════════════════════════════════════════════════
+
+def _get_llm_for_api():
+    """获取 LLM 实例（API 层）"""
+    cfg = _merged_cfg()
+    llm_cfg = cfg.get("llm", {})
+    if not llm_cfg.get("enabled"):
+        raise HTTPException(400, "LLM 未启用。请在 project.yaml 中设置 llm.enabled: true")
+
+    from api import _ensure_registered; _ensure_registered()
+    from api.registry import Container
+    cont = Container(cfg)
+    try:
+        return cont.get("llm")
+    except Exception as e:
+        raise HTTPException(503, f"LLM 不可用: {e}")
+
+
+@router.post("/llm/storyboard")
+def llm_generate_storyboard(req: StoryboardGenRequest):
+    """AI 生成分镜表"""
+    llm = _get_llm_for_api()
+    from engines.llm_generator import generate_storyboard
+
+    # 加载已有角色和场景
+    proj_dir = _active_project_dir()
+    characters = _yaml_list("characters", "character")
+    scenes = _yaml_list("scenes", "scene")
+
+    shots = generate_storyboard(llm, req.outline, characters, scenes, req.episode, req.duration)
+    if not shots:
+        raise HTTPException(500, "LLM 未能生成有效分镜")
+
+    # 保存到 CSV
+    sb_path = proj_dir / "storyboard" / "episodes.csv"
+    _save_storyboard_for_api(sb_path, shots, req.episode, req.append)
+
+    # 同步数据库
+    try:
+        from infra.database.pool import get_pool
+        from infra.database.shots import upsert as db_upsert_shot
+        pool = get_pool()
+        for shot in shots:
+            sid = shot.get("shot_id", "")
+            if sid:
+                db_upsert_shot(pool, req.episode, sid, shot)
+    except Exception as e:
+        logger.debug(f"数据库同步跳过: {e}")
+
+    total_sec = sum(int(s.get("duration", 4)) for s in shots)
+    return {
+        "status": "ok",
+        "shots": shots,
+        "count": len(shots),
+        "total_duration": total_sec,
+    }
+
+
+@router.post("/llm/characters")
+def llm_generate_characters(req: CharacterGenRequest):
+    """AI 生成角色配置"""
+    llm = _get_llm_for_api()
+    from engines.llm_generator import generate_characters
+
+    chars = generate_characters(llm, req.descriptions)
+    if not chars:
+        raise HTTPException(500, "LLM 未能生成有效角色")
+
+    # 保存
+    proj_dir = _active_project_dir()
+    char_dir = proj_dir / "config" / "characters"
+    char_dir.mkdir(parents=True, exist_ok=True)
+
+    import yaml
+    saved = []
+    for char in chars:
+        cid = char.get("id", "unknown")
+        path = char_dir / f"{cid}.yaml"
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.dump({"character": char}, f, allow_unicode=True, default_flow_style=False)
+        # 同步数据库
+        try:
+            from infra.database.characters import upsert as db_up
+            from infra.database.pool import get_pool
+            db_up(get_pool(), cid, char)
+        except Exception:
+            pass
+        saved.append(char)
+
+    return {"status": "ok", "characters": saved, "count": len(saved)}
+
+
+@router.post("/llm/scenes")
+def llm_generate_scenes(req: SceneGenRequest):
+    """AI 生成场景配置"""
+    llm = _get_llm_for_api()
+    from engines.llm_generator import generate_scenes
+
+    scene_list = generate_scenes(llm, req.descriptions)
+    if not scene_list:
+        raise HTTPException(500, "LLM 未能生成有效场景")
+
+    proj_dir = _active_project_dir()
+    scene_dir = proj_dir / "config" / "scenes"
+    scene_dir.mkdir(parents=True, exist_ok=True)
+
+    import yaml
+    saved = []
+    for scene in scene_list:
+        sid = scene.get("id", "unknown")
+        path = scene_dir / f"{sid}.yaml"
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.dump({"scene": scene}, f, allow_unicode=True, default_flow_style=False)
+        try:
+            from infra.database.scenes import upsert as db_up
+            from infra.database.pool import get_pool
+            db_up(get_pool(), sid, scene)
+        except Exception:
+            pass
+        saved.append(scene)
+
+    return {"status": "ok", "scenes": saved, "count": len(saved)}
+
+
+def _save_storyboard_for_api(path: Path, shots: list[dict], episode: int, append: bool):
+    """保存分镜到 CSV（API 用）"""
+    fieldnames = ["episode", "shot_id", "scene", "characters", "action", "dialogue",
+                  "camera", "shot_type", "duration", "outfit", "emotion",
+                  "action_en", "dialogue_en"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    existing = []
+    if append and path.exists():
+        with open(path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                if int(row.get("episode", 0)) != episode:
+                    existing.append(row)
+
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(existing + shots)
 
 
 # ══════════════════════════════════════════════════════════

@@ -106,6 +106,14 @@ drama worker -c 4                      # Worker 并发数 4
 drama status                           # 服务状态（Redis + Celery + ComfyUI + TTS）
 drama env                              # 环境信息（OS / Python / GPU / Redis）
 
+# 🤖 AI 内容生成（需要 LLM 服务）
+drama generate storyboard 1 --outline outline.txt   # 从大纲生成分镜表
+drama generate storyboard 1 --text "林夏独自在家..."  # 直接输入大纲
+drama generate storyboard 1 -o outline.md -d 120     # 指定时长 120 秒
+drama generate characters -d "22岁温柔女生，长发" -d "25岁帅气男生"  # 生成角色
+drama generate scenes -d "现代简约客厅，落地窗暖光" -d "繁华商业街"    # 生成场景
+drama generate all 1 -o outline.txt                  # 一键全量生成
+
 # 管线（通过 Celery 异步执行）
 drama preview 1 draft                  # 快速预览（draft/standard/high）
 drama produce 1                        # 完整生产
@@ -133,13 +141,13 @@ drama clean --cache                    # 清理缓存
 
 | 页面 | 功能 |
 |------|------|
-| 📊 仪表盘 | 系统状态总览（Redis / Celery / ComfyUI / TTS / LipSync） |
-| 👤 角色管理 | 创建/编辑/删除角色，配置外观、服装、语音 |
-| 🏔️ 场景管理 | 创建/编辑/删除场景，配置描述、光照 |
-| 📝 分镜表 | 内联编辑表格，直接修改所有字段 |
+| 📊 仪表盘 | 系统状态总览（Redis / Celery / ComfyUI / TTS / LipSync / LLM） |
+| 👤 角色管理 | 创建/编辑/删除角色 + 🤖 AI 从描述生成 |
+| 🏔️ 场景管理 | 创建/编辑/删除场景 + 🤖 AI 从描述生成 |
+| 📝 分镜表 | 内联编辑表格 + 🤖 AI 从大纲一键生成 |
 | 🎬 生产管线 | 按镜头逐步执行：TTS → 首帧 → 视频 → 口型同步 |
 | 📂 项目管理 | 多项目切换 |
-| ⚙️ 系统设置 | TTS/ComfyUI/LipSync 配置、语言切换 |
+| ⚙️ 系统设置 | TTS/ComfyUI/LipSync/**LLM** 配置、语言切换 |
 
 ### 工作台快捷键
 
@@ -244,6 +252,8 @@ llm:
   enabled: false
   backend: "ollama"
   base_url: "http://localhost:11434"
+  # model: "qwen3:8b"          # Ollama 模型名
+  # api_key: ""                # OpenAI 兼容 API 需要
 
 timeouts:
   comfyui: 300
@@ -251,6 +261,33 @@ timeouts:
   lipsync: 120
   llm: 300
   music: 120
+```
+
+### LLM 配置示例
+
+```yaml
+# Ollama（本地）
+llm:
+  enabled: true
+  backend: "ollama"
+  base_url: "http://localhost:11434"
+  model: "qwen3:8b"
+
+# SiliconFlow（云 API）
+llm:
+  enabled: true
+  backend: "openai"
+  base_url: "https://api.siliconflow.cn"
+  model: "Qwen/Qwen2.5-7B-Instruct"
+  api_key: "sk-xxx"
+
+# OpenAI
+llm:
+  enabled: true
+  backend: "openai"
+  base_url: "https://api.openai.com"
+  model: "gpt-4o-mini"
+  api_key: "sk-xxx"
 ```
 
 配置加载支持：
@@ -299,6 +336,7 @@ ai-drama-pipeline-v2/
 │   ├── consistency.py        # 角色一致性（三级回退）
 │   ├── video_consistency.py  # 视频一致性检查
 │   ├── storyboard.py         # 分镜表加载/验证
+│   ├── llm_generator.py      # 🤖 LLM 内容生成（分镜/角色/场景）
 │   ├── camera.py             # 机位/景别规范化
 │   ├── emotions.py           # 情绪分析
 │   ├── portrait.py           # 定妆照生成
