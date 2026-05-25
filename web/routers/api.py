@@ -16,7 +16,7 @@ import sys
 import yaml
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
 logger = logging.getLogger(__name__)
 
@@ -100,13 +100,17 @@ def _cfg() -> dict:
     from infra.config import Config
     cfg_path = _cfg_path()
     try:
-        return Config(cfg_path).data
+        data = Config(cfg_path).data
     except Exception:
         # 回退：直接读文件
         if os.path.isfile(cfg_path):
             with open(cfg_path, encoding="utf-8") as f:
-                return yaml.safe_load(f) or {}
-        return {}
+                data = yaml.safe_load(f) or {}
+        else:
+            data = {}
+    # 移除内部字段
+    data.pop("_project_dir", None)
+    return data
 
 
 def _cfg_path() -> str:
@@ -381,7 +385,7 @@ def get_system_config():
 
 
 @router.post("/system/config")
-def update_system_config(data: dict):
+def update_system_config(data: dict = Body(...)):
     """更新系统全局配置"""
     from infra.config import save_config, load_config
     path = _sys_cfg_path()

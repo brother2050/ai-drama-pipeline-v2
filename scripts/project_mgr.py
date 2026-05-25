@@ -31,6 +31,7 @@ _PROJECT_DIRS = [
 # 默认项目配置模板
 _DEFAULT_PROJECT_YAML = """\
 # AI 短剧管线 v2 — 项目配置
+# 系统级配置（ComfyUI、TTS、LLM 等）请编辑 config/system.yaml
 
 project:
   name: "{name}"
@@ -40,71 +41,11 @@ project:
   style: "cinematic"
   genre: "urban"
 
-# ComfyUI 服务器地址
-comfyui:
-  url: "http://127.0.0.1:8188"
-  timeout: 300
-  api_key: ""
-
-# 模型后端选择
-models:
-  image_backend: "sd15"
-  video_backend: "animatediff"
-  tts_backend: "mimo-voicedesign"
-  lip_sync_backend: "musetalk"
-  music_backend: "template"
-
-  # TTS 服务地址
-  gpt_sovits:
-    api_url: "http://127.0.0.1:9880"
-
-  # 口型同步服务地址
-  musetalk:
-    api_url: "http://127.0.0.1:8080"
-  sadtalker:
-    api_url: "http://127.0.0.1:8082"
-  wav2lip:
-    api_url: "http://127.0.0.1:8084"
-
-# LLM 配置（可选）
-llm:
-  enabled: false
-  backend: "ollama"
-  base_url: "http://localhost:11434"
-  model: "qwen3:8b"
-
-# LoRA 训练（FluxGym 远程训练）
-training:
-  enabled: false
-  backend: "fluxgym"
-  api_url: "http://127.0.0.1:7860"
-  poll_interval: 10
-  defaults:
-    steps: 1000
-    learning_rate: 0.0001
-    rank: 16
-    resolution: "512x768"
-
-# Web 服务器
-server:
-  port: 8888
-  host: "0.0.0.0"
-  cors_origin: "*"
-
-# 后期合成
-post_production:
-  transition: "crossfade"
-  transition_duration: 0.5
-  bgm_volume: 0.15
-  subtitle_platform: "douyin"
-
-# 超时配置
-timeouts:
-  comfyui: 300
-  tts: 60
-  lipsync: 120
-  llm: 300
-  music: 120
+# 项目级覆盖（可选，取消注释可覆盖系统配置）
+# comfyui:
+#   url: "http://192.168.1.100:8188"
+# llm:
+#   enabled: true
 """
 
 # 默认分镜表模板（空表头）
