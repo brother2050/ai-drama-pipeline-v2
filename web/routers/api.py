@@ -487,6 +487,19 @@ def switch_project(req: ProjectSwitch):
     return {"status": "ok"}
 
 
+@router.delete("/projects/{name}")
+def delete_project(name: str):
+    if not re.match(r"^[a-zA-Z0-9_\-\u4e00-\u9fff]+$", name):
+        raise HTTPException(400, "无效的项目名")
+    from scripts.project_mgr import delete_project
+    from rich.console import Console
+    try:
+        delete_project(name, ROOT, Console())
+    except Exception as e:
+        raise HTTPException(400, str(e))
+    return {"status": "ok", "name": name}
+
+
 # ── 通用 YAML CRUD 工厂 ──
 
 def _yaml_list(yaml_dir: str, entity_key: str) -> list[dict]:

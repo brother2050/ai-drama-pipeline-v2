@@ -161,11 +161,19 @@ const I18N = {
   'wb.no_storyboard': { zh: '暂无分镜', en: 'No storyboard' },
   'wb.add_shots_first': { zh: '先在分镜表添加镜头', en: 'Add shots in Storyboard first' },
   'wb.go_edit_btn': { zh: '去编辑', en: 'Go Edit' },
+  'wb.gen_portraits': { zh: '📸 定妆照', en: '📸 Portraits' },
+  'wb.post_process': { zh: '🎞️ 后期合成', en: '🎞️ Post' },
+  'wb.run_all': { zh: '🚀 一键全流程', en: '🚀 Run All' },
+  'wb.tools': { zh: '工具', en: 'Tools' },
 
   // 角色补充
   'char.not_found': { zh: '角色不存在', en: 'Character not found' },
   'char.gender.male': { zh: '男', en: 'Male' },
   'char.gender.female': { zh: '女', en: 'Female' },
+  'char.outfits': { zh: '服装', en: 'Outfits' },
+  'char.voice': { zh: '语音', en: 'Voice' },
+  'char.voice_key': { zh: '语音 Key', en: 'Voice Key' },
+  'char.outfit_desc': { zh: '服装描述', en: 'Outfit Description' },
 
   // 场景补充
   'scene.not_found': { zh: '场景不存在', en: 'Scene not found' },
@@ -174,6 +182,8 @@ const I18N = {
   'proj.created': { zh: '已创建', en: 'Created' },
   'proj.switched': { zh: '已切换', en: 'Switched' },
   'proj.input_name': { zh: '名称:', en: 'Name:' },
+  'proj.confirm_delete': { zh: '确认删除项目 {name}？', en: 'Delete project {name}?' },
+  'proj.deleted': { zh: '项目已删除', en: 'Project deleted' },
 
   // 设置补充
   'set.saved': { zh: '✅ 已保存', en: '✅ Saved' },

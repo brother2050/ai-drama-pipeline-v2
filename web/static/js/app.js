@@ -222,6 +222,10 @@ function renderWB(episodes) {
       <button class="btn btn-outline" onclick="undo()" title="Ctrl+Z">↩ ${t('undo.undo')}</button>
       <button class="btn btn-outline" onclick="redo()" title="Ctrl+Shift+Z">↪ ${t('undo.redo')}</button>
       ${STEP_BTNS.map(b => `<button class="btn btn-outline" onclick="batchRun('${b.step}')">${b.icon} ${t('btn.add').replace('+ ', '')} ${b.label}</button>`).join('')}
+      <span class="dim" style="margin:0 0.3rem">|</span>
+      <button class="btn btn-outline" onclick="runPortraits()">📸 ${t('wb.gen_portraits').replace('📸 ', '')}</button>
+      <button class="btn btn-outline" onclick="runPost()">🎞️ ${t('wb.post_process').replace('🎞️ ', '')}</button>
+      <button class="btn btn-primary" onclick="runAll()">🚀 ${t('wb.run_all').replace('🚀 ', '')}</button>
     </div></div>
     <div id="wb-shots-grid" class="wb-shots-grid"></div>
     <div id="wb-batch-status" class="wb-batch-status" style="display:none"></div>`;
@@ -357,6 +361,47 @@ async function batchRun(step) {
   toast(t('batch.complete', { done, skip, fail }));
 }
 
+// ── 管线工具 ──
+
+async function runPortraits() {
+  if (!confirm(t('wb.gen_portraits') + '?')) return;
+  try {
+    const { task_id } = await api('/tools/portraits', { method: 'POST' });
+    toast('⏳ ' + t('wb.gen_portraits'));
+    const result = await pollTask(task_id);
+    if (result.status === 'success') toast('✅ ' + t('wb.gen_portraits'));
+    else toast('❌ ' + (result.error || t('wb.shot_fail')), 'error');
+  } catch (e) { toast('❌ ' + e.message, 'error'); }
+}
+
+async function runPost() {
+  if (!confirm(t('wb.post_process') + '?')) return;
+  try {
+    const { task_id } = await api('/tools/post', { method: 'POST', body: { episode: ep } });
+    toast('⏳ ' + t('wb.post_process'));
+    const result = await pollTask(task_id);
+    if (result.status === 'success') toast('✅ ' + t('wb.post_process'));
+    else toast('❌ ' + (result.error || t('wb.shot_fail')), 'error');
+  } catch (e) { toast('❌ ' + e.message, 'error'); }
+}
+
+async function runAll() {
+  if (!confirm(t('wb.run_all') + '? ' + t('batch.confirm', { step: t('wb.run_all'), n: shots.length }))) return;
+  const statusEl = document.getElementById('wb-batch-status');
+  statusEl.style.display = 'block';
+  const stages = ['preview', 'produce', 'post'];
+  for (const cmd of stages) {
+    statusEl.innerHTML = `<div class="batch-progress"><div class="batch-text">⏳ ${cmd}...</div></div>`;
+    try {
+      const { task_id } = await api('/pipeline/run', { method: 'POST', body: { episode: ep, command: cmd } });
+      const result = await pollTask(task_id);
+      if (result.status !== 'success') { statusEl.innerHTML = `<div class="batch-done">❌ ${cmd}: ${result.error || t('wb.shot_fail')}</div>`; return; }
+    } catch (e) { statusEl.innerHTML = `<div class="batch-done">❌ ${cmd}: ${e.message}</div>`; return; }
+  }
+  statusEl.innerHTML = `<div class="batch-done">✅ ${t('wb.run_all')}</div>`;
+  toast('✅ ' + t('wb.run_all'));
+}
+
 // ══════════════════════════════════════════════════════════
 // 角色管理
 // ══════════════════════════════════════════════════════════
@@ -370,18 +415,51 @@ async function loadCharacters() {
   const el = document.getElementById('page-characters');
   try { const d = await cachedFetch('characters', () => api('/characters')); el.innerHTML = _crudPage(t('char.title'), CHAR_COLS, d.characters || [], 'editChar', 'deleteChar', 'newChar'); } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
-function newChar() { _crudCreate('characters', { gender: '', appearance: '', outfits: {}, voice: {} }, loadCharacters); }
+function newChar() {
+  _showOverlay('new-char-overlay', `+ ${t('char.title').replace(/👤\s?/, '')}`, `
+    <div class="edit-field"><label>ID</label><input id="nc-id" placeholder="a-z, 0-9, _-"></div>
+    <div class="edit-field"><label>${t('char.name')}</label><input id="nc-name"></div>
+    <div class="edit-field"><label>${t('char.gender')}</label><select id="nc-gender"><option value="">-</option><option value="male">${t('char.gender.male')}</option><option value="female">${t('char.gender.female')}</option></select></div>
+    <div class="edit-field"><label>${t('char.appearance')}</label><textarea id="nc-appearance" rows="3"></textarea></div>
+    <div class="edit-field"><label>${t('char.voice_key')}</label><input id="nc-voice" placeholder="e.g. male-1"></div>
+    <div class="edit-field"><label>${t('char.outfit_desc')}</label><textarea id="nc-outfits" rows="2"></textarea></div>`, `saveNewChar()`);
+}
+async function saveNewChar() {
+  const id = val('nc-id');
+  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) { toast('ID invalid', 'error'); return; }
+  const voiceVal = val('nc-voice'), outfitVal = val('nc-outfits');
+  try {
+    await api('/characters', { method: 'POST', body: {
+      id, name: val('nc-name'), gender: val('nc-gender'), appearance: val('nc-appearance'),
+      voice: voiceVal ? { key: voiceVal } : null,
+      outfits: outfitVal ? { default: outfitVal } : null,
+    }});
+    invalidateCache('characters'); document.getElementById('new-char-overlay')?.remove(); toast(t('toast.created')); loadCharacters();
+  } catch (e) { toast(e.message, 'error'); }
+}
 function deleteChar(id) { _crudDelete('characters', id, t('char.title').replace(/👤\s?/, ''), loadCharacters); }
 
 async function editChar(id) {
   const c = ((await cachedFetch('characters', () => api('/characters'))).characters || []).find(x => x.id === id);
   if (!c) { toast(t('char.not_found'), 'error'); return; }
+  const voiceKey = c.voice?.key || '';
+  const outfitDesc = c.outfits?.default || '';
   _showOverlay('edit-char-overlay', `${t('char.edit_title')} ${id}`, `
     <div class="edit-field"><label>${t('char.name')}</label><input id="ec-name" value="${esc(c.name || '')}"></div>
     <div class="edit-field"><label>${t('char.gender')}</label><select id="ec-gender"><option value="">-</option><option value="male" ${c.gender === 'male' ? 'selected' : ''}>${t('char.gender.male')}</option><option value="female" ${c.gender === 'female' ? 'selected' : ''}>${t('char.gender.female')}</option></select></div>
-    <div class="edit-field"><label>${t('char.appearance')}</label><textarea id="ec-appearance" rows="3">${esc(c.appearance || '')}</textarea></div>`, `saveCharEdit('${id}')`);
+    <div class="edit-field"><label>${t('char.appearance')}</label><textarea id="ec-appearance" rows="3">${esc(c.appearance || '')}</textarea></div>
+    <div class="edit-field"><label>${t('char.voice_key')}</label><input id="ec-voice" value="${esc(voiceKey)}" placeholder="e.g. male-1"></div>
+    <div class="edit-field"><label>${t('char.outfit_desc')}</label><textarea id="ec-outfits" rows="2">${esc(outfitDesc)}</textarea></div>`, `saveCharEdit('${id}')`);
 }
-function saveCharEdit(id) { _crudSave('characters', id, () => ({ name: val('ec-name'), gender: val('ec-gender'), appearance: val('ec-appearance') }), 'edit-char-overlay', loadCharacters); }
+function saveCharEdit(id) {
+  const voiceVal = val('ec-voice');
+  const outfitVal = val('ec-outfits');
+  _crudSave('characters', id, () => ({
+    name: val('ec-name'), gender: val('ec-gender'), appearance: val('ec-appearance'),
+    voice: voiceVal ? { key: voiceVal } : null,
+    outfits: outfitVal ? { default: outfitVal } : null,
+  }), 'edit-char-overlay', loadCharacters);
+}
 
 // ══════════════════════════════════════════════════════════
 // 场景管理
@@ -396,7 +474,23 @@ async function loadScenes() {
   const el = document.getElementById('page-scenes');
   try { const d = await cachedFetch('scenes', () => api('/scenes')); el.innerHTML = _crudPage(t('scene.title'), SCENE_COLS, d.scenes || [], 'editScene', 'deleteScene', 'newScene'); } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
-function newScene() { _crudCreate('scenes', { description: '', lighting: '' }, loadScenes); }
+function newScene() {
+  _showOverlay('new-scene-overlay', `+ ${t('scene.title').replace(/🏔️\s?/, '')}`, `
+    <div class="edit-field"><label>ID</label><input id="ns-id" placeholder="a-z, 0-9, _-"></div>
+    <div class="edit-field"><label>${t('scene.name')}</label><input id="ns-name"></div>
+    <div class="edit-field"><label>${t('scene.desc')}</label><textarea id="ns-desc" rows="3"></textarea></div>
+    <div class="edit-field"><label>${t('scene.lighting')}</label><input id="ns-lighting"></div>`, `saveNewScene()`);
+}
+async function saveNewScene() {
+  const id = val('ns-id');
+  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) { toast('ID invalid', 'error'); return; }
+  try {
+    await api('/scenes', { method: 'POST', body: {
+      id, name: val('ns-name'), description: val('ns-desc'), lighting: val('ns-lighting'),
+    }});
+    invalidateCache('scenes'); document.getElementById('new-scene-overlay')?.remove(); toast(t('toast.created')); loadScenes();
+  } catch (e) { toast(e.message, 'error'); }
+}
 function deleteScene(id) { _crudDelete('scenes', id, t('scene.title').replace(/🏔️\s?/, ''), loadScenes); }
 
 async function editScene(id) {
@@ -471,15 +565,17 @@ async function addShot() {
 
 async function loadProjects() {
   const el = document.getElementById('page-projects');
+  el.innerHTML = `<div class="card"><h2>${t('common.loading')}</h2></div>`;
   try {
     const d = await api('/projects');
-    const rows = (d.projects || []).map(p => `<tr><td>${p.active ? '→' : ''}</td><td>${p.name}</td><td class="dim" style="font-size:0.75rem">${p.path}</td><td>${p.active ? `<span class="badge badge-green">${t('common.current')}</span>` : `<button class="btn btn-sm btn-primary" onclick="switchProj('${p.name}')">${t('common.switch')}</button>`}</td></tr>`).join('');
+    const rows = (d.projects || []).map(p => `<tr><td>${p.active ? '→' : ''}</td><td>${p.name}</td><td class="dim" style="font-size:0.75rem">${p.path}</td><td>${p.active ? `<span class="badge badge-green">${t('common.current')}</span>` : `<button class="btn btn-sm btn-primary" onclick="switchProj('${p.name}')">${t('common.switch')}</button> <button class="btn btn-sm btn-danger" onclick="deleteProj('${p.name}')">🗑️</button>`}</td></tr>`).join('');
     el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>${t('proj.title')}</h2><button class="btn btn-success" onclick="newProj()">+ ${t('btn.add').replace('+ ', '')}</button></div>
       <table><thead><tr><th></th><th>${t('common.name')}</th><th>${t('common.path')}</th><th>${t('common.status')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 function newProj() { const n = prompt(t('proj.input_name')); if (!n) return; api('/projects/new', { method: 'POST', body: { name: n } }).then(() => { toast(t('toast.created')); loadProjects(); }).catch(e => toast(e.message, 'error')); }
 function switchProj(n) { api('/projects/switch', { method: 'POST', body: { name: n } }).then(() => { toast(t('toast.switched')); loadProjects(); }).catch(e => toast(e.message, 'error')); }
+function deleteProj(n) { if (!confirm(t('proj.confirm_delete', { name: n }))) return; api(`/projects/${encodeURIComponent(n)}`, { method: 'DELETE' }).then(() => { toast(t('proj.deleted')); loadProjects(); }).catch(e => toast(e.message, 'error')); }
 
 // ══════════════════════════════════════════════════════════
 // 系统设置
