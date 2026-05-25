@@ -1,14 +1,19 @@
+# 角色配置示例 — 复制此文件，去掉 .example 后缀，填入角色信息
+#
+# 文件名即角色 ID（如 zhangsan.yaml → id: zhangsan）
+# 分镜表中的 characters 字段引用此 ID
+
 character:
   id: "linxia"
   name: "林夏"
   gender: "female"
   appearance: >-
-    20岁年轻女性，长发披肩，瓜子脸，大眼睛，
-    皮肤白皙，身材纤细
+    22岁年轻女性，长发及肩，瓜子脸，大眼睛，柳叶眉，
+    身高165cm，体型偏瘦，皮肤白皙
   outfits:
-    home: >-
-      浅粉色居家睡衣，棉拖鞋，头发随意扎起
     casual: >-
-      白色T恤，浅蓝色牛仔裤，白色帆布鞋，斜挎包
+      白色T恤，浅蓝色牛仔裤，白色帆布鞋，斜挎小包
+    home: >-
+      浅粉色居家服，棉拖鞋
   voice:
-    voice_description: "温柔恬静的年轻女性，声音柔和细腻，语速适中"
+    voice_description: "温柔甜美的年轻女性，语速适中，带有轻微南方口音"

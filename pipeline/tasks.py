@@ -52,8 +52,8 @@ def _shot_dir(config_path: str, episode: int, shot_id: str) -> Path:
 
 def _check_available(tool_name: str, config_path: str) -> tuple[bool, str]:
     from infra.config import Config
-    from web.routers.api import _check_tool
-    result = _check_tool(tool_name, Config(config_path).data)
+    from infra.toolcheck import check_tool
+    result = check_tool(tool_name, Config(config_path).data)
     return result["available"], result.get("reason", "")
 
 

@@ -44,6 +44,9 @@ py-modules = ["cli"]
 [tool.setuptools.packages.find]
 include = ["api*", "engines*", "flow*", "infra*", "pipeline*", "post*", "scripts*", "web*"]
 
+[tool.setuptools.package-data]
+"web" = ["static/**/*"]
+
 [tool.ruff]
 line-length = 120
 target-version = "py310"
