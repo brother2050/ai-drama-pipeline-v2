@@ -142,6 +142,78 @@ const I18N = {
   'emo.surprised': { zh: '惊讶', en: 'Surprised' },
   'emo.calm': { zh: '冷静', en: 'Calm' },
   'emo.determined': { zh: '坚定', en: 'Determined' },
+
+  // 仪表盘补充
+  'dash.gpu_unavailable': { zh: '不可用', en: 'Unavailable' },
+
+  // 通用补充
+  'common.loading': { zh: '⏳ 加载...', en: '⏳ Loading...' },
+  'common.error': { zh: '❌', en: '❌' },
+  'common.none': { zh: '暂无', en: 'None' },
+  'common.operations': { zh: '操作', en: 'Actions' },
+  'common.switch': { zh: '切换', en: 'Switch' },
+  'common.current': { zh: '当前', en: 'Current' },
+  'common.name': { zh: '名称', en: 'Name' },
+  'common.path': { zh: '路径', en: 'Path' },
+  'common.status': { zh: '状态', en: 'Status' },
+
+  // 管线补充
+  'wb.no_storyboard': { zh: '暂无分镜', en: 'No storyboard' },
+  'wb.add_shots_first': { zh: '先在分镜表添加镜头', en: 'Add shots in Storyboard first' },
+  'wb.go_edit_btn': { zh: '去编辑', en: 'Go Edit' },
+
+  // 角色补充
+  'char.not_found': { zh: '角色不存在', en: 'Character not found' },
+  'char.gender.male': { zh: '男', en: 'Male' },
+  'char.gender.female': { zh: '女', en: 'Female' },
+
+  // 场景补充
+  'scene.not_found': { zh: '场景不存在', en: 'Scene not found' },
+
+  // 项目补充
+  'proj.created': { zh: '已创建', en: 'Created' },
+  'proj.switched': { zh: '已切换', en: 'Switched' },
+  'proj.input_name': { zh: '名称:', en: 'Name:' },
+
+  // 设置补充
+  'set.saved': { zh: '✅ 已保存', en: '✅ Saved' },
+  'set.gpu_unavailable': { zh: '不可用', en: 'Unavailable' },
+
+  // 批量补充
+  'batch.cancel_btn': { zh: '⏹ 取消', en: '⏹ Cancel' },
+  'batch.close_btn': { zh: '关闭', en: 'Close' },
+  'batch.progress': { zh: '{step}...', en: '{step}...' },
+  'batch.complete': { zh: '批量完成: {done}成功 {skip}跳过 {fail}失败', en: 'Batch done: {done} OK {skip} skip {fail} fail' },
+
+  // 步骤名
+  'step.tts': { zh: 'TTS', en: 'TTS' },
+  'step.first_frame': { zh: '首帧', en: 'Frame' },
+  'step.video': { zh: '视频', en: 'Video' },
+  'step.lipsync': { zh: '口型同步', en: 'LipSync' },
+
+  // 撤销/重做
+  'undo.no_action': { zh: '没有可{label}的操作', en: 'Nothing to {label}' },
+  'undo.undo': { zh: '撤销', en: 'Undo' },
+  'undo.redo': { zh: '重做', en: 'Redo' },
+
+  // 分镜表补充
+  'sb.saved': { zh: '✅ 已保存', en: '✅ Saved' },
+  'sb.deleted': { zh: '✅ 已删除', en: '✅ Deleted' },
+  'sb.added': { zh: '已添加', en: 'Added' },
+
+  // 管线 - 单镜头执行结果
+  'wb.shot_done': { zh: '完成', en: 'Done' },
+  'wb.shot_skip': { zh: '跳过', en: 'Skipped' },
+  'wb.shot_fail': { zh: '失败', en: 'Failed' },
+  'wb.shot_err': { zh: '出错', en: 'Error' },
+  'wb.shot_timeout': { zh: '超时', en: 'Timeout' },
+
+  // 管线 - 批量完成
+  'wb.batch_done': { zh: '✅ 完成', en: '✅ Done' },
+  'wb.batch_cancelled': { zh: '⏹ 已取消', en: '⏹ Cancelled' },
+  'wb.batch_ok': { zh: '✅', en: '✅' },
+  'wb.batch_skip': { zh: '⏭', en: '⏭' },
+  'wb.batch_fail': { zh: '❌', en: '❌' },
 };
 
 // 当前语言（默认中文）
@@ -150,6 +222,15 @@ let _lang = localStorage.getItem('drama_lang') || 'zh';
 function setLang(lang) {
   _lang = lang;
   localStorage.setItem('drama_lang', lang);
+  applyI18n();
+}
+
+function applyI18n() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    const entry = I18N[key];
+    if (entry) el.textContent = entry[_lang] || entry.zh || key;
+  });
 }
 
 function t(key, params = {}) {

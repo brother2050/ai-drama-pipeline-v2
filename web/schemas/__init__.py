@@ -68,6 +68,7 @@ class PipelineRequest(BaseModel):
 class CharacterData(BaseModel):
     id: str = Field(..., min_length=1, max_length=50)
     name: str = Field("", max_length=100)
+    gender: str = Field("", max_length=10)
     appearance: str = Field("", max_length=2000)
     voice: dict | None = None
     outfits: dict | None = None

@@ -20,7 +20,7 @@ async function loadEpisodeSelector() {
 }
 
 function _episodeSelectHtml(episodes, onChangeFn) {
-  const opts = episodes.map(e => `<option value="${e}" ${e === ep ? 'selected' : ''}>第 ${e} 集</option>`).join('');
+  const opts = episodes.map(e => `<option value="${e}" ${e === ep ? 'selected' : ''}>${e}</option>`).join('');
   return `<select class="btn btn-outline" style="padding:.3rem .6rem;font-size:.82rem" onchange="${onChangeFn}(this.value)">${opts}</select>`;
 }
 
@@ -63,26 +63,26 @@ async function pollTask(taskId, onProgress) {
     if (['success', 'failed', 'cancelled'].includes(info.status)) return info;
     await new Promise(r => setTimeout(r, 800));
   }
-  return { status: 'timeout', error: '轮询超时' };
+  return { status: 'timeout', error: t('toast.timeout') };
 }
 
 // ── 撤销/重做 ──
 
 function _applyHistory(from, to, label) {
-  if (!from.length) { toast(`没有可${label}的操作`, 'error'); return; }
+  if (!from.length) { toast(t('undo.no_action', { label }), 'error'); return; }
   const entry = from.pop();
   to.push({ shots: JSON.parse(JSON.stringify(shots)), desc: entry.desc });
   shots = entry.shots;
   invalidateCache(`storyboard/${ep}`);
   api(`/storyboard/${ep}`, { method: 'POST', body: { shots } }).then(() => {
-    toast(`${label === '撤销' ? '↩' : '↪'} ${label}: ${entry.desc}`);
+    toast(`${label === t('undo.undo') ? '↩' : '↪'} ${label}: ${entry.desc}`);
     const p = document.querySelector('.page.active');
     p?.id === 'page-storyboard' ? loadStoryboard() : renderShotsGrid();
   }).catch(e => toast(e.message, 'error'));
 }
 function pushUndo(desc) { _undoStack.push({ shots: JSON.parse(JSON.stringify(shots)), desc }); if (_undoStack.length > MAX_UNDO) _undoStack.shift(); _redoStack.length = 0; }
-function undo() { _applyHistory(_undoStack, _redoStack, '撤销'); }
-function redo() { _applyHistory(_redoStack, _undoStack, '重做'); }
+function undo() { _applyHistory(_undoStack, _redoStack, t('undo.undo')); }
+function redo() { _applyHistory(_redoStack, _undoStack, t('undo.redo')); }
 
 // ── 路由 ──
 
@@ -111,34 +111,34 @@ document.addEventListener('keydown', e => {
 // ══════════════════════════════════════════════════════════
 
 function _crudTable(cols, items, editFn, delFn) {
-  const ths = cols.map(c => `<th>${c.label}</th>`).join('') + '<th>操作</th>';
+  const ths = cols.map(c => `<th>${c.label}</th>`).join('') + `<th>${t('common.operations')}</th>`;
   const rows = items.length
     ? items.map(it => {
       const tds = cols.map(c => `<td>${c.render ? c.render(it) : esc(it[c.key] || '')}</td>`).join('');
       return `<tr>${tds}<td><button class="btn btn-xs" onclick="${editFn}('${it.id}')">✏️</button>
         <button class="btn btn-xs btn-danger" onclick="${delFn}('${it.id}')">🗑️</button></td></tr>`;
     }).join('')
-    : `<tr><td colspan="${cols.length + 1}" class="dim" style="text-align:center">暂无</td></tr>`;
+    : `<tr><td colspan="${cols.length + 1}" class="dim" style="text-align:center">${t('common.none')}</td></tr>`;
   return `<table><thead><tr>${ths}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function _crudPage(title, cols, items, editFn, delFn, newFn) {
   return `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem">
-    <h2>${title}</h2><button class="btn btn-success" onclick="${newFn}()">+ 新建</button></div>${_crudTable(cols, items, editFn, delFn)}</div>`;
+    <h2>${title}</h2><button class="btn btn-success" onclick="${newFn}()">+ ${t('btn.add').replace('+ ', '')}</button></div>${_crudTable(cols, items, editFn, delFn)}</div>`;
 }
 
 async function _crudCreate(endpoint, extra, reload) {
-  const id = prompt('ID (字母数字下划线):'); if (!id) return;
-  if (!/^[a-zA-Z0-9_-]+$/.test(id)) { toast('ID 格式不合法', 'error'); return; }
-  const name = prompt('名称:'); if (!name) return;
-  try { await api(`/${endpoint}`, { method: 'POST', body: { id, name, ...extra } }); invalidateCache(endpoint); toast('已创建'); reload(); } catch (e) { toast(e.message, 'error'); }
+  const id = prompt('ID:'); if (!id) return;
+  if (!/^[a-zA-Z0-9_-]+$/.test(id)) { toast('ID invalid', 'error'); return; }
+  const name = prompt(t('common.name') + ':'); if (!name) return;
+  try { await api(`/${endpoint}`, { method: 'POST', body: { id, name, ...extra } }); invalidateCache(endpoint); toast(t('toast.created')); reload(); } catch (e) { toast(e.message, 'error'); }
 }
 async function _crudDelete(endpoint, id, label, reload) {
-  if (!confirm(`确认删除${label} ${id}？`)) return;
-  try { await api(`/${endpoint}/${id}`, { method: 'DELETE' }); invalidateCache(endpoint); toast('✅ 已删除'); reload(); } catch (e) { toast(e.message, 'error'); }
+  if (!confirm(`${label} ${id}？`)) return;
+  try { await api(`/${endpoint}/${id}`, { method: 'DELETE' }); invalidateCache(endpoint); toast(t('toast.deleted')); reload(); } catch (e) { toast(e.message, 'error'); }
 }
 async function _crudSave(endpoint, id, fieldsFn, overlayId, reload) {
-  try { await api(`/${endpoint}`, { method: 'POST', body: { id, ...fieldsFn() } }); invalidateCache(endpoint); document.getElementById(overlayId)?.remove(); toast('✅ 已保存'); reload(); } catch (e) { toast(e.message, 'error'); }
+  try { await api(`/${endpoint}`, { method: 'POST', body: { id, ...fieldsFn() } }); invalidateCache(endpoint); document.getElementById(overlayId)?.remove(); toast(t('toast.saved')); reload(); } catch (e) { toast(e.message, 'error'); }
 }
 
 function _showOverlay(id, title, bodyHtml, saveFn) {
@@ -146,8 +146,8 @@ function _showOverlay(id, title, bodyHtml, saveFn) {
   o.innerHTML = `<div class="edit-panel"><div class="edit-header"><h3>${title}</h3>
     <button class="btn btn-sm btn-outline" onclick="document.getElementById('${id}')?.remove()">✕</button></div>
     <div class="edit-body">${bodyHtml}</div><div class="edit-footer">
-    <button class="btn btn-primary" onclick="${saveFn}">💾 保存</button>
-    <button class="btn btn-outline" onclick="document.getElementById('${id}')?.remove()">取消</button></div></div>`;
+    <button class="btn btn-primary" onclick="${saveFn}">💾 ${t('btn.save').replace('💾 ', '')}</button>
+    <button class="btn btn-outline" onclick="document.getElementById('${id}')?.remove()">${t('btn.cancel')}</button></div></div>`;
   document.body.appendChild(o);
   o.querySelector('input,textarea')?.focus();
 }
@@ -156,16 +156,16 @@ function _showOverlay(id, title, bodyHtml, saveFn) {
 // 仪表盘
 // ══════════════════════════════════════════════════════════
 
-const TOOL_META = { redis:{icon:'🔴',label:'Redis'}, celery:{icon:'🔧',label:'Celery'}, ffmpeg:{icon:'🎞️',label:'FFmpeg'}, tts:{icon:'🎤',label:'TTS'}, comfyui:{icon:'🎨',label:'ComfyUI'}, lipsync:{icon:'👄',label:'LipSync'}, llm:{icon:'🧠',label:'LLM'}, music:{icon:'🎵',label:'配乐'} };
+const TOOL_META = { redis:{icon:'🔴',label:'Redis'}, celery:{icon:'🔧',label:'Celery'}, ffmpeg:{icon:'🎞️',label:'FFmpeg'}, tts:{icon:'🎤',label:'TTS'}, comfyui:{icon:'🎨',label:'ComfyUI'}, lipsync:{icon:'👄',label:'LipSync'}, llm:{icon:'🧠',label:'LLM'}, music:{icon:'🎵',label:'Music'} };
 
 async function loadDashboard() {
   const el = document.getElementById('page-dashboard');
   try {
     const s = await cachedFetch('system/status', () => api('/system/status'), 10000);
     const groups = [
-      { label: '基础设施', keys: ['redis', 'celery', 'ffmpeg'] },
-      { label: 'AI 工具', keys: ['tts', 'music'] },
-      { label: 'GPU 工具', keys: ['comfyui', 'lipsync', 'llm'] },
+      { label: t('dash.infra'), keys: ['redis', 'celery', 'ffmpeg'] },
+      { label: t('dash.ai_tools'), keys: ['tts', 'music'] },
+      { label: t('dash.gpu_tools'), keys: ['comfyui', 'lipsync', 'llm'] },
     ];
     let html = '';
     for (const g of groups) {
@@ -174,14 +174,14 @@ async function loadDashboard() {
         const info = s.tools[k] || {}, meta = TOOL_META[k] || {};
         html += `<div class="tool-card ${info.available ? 'tool-ok' : 'tool-off'}"><span>${meta.icon} ${meta.label}</span>
           <span class="status-dot ${info.available ? 'ok' : 'err'}"></span>
-          <span class="dim" style="font-size:0.75rem">${info.available ? '可用' : info.reason || '不可用'}</span></div>`;
+          <span class="dim" style="font-size:0.75rem">${info.available ? t('dash.available') : info.reason || t('dash.unavailable')}</span></div>`;
       }
       html += '</div>';
     }
-    el.innerHTML = `<div class="card"><h2>📊 系统状态</h2>${html}</div>
-      <div class="card"><h2>🚀 开始</h2><p class="dim" style="margin-bottom:0.5rem">进入工作台，选择镜头逐步处理</p>
-      <button class="btn btn-primary" onclick="navTo('pipeline')">🎬 进入工作台</button></div>`;
-  } catch (e) { el.innerHTML = `<div class="card"><h2>❌ 连接失败</h2><p>${esc(e.message)}</p></div>`; }
+    el.innerHTML = `<div class="card"><h2>${t('dash.title')}</h2>${html}</div>
+      <div class="card"><h2>${t('dash.start')}</h2><p class="dim" style="margin-bottom:0.5rem">${t('dash.start_hint')}</p>
+      <button class="btn btn-primary" onclick="navTo('pipeline')">${t('dash.enter_wb')}</button></div>`;
+  } catch (e) { el.innerHTML = `<div class="card"><h2>${t('dash.conn_fail')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -190,26 +190,26 @@ async function loadDashboard() {
 
 const STEP_BTNS = [
   { step: 'tts', icon: '🎤', label: 'TTS' },
-  { step: 'first_frame', icon: '🎨', label: '首帧' },
-  { step: 'video', icon: '🎬', label: '视频' },
-  { step: 'lipsync', icon: '👄', label: '口型' },
+  { step: 'first-frame', icon: '🎨', label: t('step.first_frame') },
+  { step: 'video', icon: '🎬', label: t('step.video') },
+  { step: 'lipsync', icon: '👄', label: t('step.lipsync') },
 ];
 
 function _shotId(s, i) { return s.shot_id || String(i + 1).padStart(3, '0'); }
 function _actionBtns(idx) {
-  return `<button class="btn btn-xs" onclick="editShot(${idx})" title="编辑">✏️</button>` +
+  return `<button class="btn btn-xs" onclick="editShot(${idx})" title="${t('btn.edit')}">✏️</button>` +
     STEP_BTNS.map(b => `<button class="btn btn-xs" onclick="runOne('${b.step}',${idx})" title="${b.label}">${b.icon}</button>`).join('') +
-    `<button class="btn btn-xs btn-danger" onclick="deleteShot(${idx})" title="删除">🗑️</button>`;
+    `<button class="btn btn-xs btn-danger" onclick="deleteShot(${idx})" title="${t('btn.delete')}">🗑️</button>`;
 }
 
 async function loadPipeline() {
   const el = document.getElementById('page-pipeline');
-  el.innerHTML = '<div class="card"><h2>⏳ 加载...</h2></div>';
+  el.innerHTML = `<div class="card"><h2>${t('common.loading')}</h2></div>`;
   try {
     const episodes = await loadEpisodeSelector();
     const d = await cachedFetch(`storyboard/${ep}`, () => api(`/storyboard/${ep}`));
     shots = d.shots || [];
-    if (!shots.length) { el.innerHTML = `<div class="card"><h2>暂无分镜</h2><p class="dim">先在分镜表添加镜头</p><button class="btn btn-primary" style="margin-top:0.5rem" onclick="navTo('storyboard')">去编辑</button></div>`; return; }
+    if (!shots.length) { el.innerHTML = `<div class="card"><h2>${t('wb.no_storyboard')}</h2><p class="dim">${t('wb.add_shots_first')}</p><button class="btn btn-primary" style="margin-top:0.5rem" onclick="navTo('storyboard')">${t('wb.go_edit_btn')}</button></div>`; return; }
     renderWB(episodes);
   } catch (e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${esc(e.message)}</p></div>`; }
 }
@@ -217,11 +217,11 @@ async function loadPipeline() {
 function renderWB(episodes) {
   const el = document.getElementById('page-pipeline');
   const epSelector = _episodeSelectHtml(episodes || [ep], 'switchEpisode');
-  el.innerHTML = `<div class="wb-top-bar"><div style="display:flex;align-items:center;gap:0.5rem"><h2>🎬 生产管线</h2>${epSelector}<span class="dim" style="font-size:.85rem">${shots.length} 个镜头</span></div>
+  el.innerHTML = `<div class="wb-top-bar"><div style="display:flex;align-items:center;gap:0.5rem"><h2>🎬 ${t('nav.pipeline').replace('🎬 ', '')}</h2>${epSelector}<span class="dim" style="font-size:.85rem">${shots.length} ${t('wb.shots_count')}</span></div>
     <div class="wb-batch-btns">
-      <button class="btn btn-outline" onclick="undo()" title="Ctrl+Z">↩ 撤销</button>
-      <button class="btn btn-outline" onclick="redo()" title="Ctrl+Shift+Z">↪ 重做</button>
-      ${STEP_BTNS.map(b => `<button class="btn btn-outline" onclick="batchRun('${b.step}')">${b.icon} 批量 ${b.label}</button>`).join('')}
+      <button class="btn btn-outline" onclick="undo()" title="Ctrl+Z">↩ ${t('undo.undo')}</button>
+      <button class="btn btn-outline" onclick="redo()" title="Ctrl+Shift+Z">↪ ${t('undo.redo')}</button>
+      ${STEP_BTNS.map(b => `<button class="btn btn-outline" onclick="batchRun('${b.step}')">${b.icon} ${t('btn.add').replace('+ ', '')} ${b.label}</button>`).join('')}
     </div></div>
     <div id="wb-shots-grid" class="wb-shots-grid"></div>
     <div id="wb-batch-status" class="wb-batch-status" style="display:none"></div>`;
@@ -254,7 +254,7 @@ async function loadResources(idx) {
       r.video && `<div class="res-chip res-video" onclick="previewRes('${sid}','video')">🎬</div>`,
       r.synced && `<div class="res-chip res-video" onclick="previewRes('${sid}','synced')">👄</div>`,
     ].filter(Boolean).join('');
-    el.innerHTML = chips || '<span class="dim" style="font-size:0.7rem">暂无资源</span>';
+    el.innerHTML = chips || `<span class="dim" style="font-size:0.7rem">${t('wb.no_resource')}</span>`;
   } catch {}
 }
 
@@ -266,14 +266,14 @@ function previewRes(sid, type) {
   const tag = type === 'audio' ? `audio controls src="${src}" style="width:400px"`
     : type === 'frame' ? `img src="${src}" style="max-width:90vw;max-height:80vh;border-radius:8px"`
     : `video controls src="${src}" style="max-width:90vw;max-height:80vh;border-radius:8px"`;
-  o.innerHTML = `<div class="res-overlay-inner"><${tag}><div class="dim" style="margin-top:0.5rem">点击空白处关闭 · ESC</div></div>`;
+  o.innerHTML = `<div class="res-overlay-inner"><${tag}><div class="dim" style="margin-top:0.5rem">${t('wb.esc_hint')}</div></div>`;
   document.body.appendChild(o);
 }
 
 // ── 镜头编辑 ──
 
-const CAMERAS = ['固定', '缓慢推近', '跟随平移', '手持晃动', '环绕', '俯视', '仰视'];
-const SHOT_TYPES = ['特写', '近景', '中景', '过肩', '全身', '全景', '远景'];
+const CAMERAS = [t('camera.fixed'), t('camera.push_in'), t('camera.pan'), t('camera.handheld'), t('camera.orbit'), t('camera.top'), t('camera.bottom')];
+const SHOT_TYPES = [t('shot.closeup'), t('shot.medium_close'), t('shot.medium'), t('shot.over_shoulder'), t('shot.full'), t('shot.wide'), t('shot.extreme_wide')];
 const EMOTIONS = ['neutral', 'happy', 'sad', 'angry', 'worried', 'surprised', 'calm', 'determined'];
 
 function _selectOpts(options, current) { return options.map(o => `<option ${current === o ? 'selected' : ''}>${o}</option>`).join(''); }
@@ -281,16 +281,16 @@ function _selectOpts(options, current) { return options.map(o => `<option ${curr
 function editShot(idx) {
   activeShot = idx;
   const s = shots[idx], sid = _shotId(s, idx);
-  _showOverlay('edit-overlay', `✏️ 编辑镜头 ${sid}`, `
-    <div class="edit-field"><label>场景</label><input id="ed-scene" value="${esc(s.scene || '')}"></div>
-    <div class="edit-field"><label>角色</label><input id="ed-chars" value="${esc(s.characters || '')}"></div>
-    <div class="edit-field"><label>动作</label><textarea id="ed-action" rows="2">${esc(s.action || '')}</textarea></div>
-    <div class="edit-field"><label>台词</label><textarea id="ed-dialogue" rows="2">${esc(s.dialogue || '')}</textarea></div>
+  _showOverlay('edit-overlay', `${t('edit.shot_title')} ${sid}`, `
+    <div class="edit-field"><label>${t('edit.scene')}</label><input id="ed-scene" value="${esc(s.scene || '')}"></div>
+    <div class="edit-field"><label>${t('edit.characters')}</label><input id="ed-chars" value="${esc(s.characters || '')}"></div>
+    <div class="edit-field"><label>${t('edit.action')}</label><textarea id="ed-action" rows="2">${esc(s.action || '')}</textarea></div>
+    <div class="edit-field"><label>${t('edit.dialogue')}</label><textarea id="ed-dialogue" rows="2">${esc(s.dialogue || '')}</textarea></div>
     <div class="edit-field-row">
-      <div class="edit-field"><label>运镜</label><select id="ed-camera">${_selectOpts(CAMERAS, s.camera)}</select></div>
-      <div class="edit-field"><label>景别</label><select id="ed-shottype">${_selectOpts(SHOT_TYPES, s.shot_type)}</select></div>
-      <div class="edit-field"><label>时长</label><input id="ed-dur" type="number" value="${s.duration || 4}" min="1" max="30"></div>
-      <div class="edit-field"><label>情绪</label><select id="ed-emo">${_selectOpts(EMOTIONS, s.emotion)}</select></div>
+      <div class="edit-field"><label>${t('edit.camera')}</label><select id="ed-camera">${_selectOpts(CAMERAS, s.camera)}</select></div>
+      <div class="edit-field"><label>${t('edit.shot_type')}</label><select id="ed-shottype">${_selectOpts(SHOT_TYPES, s.shot_type)}</select></div>
+      <div class="edit-field"><label>${t('edit.duration')}</label><input id="ed-dur" type="number" value="${s.duration || 4}" min="1" max="30"></div>
+      <div class="edit-field"><label>${t('edit.emotion')}</label><select id="ed-emo">${_selectOpts(EMOTIONS, s.emotion)}</select></div>
     </div>`, `saveShot(${idx})`);
 }
 
@@ -299,14 +299,14 @@ async function saveShot(idx) {
   for (const [k, id] of [['scene', 'ed-scene'], ['characters', 'ed-chars'], ['action', 'ed-action'], ['dialogue', 'ed-dialogue'], ['camera', 'ed-camera'], ['shot_type', 'ed-shottype'], ['duration', 'ed-dur'], ['emotion', 'ed-emo']])
     s[k] = document.getElementById(id)?.value || (k === 'duration' ? 4 : k === 'emotion' ? 'neutral' : '');
   pushUndo(`编辑镜头 ${s.shot_id || idx + 1}`);
-  try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } }); invalidateCache(`storyboard/${ep}`); invalidateCache(`res/${ep}`); toast('✅ 已保存'); document.getElementById('edit-overlay')?.remove(); renderShotsGrid(); } catch (e) { toast(e.message, 'error'); }
+  try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } }); invalidateCache(`storyboard/${ep}`); invalidateCache(`res/${ep}`); toast(t('toast.saved')); document.getElementById('edit-overlay')?.remove(); renderShotsGrid(); } catch (e) { toast(e.message, 'error'); }
 }
 
 async function deleteShot(idx) {
   const sid = _shotId(shots[idx], idx);
   if (!confirm(t('confirm.delete_shot', { id: sid }))) return;
   pushUndo(`删除镜头 ${sid}`); shots.splice(idx, 1);
-  try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } }); invalidateCache(`storyboard/${ep}`); toast('✅ 已删除'); renderShotsGrid(); } catch (e) { toast(e.message, 'error'); }
+  try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.deleted')); renderShotsGrid(); } catch (e) { toast(e.message, 'error'); }
 }
 
 // ── 执行 ──
@@ -318,32 +318,32 @@ async function runOne(step, idx) {
   try {
     const { task_id } = await api(`/steps/${step}`, { method: 'POST', body: { episode: ep, shot_id: sid } });
     const result = await pollTask(task_id, info => { if (actionsEl) actionsEl.innerHTML = `<span class="run-indicator">⏳ ${info.message || step} (${info.progress || 0}%)</span>`; });
-    if (result.status === 'success') toast(`✅ ${sid} ${step} 完成`);
-    else if (result.status === 'timeout') toast(`⏰ ${sid} ${step}: 轮询超时`, 'error');
-    else toast(`❌ ${sid} ${step}: ${result.error || '失败'}`, 'error');
+    if (result.status === 'success') toast(`✅ ${sid} ${step} ${t('wb.shot_done')}`);
+    else if (result.status === 'timeout') toast(`⏰ ${sid} ${step}: ${t('toast.timeout')}`, 'error');
+    else toast(`❌ ${sid} ${step}: ${result.error || t('wb.shot_fail')}`, 'error');
   } catch (e) { toast(`❌ ${sid}: ${e.message}`, 'error'); }
   if (actionsEl) actionsEl.innerHTML = _actionBtns(idx);
   invalidateCache(`res/${ep}/${sid}`); loadResources(idx);
 }
 
 function _batchSummary(done, skip, fail, cancelled) {
-  return `<div class="batch-done">${cancelled ? '⏹ 已取消' : '✅ 完成'} · ✅ ${done} · ⏭ ${skip} · ❌ ${fail}
-    <button class="btn btn-sm btn-outline" style="margin-left:0.5rem" onclick="this.parentElement.parentElement.style.display='none'">关闭</button></div>`;
+  return `<div class="batch-done">${cancelled ? t('wb.batch_cancelled') : t('wb.batch_done')} · ${t('wb.batch_ok')} ${done} · ${t('wb.batch_skip')} ${skip} · ${t('wb.batch_fail')} ${fail}
+    <button class="btn btn-sm btn-outline" style="margin-left:0.5rem" onclick="this.parentElement.parentElement.style.display='none'">${t('batch.close_btn')}</button></div>`;
 }
 
 async function batchRun(step) {
-  const names = { tts: 'TTS', first_frame: '首帧', video: '视频', lipsync: '口型同步' };
-  if (!confirm(`批量执行 ${names[step]}？共 ${shots.length} 个镜头`)) return;
+  const names = { tts: t('step.tts'), 'first-frame': t('step.first_frame'), video: t('step.video'), lipsync: t('step.lipsync') };
+  if (!confirm(t('batch.confirm', { step: names[step], n: shots.length }))) return;
   batchCancelled = false;
   const statusEl = document.getElementById('wb-batch-status');
   statusEl.style.display = 'block';
   let done = 0, fail = 0, skip = 0;
   for (let i = 0; i < shots.length; i++) {
-    if (batchCancelled) { statusEl.innerHTML = _batchSummary(done, skip, fail, true); toast(`批量已取消`); return; }
+    if (batchCancelled) { statusEl.innerHTML = _batchSummary(done, skip, fail, true); toast(t('toast.cancelled')); return; }
     const sid = _shotId(shots[i], i);
     statusEl.innerHTML = `<div class="batch-progress"><div class="batch-bar"><div class="batch-fill" style="width:${(i / shots.length) * 100}%"></div></div>
-      <div class="batch-text">[${i + 1}/${shots.length}] ${sid} — ${names[step]}...</div>
-      <button class="btn btn-sm btn-danger" onclick="batchCancelled=true" style="margin-top:0.3rem">⏹ 取消</button></div>`;
+      <div class="batch-text">[${i + 1}/${shots.length}] ${sid} — ${t('batch.progress', { step: names[step] })}</div>
+      <button class="btn btn-sm btn-danger" onclick="batchCancelled=true" style="margin-top:0.3rem">${t('batch.cancel_btn')}</button></div>`;
     try {
       const { task_id } = await api(`/steps/${step}`, { method: 'POST', body: { episode: ep, shot_id: sid } });
       const result = await pollTask(task_id);
@@ -354,7 +354,7 @@ async function batchRun(step) {
     } catch { fail++; }
   }
   statusEl.innerHTML = _batchSummary(done, skip, fail, false);
-  toast(`批量完成: ${done}成功 ${skip}跳过 ${fail}失败`);
+  toast(t('batch.complete', { done, skip, fail }));
 }
 
 // ══════════════════════════════════════════════════════════
@@ -362,24 +362,24 @@ async function batchRun(step) {
 // ══════════════════════════════════════════════════════════
 
 const CHAR_COLS = [
-  { key: 'id', label: 'ID' }, { key: 'name', label: '姓名' }, { key: 'gender', label: '性别' },
-  { key: 'appearance', label: '外观', render: c => (c.appearance || '').substring(0, 40) },
+  { key: 'id', label: 'ID' }, { key: 'name', label: t('char.name') }, { key: 'gender', label: t('char.gender') },
+  { key: 'appearance', label: t('char.appearance'), render: c => (c.appearance || '').substring(0, 40) },
 ];
 
 async function loadCharacters() {
   const el = document.getElementById('page-characters');
-  try { const d = await cachedFetch('characters', () => api('/characters')); el.innerHTML = _crudPage('👤 角色', CHAR_COLS, d.characters || [], 'editChar', 'deleteChar', 'newChar'); } catch (e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${esc(e.message)}</p></div>`; }
+  try { const d = await cachedFetch('characters', () => api('/characters')); el.innerHTML = _crudPage(t('char.title'), CHAR_COLS, d.characters || [], 'editChar', 'deleteChar', 'newChar'); } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 function newChar() { _crudCreate('characters', { gender: '', appearance: '', outfits: {}, voice: {} }, loadCharacters); }
-function deleteChar(id) { _crudDelete('characters', id, '角色', loadCharacters); }
+function deleteChar(id) { _crudDelete('characters', id, t('char.title').replace(/👤\s?/, ''), loadCharacters); }
 
 async function editChar(id) {
   const c = ((await cachedFetch('characters', () => api('/characters'))).characters || []).find(x => x.id === id);
-  if (!c) { toast('角色不存在', 'error'); return; }
-  _showOverlay('edit-char-overlay', `✏️ 编辑角色 ${id}`, `
-    <div class="edit-field"><label>姓名</label><input id="ec-name" value="${esc(c.name || '')}"></div>
-    <div class="edit-field"><label>性别</label><select id="ec-gender"><option value="">-</option><option value="male" ${c.gender === 'male' ? 'selected' : ''}>男</option><option value="female" ${c.gender === 'female' ? 'selected' : ''}>女</option></select></div>
-    <div class="edit-field"><label>外观</label><textarea id="ec-appearance" rows="3">${esc(c.appearance || '')}</textarea></div>`, `saveCharEdit('${id}')`);
+  if (!c) { toast(t('char.not_found'), 'error'); return; }
+  _showOverlay('edit-char-overlay', `${t('char.edit_title')} ${id}`, `
+    <div class="edit-field"><label>${t('char.name')}</label><input id="ec-name" value="${esc(c.name || '')}"></div>
+    <div class="edit-field"><label>${t('char.gender')}</label><select id="ec-gender"><option value="">-</option><option value="male" ${c.gender === 'male' ? 'selected' : ''}>${t('char.gender.male')}</option><option value="female" ${c.gender === 'female' ? 'selected' : ''}>${t('char.gender.female')}</option></select></div>
+    <div class="edit-field"><label>${t('char.appearance')}</label><textarea id="ec-appearance" rows="3">${esc(c.appearance || '')}</textarea></div>`, `saveCharEdit('${id}')`);
 }
 function saveCharEdit(id) { _crudSave('characters', id, () => ({ name: val('ec-name'), gender: val('ec-gender'), appearance: val('ec-appearance') }), 'edit-char-overlay', loadCharacters); }
 
@@ -388,24 +388,24 @@ function saveCharEdit(id) { _crudSave('characters', id, () => ({ name: val('ec-n
 // ══════════════════════════════════════════════════════════
 
 const SCENE_COLS = [
-  { key: 'id', label: 'ID' }, { key: 'name', label: '名称' },
-  { key: 'description', label: '描述', render: s => (s.description || '').substring(0, 40) },
+  { key: 'id', label: 'ID' }, { key: 'name', label: t('scene.name') },
+  { key: 'description', label: t('scene.desc'), render: s => (s.description || '').substring(0, 40) },
 ];
 
 async function loadScenes() {
   const el = document.getElementById('page-scenes');
-  try { const d = await cachedFetch('scenes', () => api('/scenes')); el.innerHTML = _crudPage('🏔️ 场景', SCENE_COLS, d.scenes || [], 'editScene', 'deleteScene', 'newScene'); } catch (e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${esc(e.message)}</p></div>`; }
+  try { const d = await cachedFetch('scenes', () => api('/scenes')); el.innerHTML = _crudPage(t('scene.title'), SCENE_COLS, d.scenes || [], 'editScene', 'deleteScene', 'newScene'); } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 function newScene() { _crudCreate('scenes', { description: '', lighting: '' }, loadScenes); }
-function deleteScene(id) { _crudDelete('scenes', id, '场景', loadScenes); }
+function deleteScene(id) { _crudDelete('scenes', id, t('scene.title').replace(/🏔️\s?/, ''), loadScenes); }
 
 async function editScene(id) {
   const s = ((await cachedFetch('scenes', () => api('/scenes'))).scenes || []).find(x => x.id === id);
-  if (!s) { toast('场景不存在', 'error'); return; }
-  _showOverlay('edit-scene-overlay', `✏️ 编辑场景 ${id}`, `
-    <div class="edit-field"><label>名称</label><input id="es-name" value="${esc(s.name || '')}"></div>
-    <div class="edit-field"><label>描述</label><textarea id="es-desc" rows="3">${esc(s.description || '')}</textarea></div>
-    <div class="edit-field"><label>光照</label><input id="es-lighting" value="${esc(s.lighting || '')}"></div>`, `saveSceneEdit('${id}')`);
+  if (!s) { toast(t('scene.not_found'), 'error'); return; }
+  _showOverlay('edit-scene-overlay', `${t('scene.edit_title')} ${id}`, `
+    <div class="edit-field"><label>${t('scene.name')}</label><input id="es-name" value="${esc(s.name || '')}"></div>
+    <div class="edit-field"><label>${t('scene.desc')}</label><textarea id="es-desc" rows="3">${esc(s.description || '')}</textarea></div>
+    <div class="edit-field"><label>${t('scene.lighting')}</label><input id="es-lighting" value="${esc(s.lighting || '')}"></div>`, `saveSceneEdit('${id}')`);
 }
 function saveSceneEdit(id) { _crudSave('scenes', id, () => ({ name: val('es-name'), description: val('es-desc'), lighting: val('es-lighting') }), 'edit-scene-overlay', loadScenes); }
 
@@ -432,11 +432,11 @@ async function loadStoryboard() {
       <td><input class="sb-inline-input" type="number" value="${s.duration || 4}" min="1" max="30" data-idx="${i}" data-field="duration" onchange="updateShotField(this)"></td>
       <td><button class="btn btn-xs btn-danger" onclick="deleteShotFromSB(${i})">🗑️</button></td></tr>`).join('');
     const epSelector = _episodeSelectHtml(episodes, 'switchEpisode');
-    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>📝 分镜表</h2>
-      <div style="display:flex;gap:0.5rem;align-items:center">${epSelector}<button class="btn btn-primary" onclick="navTo('pipeline')">🎬 工作台</button><button class="btn btn-success" onclick="addShot()">+ 添加</button></div></div>
-      <div style="overflow-x:auto"><table><thead><tr><th>镜号</th><th>场景</th><th>角色</th><th>动作</th><th>台词</th><th>运镜</th><th>景别</th><th>时长</th><th></th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="9" class="dim" style="text-align:center">暂无</td></tr>'}</tbody></table></div></div>`;
-  } catch (e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${esc(e.message)}</p></div>`; }
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${t('sb.title')}</h2>
+      <div style="display:flex;gap:0.5rem;align-items:center">${epSelector}<button class="btn btn-primary" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline').replace('🎬 ', '')}</button><button class="btn btn-success" onclick="addShot()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>${t('sb.shot_id')}</th><th>${t('edit.scene')}</th><th>${t('edit.characters')}</th><th>${t('edit.action')}</th><th>${t('edit.dialogue')}</th><th>${t('edit.camera')}</th><th>${t('edit.shot_type')}</th><th>${t('edit.duration')}</th><th></th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="9" class="dim" style="text-align:center">${t('sb.none')}</td></tr>`}</tbody></table></div></div>`;
+  } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 
 let _sbDirty = false;
@@ -445,7 +445,7 @@ const _debouncedSaveSB = debounce(async () => {
   try {
     const current = (await api(`/storyboard/${ep}`)).shots || [];
     document.querySelectorAll('.sb-inline-input').forEach(inp => { const i = parseInt(inp.dataset.idx); if (current[i]) current[i][inp.dataset.field] = inp.value; });
-    await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: current } }); invalidateCache(`storyboard/${ep}`); _sbDirty = false; toast('✅ 已保存');
+    await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: current } }); invalidateCache(`storyboard/${ep}`); _sbDirty = false; toast(t('toast.saved'));
   } catch (e) { toast(e.message, 'error'); }
 }, 1000);
 function updateShotField() { _sbDirty = true; _debouncedSaveSB(); }
@@ -454,7 +454,7 @@ async function deleteShotFromSB(idx) {
   const current = (await api(`/storyboard/${ep}`)).shots || [];
   if (!confirm(t('confirm.delete_shot', { id: current[idx]?.shot_id || idx + 1 }))) return;
   pushUndo(`删除镜头 ${current[idx]?.shot_id || idx + 1}`); current.splice(idx, 1);
-  try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: current } }); invalidateCache(`storyboard/${ep}`); toast('✅ 已删除'); loadStoryboard(); } catch (e) { toast(e.message, 'error'); }
+  try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: current } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.deleted')); loadStoryboard(); } catch (e) { toast(e.message, 'error'); }
 }
 
 async function addShot() {
@@ -462,7 +462,7 @@ async function addShot() {
   const maxNum = Math.max(0, ...existing.map(s => parseInt(s.shot_id, 10)).filter(n => !isNaN(n)));
   const newId = String(maxNum + 1).padStart(3, '0');
   pushUndo(`添加镜头 ${newId}`);
-  try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: [...existing, { episode: ep, shot_id: newId, scene: '', characters: '', action: '', dialogue: '......', camera: '固定', shot_type: '中景', duration: 4, emotion: 'neutral', outfit: '', action_en: '', dialogue_en: '' }] } }); invalidateCache(`storyboard/${ep}`); toast('已添加'); loadStoryboard(); } catch (e) { toast(e.message, 'error'); }
+  try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: [...existing, { episode: ep, shot_id: newId, scene: '', characters: '', action: '', dialogue: '......', camera: '固定', shot_type: '中景', duration: 4, emotion: 'neutral', outfit: '', action_en: '', dialogue_en: '' }] } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.created')); loadStoryboard(); } catch (e) { toast(e.message, 'error'); }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -473,13 +473,13 @@ async function loadProjects() {
   const el = document.getElementById('page-projects');
   try {
     const d = await api('/projects');
-    const rows = (d.projects || []).map(p => `<tr><td>${p.active ? '→' : ''}</td><td>${p.name}</td><td class="dim" style="font-size:0.75rem">${p.path}</td><td>${p.active ? '<span class="badge badge-green">当前</span>' : `<button class="btn btn-sm btn-primary" onclick="switchProj('${p.name}')">切换</button>`}</td></tr>`).join('');
-    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>📂 项目</h2><button class="btn btn-success" onclick="newProj()">+ 新建</button></div>
-      <table><thead><tr><th></th><th>名称</th><th>路径</th><th>状态</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-  } catch (e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${esc(e.message)}</p></div>`; }
+    const rows = (d.projects || []).map(p => `<tr><td>${p.active ? '→' : ''}</td><td>${p.name}</td><td class="dim" style="font-size:0.75rem">${p.path}</td><td>${p.active ? `<span class="badge badge-green">${t('common.current')}</span>` : `<button class="btn btn-sm btn-primary" onclick="switchProj('${p.name}')">${t('common.switch')}</button>`}</td></tr>`).join('');
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>${t('proj.title')}</h2><button class="btn btn-success" onclick="newProj()">+ ${t('btn.add').replace('+ ', '')}</button></div>
+      <table><thead><tr><th></th><th>${t('common.name')}</th><th>${t('common.path')}</th><th>${t('common.status')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
-function newProj() { const n = prompt('名称:'); if (!n) return; api('/projects/new', { method: 'POST', body: { name: n } }).then(() => { toast('已创建'); loadProjects(); }).catch(e => toast(e.message, 'error')); }
-function switchProj(n) { api('/projects/switch', { method: 'POST', body: { name: n } }).then(() => { toast(`已切换: ${n}`); loadProjects(); }).catch(e => toast(e.message, 'error')); }
+function newProj() { const n = prompt(t('proj.input_name')); if (!n) return; api('/projects/new', { method: 'POST', body: { name: n } }).then(() => { toast(t('toast.created')); loadProjects(); }).catch(e => toast(e.message, 'error')); }
+function switchProj(n) { api('/projects/switch', { method: 'POST', body: { name: n } }).then(() => { toast(t('toast.switched')); loadProjects(); }).catch(e => toast(e.message, 'error')); }
 
 // ══════════════════════════════════════════════════════════
 // 系统设置
@@ -487,9 +487,9 @@ function switchProj(n) { api('/projects/switch', { method: 'POST', body: { name:
 
 function _backendSection(label, icon, idPrefix, backends, backend, url, available, reason) {
   return `<div class="config-section"><h3>${icon} ${label}</h3>
-    <div class="form-row"><label>后端</label><select id="cfg-${idPrefix}" onchange="_updateUrl('${idPrefix}')">${backends.map(b => `<option value="${b}" ${backend === b ? 'selected' : ''}>${b}</option>`).join('')}</select></div>
-    <div class="form-row"><label>地址</label><input id="cfg-${idPrefix}-url" value="${esc(url)}"></div>
-    <div class="tool-status-inline"><span class="status-dot ${available ? 'ok' : 'err'}"></span>${available ? '可用' : reason || '不可用'}</div></div>`;
+    <div class="form-row"><label>${t('set.backend')}</label><select id="cfg-${idPrefix}" onchange="_updateUrl('${idPrefix}')">${backends.map(b => `<option value="${b}" ${backend === b ? 'selected' : ''}>${b}</option>`).join('')}</select></div>
+    <div class="form-row"><label>${t('set.address')}</label><input id="cfg-${idPrefix}-url" value="${esc(url)}"></div>
+    <div class="tool-status-inline"><span class="status-dot ${available ? 'ok' : 'err'}"></span>${available ? t('dash.available') : reason || t('dash.unavailable')}</div></div>`;
 }
 
 function _updateUrl(prefix) {
@@ -509,20 +509,20 @@ async function loadSettings() {
   try {
     const [cfg, env, td] = await Promise.all([api('/config'), api('/system/env'), api('/tools')]);
     _cache.set('config', { data: cfg, ts: Date.now() });
-    const t = td.tools || {}, lang = localStorage.getItem('drama_lang') || 'zh';
+    const tools = td.tools || {}, lang = localStorage.getItem('drama_lang') || 'zh';
     const tts = _resolveBackendUrl(cfg, 'tts'), ls = _resolveBackendUrl(cfg, 'lip_sync');
     el.innerHTML = `
-      <div class="card"><h2>🌐 语言 / Language</h2><div class="form-row"><label>界面语言</label>
+      <div class="card"><h2>🌐 语言 / Language</h2><div class="form-row"><label>${t('set.env')}</label>
         <select id="cfg-lang" onchange="setLang(this.value);loadSettings()"><option value="zh" ${lang === 'zh' ? 'selected' : ''}>中文</option><option value="en" ${lang === 'en' ? 'selected' : ''}>English</option></select></div></div>
-      <div class="card"><h2>💻 环境</h2><div class="info-grid"><div><span class="dim">OS:</span> ${env.os}</div><div><span class="dim">Python:</span> ${env.python}</div><div><span class="dim">GPU:</span> ${env.gpu.available ? env.gpu.name + ' (' + env.gpu.vram_mb + 'MB)' : '不可用'}</div></div></div>
-      <div class="card"><h2>🔧 配置</h2>
-        ${_backendSection('TTS', '🎤', 'tts', ['mimo-voicedesign', 'mimo-voiceclone', 'gpt-sovits', 'cosyvoice', 'fish-speech'], tts.backend, tts.url, t.tts?.available, t.tts?.reason)}
-        ${_backendSection('LipSync', '👄', 'lipsync', ['musetalk', 'sadtalker', 'wav2lip'], ls.backend, ls.url, t.lipsync?.available, t.lipsync?.reason)}
+      <div class="card"><h2>💻 ${t('set.env')}</h2><div class="info-grid"><div><span class="dim">${t('set.os')}:</span> ${env.os}</div><div><span class="dim">${t('set.python')}:</span> ${env.python}</div><div><span class="dim">${t('set.gpu')}:</span> ${env.gpu.available ? env.gpu.name + ' (' + env.gpu.vram_mb + 'MB)' : t('set.gpu_unavailable')}</div></div></div>
+      <div class="card"><h2>🔧 ${t('set.config')}</h2>
+        ${_backendSection(t('set.tts'), '🎤', 'tts', ['mimo-voicedesign', 'mimo-voiceclone', 'gpt-sovits', 'cosyvoice', 'fish-speech'], tts.backend, tts.url, tools.tts?.available, tools.tts?.reason)}
+        ${_backendSection(t('set.lipsync'), '👄', 'lipsync', ['musetalk', 'sadtalker', 'wav2lip'], ls.backend, ls.url, tools.lipsync?.available, tools.lipsync?.reason)}
         <div class="config-section"><h3>🎨 ComfyUI</h3>
-          <div class="form-row"><label>地址</label><input id="cfg-comfyui" value="${esc(cfg.comfyui?.url || '')}"></div>
-          <div class="tool-status-inline"><span class="status-dot ${t.comfyui?.available ? 'ok' : 'err'}"></span>${t.comfyui?.available ? '可用' : t.comfyui?.reason || '不可用'}</div></div>
-        <button class="btn btn-primary" style="margin-top:1rem" onclick="saveCfg()">💾 保存</button></div>`;
-  } catch (e) { el.innerHTML = `<div class="card"><h2>❌</h2><p>${esc(e.message)}</p></div>`; }
+          <div class="form-row"><label>${t('set.address')}</label><input id="cfg-comfyui" value="${esc(cfg.comfyui?.url || '')}"></div>
+          <div class="tool-status-inline"><span class="status-dot ${tools.comfyui?.available ? 'ok' : 'err'}"></span>${tools.comfyui?.available ? t('dash.available') : tools.comfyui?.reason || t('dash.unavailable')}</div></div>
+        <button class="btn btn-primary" style="margin-top:1rem" onclick="saveCfg()">💾 ${t('btn.save').replace('💾 ', '')}</button></div>`;
+  } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 
 async function saveCfg() {
@@ -533,8 +533,9 @@ async function saveCfg() {
       const key = backend.replace(/-/g, '_'); cfg.models[key] = cfg.models[key] || {}; cfg.models[key].api_url = val(`cfg-${idPrefix}-url`);
     }
     cfg.comfyui = cfg.comfyui || {}; cfg.comfyui.url = val('cfg-comfyui');
-    await api('/config', { method: 'POST', body: cfg }); toast('✅ 已保存');
+    await api('/config', { method: 'POST', body: cfg }); toast(t('toast.saved'));
   } catch (e) { toast(e.message, 'error'); }
 }
 
+applyI18n();
 loadDashboard();
