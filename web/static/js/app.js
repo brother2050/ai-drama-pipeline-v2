@@ -15,13 +15,16 @@ const _undoStack = [], _redoStack = [];
 async function loadEpisodeSelector() {
   try {
     const d = await api('/episodes');
-    return d.episodes || [1];
-  } catch { return [1]; }
+    const eps = d.episodes || [1];
+    // 确保当前集在列表中
+    if (!eps.includes(ep)) eps.push(ep);
+    return eps.sort((a, b) => a - b);
+  } catch { return [ep]; }
 }
 
 function _episodeSelectHtml(episodes, onChangeFn) {
   const opts = episodes.map(e => `<option value="${e}" ${e === ep ? 'selected' : ''}>${e}</option>`).join('');
-  return `<select class="btn btn-outline" style="padding:.3rem .6rem;font-size:.82rem" onchange="${onChangeFn}(this.value)">${opts}</select>`;
+  return `<select class="btn btn-outline" style="padding:.3rem .6rem;font-size:.82rem" onchange="${onChangeFn}(this.value)">${opts}</select><button class="btn btn-xs btn-outline" onclick="addEpisode()" title="${t('btn.add')}">+</button>`;
 }
 
 function switchEpisode(val) {
@@ -30,6 +33,20 @@ function switchEpisode(val) {
   const p = document.querySelector('.page.active');
   if (p?.id === 'page-storyboard') loadStoryboard();
   else if (p?.id === 'page-pipeline') loadPipeline();
+}
+
+function addEpisode() {
+  const input = prompt(t('proj.input_name') || '集数:', '');
+  if (!input) return;
+  const newEp = parseInt(input);
+  if (!newEp || newEp < 1) { toast('Invalid episode number', 'error'); return; }
+  ep = newEp;
+  invalidateCache('episodes');
+  invalidateCache(`storyboard/${ep}`);
+  const p = document.querySelector('.page.active');
+  if (p?.id === 'page-storyboard') loadStoryboard();
+  else if (p?.id === 'page-pipeline') loadPipeline();
+  toast(`Episode ${ep}`);
 }
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
