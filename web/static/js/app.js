@@ -37,17 +37,17 @@ function switchEpisode(val) {
 }
 
 function addEpisode() {
-  const input = prompt('Episode #:', '');
+  const input = prompt(t('ep.input'), '');
   if (!input) return;
   const newEp = parseInt(input);
-  if (!newEp || newEp < 1) { toast('Invalid episode number', 'error'); return; }
+  if (!newEp || newEp < 1) { toast(t('ep.invalid'), 'error'); return; }
   ep = newEp;
   invalidateCache('episodes');
   invalidateCache(`storyboard/${ep}`);
   const p = document.querySelector('.page.active');
   if (p?.id === 'page-storyboard') loadStoryboard();
   else if (p?.id === 'page-pipeline') loadPipeline();
-  toast(`Episode ${ep}`);
+  toast(t('ep.switched', { ep }));
 }
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -508,7 +508,7 @@ function newChar() {
 }
 async function saveNewChar() {
   const id = val('nc-id');
-  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) { toast('ID invalid', 'error'); return; }
+  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) { toast(t('common.id_invalid'), 'error'); return; }
   const voiceVal = val('nc-voice'), outfitVal = val('nc-outfits');
   try {
     await api('/characters', { method: 'POST', body: {
@@ -567,7 +567,7 @@ function newScene() {
 }
 async function saveNewScene() {
   const id = val('ns-id');
-  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) { toast('ID invalid', 'error'); return; }
+  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) { toast(t('common.id_invalid'), 'error'); return; }
   try {
     await api('/scenes', { method: 'POST', body: {
       id, name: val('ns-name'), description: val('ns-desc'), lighting: val('ns-lighting'),

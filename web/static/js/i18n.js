@@ -216,6 +216,14 @@ const I18N = {
   'sb.action_en': { zh: '动作(英)', en: 'Action(EN)' },
   'sb.dialogue_en': { zh: '台词(英)', en: 'Dialogue(EN)' },
 
+  // 集数
+  'ep.input': { zh: '集数:', en: 'Episode #:' },
+  'ep.invalid': { zh: '集数无效', en: 'Invalid episode' },
+  'ep.switched': { zh: '已切换到第 {ep} 集', en: 'Switched to episode {ep}' },
+
+  // 通用补充
+  'common.id_invalid': { zh: 'ID 格式不合法', en: 'Invalid ID format' },
+
   // 管线 - 单镜头执行结果
   'wb.shot_done': { zh: '完成', en: 'Done' },
   'wb.shot_skip': { zh: '跳过', en: 'Skipped' },
