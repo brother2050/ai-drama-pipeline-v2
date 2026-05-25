@@ -10,6 +10,7 @@ const MAX_POLL = 300;
 
 let ep = 1, shots = [], activeShot = 0, batchCancelled = false;
 const _undoStack = [], _redoStack = [];
+let _currentTaskId = null; // 当前正在执行的任务 ID
 
 // ── 集数选择器 ──
 async function loadEpisodeSelector() {
@@ -337,16 +338,23 @@ async function deleteShot(idx) {
 async function runOne(step, idx) {
   const sid = _shotId(shots[idx], idx);
   const actionsEl = document.getElementById(`shot-${sid}`)?.querySelector('.wb-shot-actions');
-  if (actionsEl) actionsEl.innerHTML = `<span class="run-indicator">⏳ ${step}...</span>`;
+  if (actionsEl) actionsEl.innerHTML = `<span class="run-indicator">⏳ ${step}...</span> <button class="btn btn-xs btn-danger" onclick="cancelCurrentTask()">⏹</button>`;
   try {
     const { task_id } = await api(`/steps/${step}`, { method: 'POST', body: { episode: ep, shot_id: sid } });
-    const result = await pollTask(task_id, info => { if (actionsEl) actionsEl.innerHTML = `<span class="run-indicator">⏳ ${info.message || step} (${info.progress || 0}%)</span>`; });
+    _currentTaskId = task_id;
+    const result = await pollTask(task_id, info => { if (actionsEl) actionsEl.innerHTML = `<span class="run-indicator">⏳ ${info.message || step} (${info.progress || 0}%)</span> <button class="btn btn-xs btn-danger" onclick="cancelCurrentTask()">⏹</button>`; });
+    _currentTaskId = null;
     if (result.status === 'success') toast(`✅ ${sid} ${step} ${t('wb.shot_done')}`);
     else if (result.status === 'timeout') toast(`⏰ ${sid} ${step}: ${t('toast.timeout')}`, 'error');
     else toast(`❌ ${sid} ${step}: ${result.error || t('wb.shot_fail')}`, 'error');
-  } catch (e) { toast(`❌ ${sid}: ${e.message}`, 'error'); }
+  } catch (e) { _currentTaskId = null; toast(`❌ ${sid}: ${e.message}`, 'error'); }
   if (actionsEl) actionsEl.innerHTML = _actionBtns(idx);
   invalidateCache(`res/${ep}/${sid}`); loadResources(idx);
+}
+
+async function cancelCurrentTask() {
+  if (!_currentTaskId) return;
+  try { await api(`/tasks/${_currentTaskId}/cancel`, { method: 'POST' }); toast(t('toast.cancelled')); } catch (e) { toast(e.message, 'error'); }
 }
 
 function _batchSummary(done, skip, fail, cancelled) {
@@ -368,12 +376,14 @@ async function batchRun(step) {
     const sid = _shotId(shots[i], i);
     try {
       const { task_id } = await api(`/steps/${step}`, { method: 'POST', body: { episode: ep, shot_id: sid } });
+      _currentTaskId = task_id;
       const result = await pollTask(task_id);
+      _currentTaskId = null;
       if (result.status === 'success') {
         const stepResult = result.result?.details?.[step] || result.result;
         stepResult?.status === 'skipped' ? skip++ : (done++, invalidateCache(`res/${ep}/${sid}`), loadResources(i));
       } else fail++;
-    } catch { fail++; }
+    } catch { _currentTaskId = null; fail++; }
   }
 
   if (concurrency <= 1) {
@@ -383,7 +393,7 @@ async function batchRun(step) {
       const sid = _shotId(shots[i], i);
       statusEl.innerHTML = `<div class="batch-progress"><div class="batch-bar"><div class="batch-fill" style="width:${(i / shots.length) * 100}%"></div></div>
         <div class="batch-text">[${i + 1}/${shots.length}] ${sid} — ${t('batch.progress', { step: names[step] })}</div>
-        <button class="btn btn-sm btn-danger" onclick="batchCancelled=true" style="margin-top:0.3rem">${t('batch.cancel_btn')}</button></div>`;
+        <button class="btn btn-sm btn-danger" onclick="batchCancelled=true;cancelCurrentTask()" style="margin-top:0.3rem">${t('batch.cancel_btn')}</button></div>`;
       await processShot(i);
     }
   } else {
@@ -394,7 +404,7 @@ async function batchRun(step) {
       const sid = _shotId(shots[i], i);
       statusEl.innerHTML = `<div class="batch-progress"><div class="batch-bar"><div class="batch-fill" style="width:${(i / shots.length) * 100}%"></div></div>
         <div class="batch-text">[${i + 1}/${shots.length}] ${sid} — ${names[step]} (${t('batch.concurrent')}: ${concurrency})</div>
-        <button class="btn btn-sm btn-danger" onclick="batchCancelled=true" style="margin-top:0.3rem">${t('batch.cancel_btn')}</button></div>`;
+        <button class="btn btn-sm btn-danger" onclick="batchCancelled=true;cancelCurrentTask()" style="margin-top:0.3rem">${t('batch.cancel_btn')}</button></div>`;
       const p = processShot(i).then(() => pool.delete(p));
       pool.add(p);
       if (pool.size >= concurrency) await Promise.race(pool);
@@ -604,14 +614,16 @@ async function loadStoryboard() {
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 
-let _sbDirty = false;
+let _sbDirty = false, _sbSaving = false;
 const _debouncedSaveSB = debounce(async () => {
-  if (!_sbDirty) return;
+  if (!_sbDirty || _sbSaving) return;
+  _sbSaving = true;
   try {
     const current = (await api(`/storyboard/${ep}`)).shots || [];
     document.querySelectorAll('.sb-inline-input').forEach(inp => { const i = parseInt(inp.dataset.idx); if (current[i]) current[i][inp.dataset.field] = inp.value; });
     await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: current } }); invalidateCache(`storyboard/${ep}`); _sbDirty = false; toast(t('toast.saved'));
   } catch (e) { toast(e.message, 'error'); }
+  finally { _sbSaving = false; }
 }, 1000);
 function updateShotField() { _sbDirty = true; _debouncedSaveSB(); }
 
@@ -645,8 +657,28 @@ async function loadProjects() {
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 function newProj() { const n = prompt(t('proj.input_name')); if (!n) return; api('/projects/new', { method: 'POST', body: { name: n } }).then(() => { toast(t('toast.created')); loadProjects(); }).catch(e => toast(e.message, 'error')); }
-function switchProj(n) { api('/projects/switch', { method: 'POST', body: { name: n } }).then(() => { toast(t('toast.switched')); loadProjects(); }).catch(e => toast(e.message, 'error')); }
-function deleteProj(n) { if (!confirm(t('proj.confirm_delete', { name: n }))) return; api(`/projects/${encodeURIComponent(n)}`, { method: 'DELETE' }).then(() => { toast(t('proj.deleted')); loadProjects(); }).catch(e => toast(e.message, 'error')); }
+function switchProj(n) {
+  api('/projects/switch', { method: 'POST', body: { name: n } }).then(() => {
+    // 清除所有缓存
+    _cache.clear();
+    _undoStack.length = 0;
+    _redoStack.length = 0;
+    ep = 1;
+    toast(t('toast.switched'));
+    loadProjects();
+    // 重载当前活动页面
+    const p = document.querySelector('.page.active');
+    if (p) { const pageName = p.id.replace('page-', ''); if (PAGES[pageName]) PAGES[pageName](); }
+  }).catch(e => toast(e.message, 'error'));
+}
+function deleteProj(n) {
+  if (!confirm(t('proj.confirm_delete', { name: n }))) return;
+  api(`/projects/${encodeURIComponent(n)}`, { method: 'DELETE' }).then(() => {
+    _cache.clear();
+    toast(t('proj.deleted'));
+    loadProjects();
+  }).catch(e => toast(e.message, 'error'));
+}
 
 // ══════════════════════════════════════════════════════════
 // 系统设置
@@ -690,7 +722,7 @@ async function loadSettings() {
           <div class="tool-status-inline"><span class="status-dot ${tools.comfyui?.available ? 'ok' : 'err'}"></span>${tools.comfyui?.available ? t('dash.available') : tools.comfyui?.reason || t('dash.unavailable')}</div></div>
         <div class="config-section"><h3>⚡ ${t('batch.concurrent')}</h3>
           <div class="form-row"><label>${t('batch.concurrent')}</label><select id="cfg-concurrency" onchange="localStorage.setItem('drama_concurrency',this.value)">
-            <option value="1" ${(localStorage.getItem('drama_concurrency')||'1')==='1'?'selected':''}>1 (串行)</option>
+            <option value="1" ${(localStorage.getItem('drama_concurrency')||'1')==='1'?'selected':''}>1</option>
             <option value="2" ${localStorage.getItem('drama_concurrency')==='2'?'selected':''}>2</option>
             <option value="3" ${localStorage.getItem('drama_concurrency')==='3'?'selected':''}>3</option>
             <option value="5" ${localStorage.getItem('drama_concurrency')==='5'?'selected':''}>5</option>
