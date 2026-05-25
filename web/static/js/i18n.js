@@ -106,11 +106,11 @@ const I18N = {
   'proj.status': { zh: '状态', en: 'Status' },
 
   // 设置
-  'set.env': { zh: '💻 环境', en: '💻 Environment' },
-  'set.config': { zh: '🔧 配置', en: '🔧 Configuration' },
-  'set.tts': { zh: '🎤 TTS', en: '🎤 TTS' },
-  'set.comfyui': { zh: '🎨 ComfyUI', en: '🎨 ComfyUI' },
-  'set.lipsync': { zh: '👄 LipSync', en: '👄 LipSync' },
+  'set.env': { zh: '环境', en: 'Environment' },
+  'set.config': { zh: '配置', en: 'Configuration' },
+  'set.tts': { zh: 'TTS', en: 'TTS' },
+  'set.comfyui': { zh: 'ComfyUI', en: 'ComfyUI' },
+  'set.lipsync': { zh: 'LipSync', en: 'LipSync' },
   'set.backend': { zh: '后端', en: 'Backend' },
   'set.address': { zh: '地址', en: 'Address' },
   'set.os': { zh: 'OS', en: 'OS' },
