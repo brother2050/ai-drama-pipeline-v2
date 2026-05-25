@@ -159,7 +159,7 @@ async function _crudSave(endpoint, id, fieldsFn, overlayId, reload) {
 
 function _showOverlay(id, title, bodyHtml, saveFn) {
   const o = document.createElement('div'); o.className = 'edit-overlay'; o.id = id;
-  o.innerHTML = `<div class="edit-panel"><div class="edit-header"><h3>${title}</h3>
+  o.innerHTML = `<div class="edit-panel"><div class="edit-header"><h3>${esc(title)}</h3>
     <button class="btn btn-sm btn-outline" onclick="document.getElementById('${id}')?.remove()">✕</button></div>
     <div class="edit-body">${bodyHtml}</div><div class="edit-footer">
     <button class="btn btn-primary" onclick="${saveFn}">💾 ${t('btn.save').replace('💾 ', '')}</button>
@@ -255,11 +255,11 @@ function renderShotsGrid() {
   if (!grid) return;
   grid.innerHTML = shots.map((s, i) => {
     const sid = _shotId(s, i);
-    return `<div class="wb-shot-card" id="shot-${sid}">
-      <div class="wb-shot-head"><span class="wb-shot-num">${sid}</span><span class="wb-shot-char">${s.characters || ''}</span><span class="wb-shot-scene">${s.scene || ''}</span></div>
-      <div class="wb-shot-body"><div class="wb-shot-text"><div class="wb-shot-action">${(s.action || '').substring(0, 20) || '...'}</div>
-        <div class="wb-shot-dialogue">"${(s.dialogue || '').substring(0, 20) || '...'}"</div></div>
-        <div class="wb-shot-resources" id="res-${sid}"></div></div>
+    return `<div class="wb-shot-card" id="shot-${esc(sid)}">
+      <div class="wb-shot-head"><span class="wb-shot-num">${esc(sid)}</span><span class="wb-shot-char">${esc(s.characters || '')}</span><span class="wb-shot-scene">${esc(s.scene || '')}</span></div>
+      <div class="wb-shot-body"><div class="wb-shot-text"><div class="wb-shot-action">${esc((s.action || '').substring(0, 20)) || '...'}</div>
+        <div class="wb-shot-dialogue">"${esc((s.dialogue || '').substring(0, 20)) || '...'}"</div></div>
+        <div class="wb-shot-resources" id="res-${esc(sid)}"></div></div>
       <div class="wb-shot-actions">${_actionBtns(i)}</div></div>`;
   }).join('');
   shots.forEach((_, i) => loadResources(i));
@@ -453,8 +453,8 @@ async function runAll() {
     try {
       const { task_id } = await api('/pipeline/run', { method: 'POST', body: { episode: ep, command: cmd } });
       const result = await pollTask(task_id);
-      if (result.status !== 'success') { statusEl.innerHTML = `<div class="batch-done">❌ ${cmd}: ${result.error || t('wb.shot_fail')}</div>`; return; }
-    } catch (e) { statusEl.innerHTML = `<div class="batch-done">❌ ${cmd}: ${e.message}</div>`; return; }
+      if (result.status !== 'success') { statusEl.innerHTML = `<div class="batch-done">❌ ${cmd}: ${esc(result.error || t('wb.shot_fail'))}</div>`; return; }
+    } catch (e) { statusEl.innerHTML = `<div class="batch-done">❌ ${cmd}: ${esc(e.message)}</div>`; return; }
   }
   statusEl.innerHTML = `<div class="batch-done">✅ ${t('wb.run_all')}</div>`;
   toast('✅ ' + t('wb.run_all'));
