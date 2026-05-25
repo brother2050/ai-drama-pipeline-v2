@@ -344,7 +344,12 @@ async function runOne(step, idx) {
     _currentTaskId = task_id;
     const result = await pollTask(task_id, info => { if (actionsEl) actionsEl.innerHTML = `<span class="run-indicator">⏳ ${info.message || step} (${info.progress || 0}%)</span> <button class="btn btn-xs btn-danger" onclick="cancelCurrentTask()">⏹</button>`; });
     _currentTaskId = null;
-    if (result.status === 'success') toast(`✅ ${sid} ${step} ${t('wb.shot_done')}`);
+    if (result.status === 'success') {
+      const sub = result.result;
+      if (sub?.status === 'error') toast(`❌ ${sid} ${step}: ${sub.reason || t('wb.shot_fail')}`, 'error');
+      else if (sub?.status === 'skipped') toast(`⏭ ${sid} ${step}: ${sub.reason || t('wb.shot_skip')}`);
+      else toast(`✅ ${sid} ${step} ${t('wb.shot_done')}`);
+    }
     else if (result.status === 'timeout') toast(`⏰ ${sid} ${step}: ${t('toast.timeout')}`, 'error');
     else toast(`❌ ${sid} ${step}: ${result.error || t('wb.shot_fail')}`, 'error');
   } catch (e) { _currentTaskId = null; toast(`❌ ${sid}: ${e.message}`, 'error'); }
@@ -380,8 +385,10 @@ async function batchRun(step) {
       const result = await pollTask(task_id);
       _currentTaskId = null;
       if (result.status === 'success') {
-        const stepResult = result.result?.details?.[step] || result.result;
-        stepResult?.status === 'skipped' ? skip++ : (done++, invalidateCache(`res/${ep}/${sid}`), loadResources(i));
+        const sub = result.result;
+        if (sub?.status === 'error') fail++;
+        else if (sub?.status === 'skipped') skip++;
+        else { done++; invalidateCache(`res/${ep}/${sid}`); loadResources(i); }
       } else fail++;
     } catch { _currentTaskId = null; fail++; }
   }
@@ -425,8 +432,8 @@ async function runPortraits() {
     const { task_id } = await api('/tools/portraits', { method: 'POST' });
     toast('⏳ ' + t('wb.gen_portraits'));
     const result = await pollTask(task_id);
-    if (result.status === 'success') toast('✅ ' + t('wb.gen_portraits'));
-    else toast('❌ ' + (result.error || t('wb.shot_fail')), 'error');
+    if (result.status === 'success' && result.result?.status !== 'error') toast('✅ ' + t('wb.gen_portraits'));
+    else toast('❌ ' + (result.result?.reason || result.error || t('wb.shot_fail')), 'error');
   } catch (e) { toast('❌ ' + e.message, 'error'); }
 }
 
@@ -436,8 +443,8 @@ async function runPost() {
     const { task_id } = await api('/tools/post', { method: 'POST', body: { episode: ep } });
     toast('⏳ ' + t('wb.post_process'));
     const result = await pollTask(task_id);
-    if (result.status === 'success') toast('✅ ' + t('wb.post_process'));
-    else toast('❌ ' + (result.error || t('wb.shot_fail')), 'error');
+    if (result.status === 'success' && result.result?.status !== 'error') toast('✅ ' + t('wb.post_process'));
+    else toast('❌ ' + (result.result?.reason || result.error || t('wb.shot_fail')), 'error');
   } catch (e) { toast('❌ ' + e.message, 'error'); }
 }
 
@@ -454,10 +461,19 @@ async function runAll() {
       const { task_id } = await api('/pipeline/run', { method: 'POST', body: { episode: ep, command: cmd } });
       const result = await pollTask(task_id);
       if (result.status !== 'success') { statusEl.innerHTML = `<div class="batch-done">❌ ${cmd}: ${esc(result.error || t('wb.shot_fail'))}</div>`; return; }
+      // 检查子任务返回的实际状态（Celery SUCCESS 不代表业务成功）
+      const sub = result.result;
+      if (sub?.status === 'error' || sub?.status === 'empty') {
+        statusEl.innerHTML = `<div class="batch-done">❌ ${cmd}: ${esc(sub.reason || sub.message || t('wb.shot_fail'))}</div>`; return;
+      }
     } catch (e) { statusEl.innerHTML = `<div class="batch-done">❌ ${cmd}: ${esc(e.message)}</div>`; return; }
   }
   statusEl.innerHTML = `<div class="batch-done">✅ ${t('wb.run_all')}</div>`;
   toast('✅ ' + t('wb.run_all'));
+  // 刷新资源
+  invalidateCache(`storyboard/${ep}`);
+  invalidateCache(`res/${ep}`);
+  renderShotsGrid();
 }
 
 async function runMusic() {
@@ -468,8 +484,8 @@ async function runMusic() {
     const { task_id } = await api('/tools/music', { method: 'POST', body: { duration: parseFloat(duration), mood: mood || 'neutral' } });
     toast('⏳ ' + t('wb.gen_music'));
     const result = await pollTask(task_id);
-    if (result.status === 'success') toast('✅ ' + t('wb.gen_music'));
-    else toast('❌ ' + (result.error || t('wb.shot_fail')), 'error');
+    if (result.status === 'success' && result.result?.status !== 'error') toast('✅ ' + t('wb.gen_music'));
+    else toast('❌ ' + (result.result?.reason || result.error || t('wb.shot_fail')), 'error');
   } catch (e) { toast('❌ ' + e.message, 'error'); }
 }
 
@@ -479,8 +495,8 @@ async function runSubtitle() {
     const { task_id } = await api('/tools/subtitle', { method: 'POST', body: { episode: ep } });
     toast('⏳ ' + t('wb.gen_subtitle'));
     const result = await pollTask(task_id);
-    if (result.status === 'success') toast('✅ ' + t('wb.gen_subtitle'));
-    else toast('❌ ' + (result.error || t('wb.shot_fail')), 'error');
+    if (result.status === 'success' && result.result?.status !== 'error') toast('✅ ' + t('wb.gen_subtitle'));
+    else toast('❌ ' + (result.result?.reason || result.error || t('wb.shot_fail')), 'error');
   } catch (e) { toast('❌ ' + e.message, 'error'); }
 }
 
@@ -746,6 +762,7 @@ async function saveCfg() {
     }
     cfg.comfyui = cfg.comfyui || {}; cfg.comfyui.url = val('cfg-comfyui');
     await api('/config', { method: 'POST', body: cfg }); toast(t('toast.saved'));
+    invalidateCache('config');
   } catch (e) { toast(e.message, 'error'); }
 }
 

@@ -327,10 +327,16 @@ def _run_lipsync(config_path: str, episode: int, shot_id: str) -> dict:
 
 def _step_task(self, step: str, fn, config_path: str, episode: int, shot_id: str):
     """通用 Celery 步骤任务包装"""
-    self.update_state(state="PROGRESS", meta={"step": step, "shot_id": shot_id, "progress": 20, "message": f"[{shot_id}] {step}..."})
-    result = fn(config_path, episode, shot_id)
+    self.update_state(state="PROGRESS", meta={"step": step, "shot_id": shot_id, "progress": 10, "message": f"[{shot_id}] {step} 开始..."})
+    try:
+        result = fn(config_path, episode, shot_id)
+    except Exception as e:
+        logger.error(f"[{shot_id}] {step} 异常: {e}")
+        return {"shot_id": shot_id, "step": step, "status": "error", "reason": str(e)}
     if result.get("status") == "done":
         self.update_state(state="PROGRESS", meta={"step": step, "shot_id": shot_id, "progress": 100, "message": f"[{shot_id}] {step} 完成"})
+    elif result.get("status") == "error":
+        self.update_state(state="PROGRESS", meta={"step": step, "shot_id": shot_id, "progress": 100, "message": f"[{shot_id}] {step} 失败: {result.get('reason', '')}"})
     return result
 
 

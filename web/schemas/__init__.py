@@ -114,6 +114,13 @@ class ProjectCreate(BaseModel):
 class ProjectSwitch(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
 
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        if ".." in v or "/" in v or "\\" in v:
+            raise ValueError("项目名包含非法字符")
+        return v
+
 
 # ── 配置 ──
 
