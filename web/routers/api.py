@@ -311,7 +311,7 @@ def run_step_shot(req: StepRequest):
 
 
 def _find_shot_for_api(episode: int, shot_id: str) -> dict | None:
-    sb_path = ROOT / "storyboard" / "episodes.csv"
+    sb_path = _active_project_dir() / "storyboard" / "episodes.csv"
     if not sb_path.exists():
         return None
     with open(sb_path, encoding="utf-8") as f:
@@ -354,7 +354,7 @@ def run_music(req: MusicRequest):
     """配乐生成"""
     from pipeline.tasks import music_task
     import time
-    output = str(ROOT / "output" / f"bgm_{int(time.time())}.wav")
+    output = str(_active_project_dir() / "output" / f"bgm_{int(time.time())}.wav")
     return _submit_task(music_task, _cfg_path(), req.duration, req.mood, output)
 
 
@@ -653,7 +653,7 @@ def delete_scene(scene_id: str):
 @router.get("/episodes")
 def get_episodes():
     """获取可用集数列表"""
-    sb_path = ROOT / "storyboard" / "episodes.csv"
+    sb_path = _active_project_dir() / "storyboard" / "episodes.csv"
     if not sb_path.exists():
         return {"episodes": [1], "current": 1}
     ep_set = set()
@@ -674,7 +674,7 @@ def get_episodes():
 def get_storyboard(episode: int):
     if episode < 1:
         raise HTTPException(400, "episode 必须 >= 1")
-    sb_path = ROOT / "storyboard" / "episodes.csv"
+    sb_path = _active_project_dir() / "storyboard" / "episodes.csv"
     if not sb_path.exists():
         return {"episode": episode, "shots": []}
     shots = []
@@ -701,7 +701,7 @@ def save_storyboard(episode: int, data: dict):
         if sid and not re.match(r"^[a-zA-Z0-9_-]+$", sid):
             raise HTTPException(400, f"无效的 shot_id: {sid}")
 
-    sb_path = ROOT / "storyboard" / "episodes.csv"
+    sb_path = _active_project_dir() / "storyboard" / "episodes.csv"
     sb_path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = ["episode", "shot_id", "scene", "characters", "action", "dialogue",
                   "camera", "shot_type", "duration", "outfit", "emotion",
@@ -760,7 +760,7 @@ def run_pipeline(req: PipelineRequest):
 @router.get("/pipeline/status/{episode}")
 def pipeline_status(episode: int):
     from flow.episode import get_episode_status
-    return get_episode_status(str(ROOT), episode)
+    return get_episode_status(str(_active_project_dir()), episode)
 
 
 # ══════════════════════════════════════════════════════════
@@ -775,7 +775,7 @@ def get_shot_resources(episode: int, shot_id: str):
     if not re.match(r"^[a-zA-Z0-9_-]+$", shot_id):
         raise HTTPException(400, "无效的 shot_id")
 
-    out_dir = _safe_path(ROOT, "output", f"e{episode:02d}", f"s{shot_id}")
+    out_dir = _safe_path(_active_project_dir(), "output", f"e{episode:02d}", f"s{shot_id}")
     if not out_dir.exists():
         return {"shot_id": shot_id, "resources": {}}
 
@@ -800,7 +800,7 @@ def get_shot_file(episode: int, shot_id: str, filename: str):
     if not re.match(r"^[a-zA-Z0-9_\-\.]+$", filename):
         raise HTTPException(400, "无效的文件名")
 
-    file_path = _safe_path(ROOT, "output", f"e{episode:02d}", f"s{shot_id}", filename)
+    file_path = _safe_path(_active_project_dir(), "output", f"e{episode:02d}", f"s{shot_id}", filename)
     if not file_path.exists():
         raise HTTPException(404, f"文件不存在: {filename}")
 
