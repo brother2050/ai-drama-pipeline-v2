@@ -20,12 +20,14 @@ def _port_ok(port: int, host: str = "127.0.0.1") -> bool:
         return False
 
 
-def _url_ok(url: str, path: str = "/") -> bool:
+def _url_ok(url: str, path: str = "/", headers: dict | None = None) -> bool:
     try:
         import httpx
         from infra.retry import retry
-        return retry(lambda: httpx.get(f"{url}{path}", timeout=3).status_code == 200,
-                     max_retries=2, base_delay=0.5)
+        def _check():
+            r = httpx.get(f"{url}{path}", headers=headers, timeout=3)
+            return r.status_code in (200, 401, 403)  # 401/403 = 服务在线但认证问题
+        return retry(_check, max_retries=2, base_delay=0.5)
     except Exception:
         return False
 
@@ -70,6 +72,8 @@ def check_tool(name: str, cfg: dict) -> dict:
         base_url = llm_cfg.get("base_url", "http://localhost:11434")
         backend = llm_cfg.get("backend", "ollama")
         enabled = llm_cfg.get("enabled")
+        api_key = llm_cfg.get("api_key", "")
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
         # Ollama 用 /api/tags，OpenAI 兼容用 /v1/models
         if backend == "ollama":
             service_ok = _url_ok(base_url, "/api/tags")
@@ -78,7 +82,7 @@ def check_tool(name: str, cfg: dict) -> dict:
             check_url = base_url.rstrip("/")
             if not check_url.endswith("/v1"):
                 check_url = check_url + "/v1"
-            service_ok = _url_ok(check_url, "/models")
+            service_ok = _url_ok(check_url, "/models", headers=headers)
         if not enabled:
             if service_ok:
                 return {"available": False, "backend": backend, "type": "cloud",

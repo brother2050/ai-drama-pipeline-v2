@@ -113,6 +113,17 @@ def _cfg() -> dict:
     return data
 
 
+def _merged_cfg() -> dict:
+    """合并项目配置 + 系统配置（工具检测用，确保能拿到 system.yaml 里的 API Key 等）"""
+    proj = _cfg()
+    sys_path = _sys_cfg_path()
+    if os.path.isfile(sys_path):
+        with open(sys_path, encoding="utf-8") as f:
+            sys_cfg = yaml.safe_load(f) or {}
+        return _deep_merge(sys_cfg, proj)
+    return proj
+
+
 def _cfg_path() -> str:
     return str(_active_project_dir() / "config" / "project.yaml")
 
@@ -168,7 +179,7 @@ def _submit_task(task, *args, **kwargs) -> dict:
 @router.get("/system/status")
 def system_status():
     """全量服务状态"""
-    cfg = _cfg()
+    cfg = _merged_cfg()
     tools = {}
     for name in ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg"]:
         tools[name] = _check_tool(name, cfg)
@@ -191,7 +202,7 @@ def system_env():
 @router.get("/tools")
 def list_tools():
     """列出所有工具及其可用状态"""
-    cfg = _cfg()
+    cfg = _merged_cfg()
     tools = {}
     for name in ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg"]:
         tools[name] = _check_tool(name, cfg)
@@ -201,7 +212,7 @@ def list_tools():
 @router.get("/tools/{name}")
 def check_tool(name: str):
     """检测单个工具状态"""
-    cfg = _cfg()
+    cfg = _merged_cfg()
     result = _check_tool(name, cfg)
     return {"name": name, **result}
 
@@ -209,7 +220,7 @@ def check_tool(name: str):
 @router.post("/tools/{name}/test")
 def test_tool(name: str):
     """测试三方工具连接（实际发请求验证）"""
-    cfg = _cfg()
+    cfg = _merged_cfg()
     result = _check_tool(name, cfg)
     if not result.get("available"):
         return {"ok": False, "name": name, "message": result.get("reason", "不可用"), **result}
@@ -245,6 +256,8 @@ def test_tool(name: str):
             llm_cfg = cfg.get("llm", {})
             base_url = llm_cfg.get("base_url", "")
             backend = llm_cfg.get("backend", "ollama")
+            api_key = llm_cfg.get("api_key", "")
+            headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
             import httpx
             if backend == "ollama":
                 r = httpx.get(f"{base_url}/api/tags", timeout=5)
@@ -254,7 +267,7 @@ def test_tool(name: str):
                 check_url = base_url.rstrip("/")
                 if not check_url.endswith("/v1"):
                     check_url += "/v1"
-                r = httpx.get(f"{check_url}/models", timeout=5)
+                r = httpx.get(f"{check_url}/models", headers=headers, timeout=5)
                 data = r.json() if r.status_code == 200 else {}
                 count = len(data.get("data", []))
                 return {"ok": True, "name": name, "message": f"LLM 连接成功 · {count} 模型", **result}
