@@ -11,18 +11,12 @@ import os
 import time
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_API_BASE = "seko.sensetime.com"
-
-
-def _get_api_base(config: dict | None = None) -> str:
-    """获取 Seko API 基础地址"""
-    if config and config.get("api_base_url"):
-        return config["api_base_url"]
-    return os.environ.get("SEKO_API_BASE_URL", _DEFAULT_API_BASE)
+_API_BASE = "seko.sensetime.com"
 
 
 def _get_api_key(config: dict | None = None) -> str:
@@ -51,7 +45,7 @@ def generate_proposal(prompt: str, *, api_key: str = "", config: dict | None = N
     if not key:
         return {"code": 500, "msg": "SEKO_API_KEY 未配置"}
 
-    api_base = _get_api_base(config)
+    api_base = _API_BASE
     conn = http.client.HTTPSConnection(api_base)
     payload = json.dumps({"input": prompt})
     headers = {
@@ -90,7 +84,7 @@ def check_proposal_status(task_id: str, *, api_key: str = "", config: dict | Non
     if not key:
         return {"code": 500, "msg": "SEKO_API_KEY 未配置"}
 
-    api_base = _get_api_base(config)
+    api_base = _API_BASE
     conn = http.client.HTTPSConnection(api_base)
     headers = {
         "Seko-API-Key": key,
@@ -114,7 +108,7 @@ def wait_for_proposal(
     api_key: str = "",
     config: dict | None = None,
     interval: int = 10,
-    on_status: callable | None = None,
+    on_status: Callable[[str], None] | None = None,
 ) -> dict:
     """轮询等待策划案任务完成
 
@@ -175,7 +169,7 @@ def modify_proposal(
     if not key:
         return {"code": 500, "msg": "SEKO_API_KEY 未配置"}
 
-    api_base = _get_api_base(config)
+    api_base = _API_BASE
     conn = http.client.HTTPSConnection(api_base)
     payload = json.dumps({
         "input": prompt,
@@ -228,7 +222,11 @@ def download_image(url: str, output_path: str) -> str:
         headers={"User-Agent": "Mozilla/5.0 (compatible; ai-drama-pipeline/2.0)"},
     )
     with urllib.request.urlopen(req) as response, open(output_path, "wb") as out_file:
-        out_file.write(response.read())
+        while True:
+            chunk = response.read(64 * 1024)
+            if not chunk:
+                break
+            out_file.write(chunk)
 
     logger.info(f"图片下载成功: {output_path}")
     return output_path
