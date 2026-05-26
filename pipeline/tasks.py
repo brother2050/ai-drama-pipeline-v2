@@ -135,6 +135,9 @@ def _try_mark_running_atomic(config_path: str, episode: int, shot_id: str, step:
                 # 确保 advisory lock 总是被释放
                 try:
                     cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
+                except Exception:
+                    pass
+                try:
                     conn.commit()
                 except Exception:
                     pass
@@ -880,23 +883,23 @@ def _parse_seko_storyboard(steps: list[dict], episode: int) -> list[dict]:
         duration = 4
 
         # 场景
-        scene_match = re.search(r"场景[：:]\s*(.+?)(?:\\n|$)", desc_raw)
+        scene_match = re.search(r"场景[：:]\s*(.+?)(?:\n|$)", desc_raw)
         if scene_match:
             scene = scene_match.group(1).strip()
 
         # 画面描述
-        action_match = re.search(r"画面[：:]\s*\[(.+?)\]\s*(.+?)(?:\\n运镜|$)", desc_raw, re.DOTALL)
+        action_match = re.search(r"画面[：:]\s*\[(.+?)\]\s*(.+?)(?:\n运镜|$)", desc_raw, re.DOTALL)
         if action_match:
             shot_type = action_match.group(1).strip()
-            action = action_match.group(2).strip().replace("\\n", " ").strip()
+            action = action_match.group(2).strip().replace("\n", " ").strip()
 
         # 运镜
-        camera_match = re.search(r"运镜[：:]\s*(.+?)(?:\\n|$)", desc_raw)
+        camera_match = re.search(r"运镜[：:]\s*(.+?)(?:\n|$)", desc_raw)
         if camera_match:
             camera = camera_match.group(1).strip()
 
         # 台词
-        dialogue_match = re.search(r"中文配音[：:]\s*\[([^\]]+)\]\s*(.+?)(?:\\n|$)", block)
+        dialogue_match = re.search(r"中文配音[：:]\s*\[([^\]]+)\]\s*(.+?)(?:\n|$)", block)
         if dialogue_match:
             char_name = dialogue_match.group(1).strip()
             dialogue = dialogue_match.group(2).strip()
@@ -946,7 +949,7 @@ def _download_seko_image(url: str, output_path: str, timeout: int = 60) -> bool:
         return False
 
 
-@app.task(bind=True, name="pipeline.seko.import", soft_time_limit=600)
+@app.task(bind=True, name="pipeline.seko.import", soft_time_limit=900)
 def seko_import_task(
     self,
     config_path: str,
@@ -1117,9 +1120,9 @@ def seko_import_task(
                         with open(yaml_path, encoding="utf-8") as f:
                             data = yaml.safe_load(f) or {}
                         entity_key = "character" if elem_type == "CHARACTER" else "scene"
+                        asset_type = "characters" if elem_type == "CHARACTER" else "scenes"
                         entity = data.get(entity_key, {})
-                        entity["reference_images"] = [f"/api/assets/{entity_type}/{safe_name}/cover.png"
-                                                      for entity_type in [("characters" if elem_type == "CHARACTER" else "scenes")]]
+                        entity["reference_images"] = [f"/api/assets/{asset_type}/{safe_name}/cover.png"]
                         data[entity_key] = entity
                         with open(yaml_path, "w", encoding="utf-8") as f:
                             yaml.dump(data, f, allow_unicode=True, default_flow_style=False)

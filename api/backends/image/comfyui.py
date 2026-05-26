@@ -40,17 +40,36 @@ class ComfyUI:
             r = c.post(f"{self._url}/prompt", json={"prompt": workflow, "client_id": client_id},
                       headers=self._headers())
             r.raise_for_status()
-            prompt_id = r.json()["prompt_id"]
+            resp = r.json()
+            # ComfyUI 提交失败时返回 {"error": "...", "node_errors": {...}}
+            if "error" in resp:
+                raise RuntimeError(f"ComfyUI 工作流提交失败: {resp['error']}")
+            prompt_id = resp.get("prompt_id")
+            if not prompt_id:
+                raise RuntimeError(f"ComfyUI 未返回 prompt_id: {resp}")
 
             # 等待完成
             deadline = time.time() + self._timeout
             while time.time() < deadline:
-                r = c.get(f"{self._url}/history/{prompt_id}")
-                if r.status_code == 200:
-                    history = r.json()
-                    if prompt_id in history:
-                        outputs = history[prompt_id].get("outputs", {})
-                        return self._download_outputs(c, outputs, output_dir)
+                try:
+                    r = c.get(f"{self._url}/history/{prompt_id}")
+                    if r.status_code == 200:
+                        history = r.json()
+                        if prompt_id in history:
+                            entry = history[prompt_id]
+                            # 检查 ComfyUI 是否报告了任务失败
+                            status_info = entry.get("status", {})
+                            if status_info.get("status_str") == "error":
+                                msgs = status_info.get("messages", [])
+                                raise RuntimeError(f"ComfyUI 任务执行失败: {msgs}")
+                            outputs = entry.get("outputs", {})
+                            if outputs:
+                                files = self._download_outputs(c, outputs, output_dir)
+                                if not files:
+                                    raise RuntimeError("ComfyUI 任务完成但未返回任何文件")
+                                return files
+                except httpx.HTTPError:
+                    pass  # 网络抖动，继续重试
                 time.sleep(2)
             raise TimeoutError(f"ComfyUI workflow timeout ({self._timeout}s)")
 

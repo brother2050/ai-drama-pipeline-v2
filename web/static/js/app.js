@@ -1316,6 +1316,9 @@ async function sekoImport(idx) {
     (t('seko.import_desc') || '将导入角色、场景、分镜，并在后台下载图片。')
   );
   if (!ok) return;
+  // 防重入：禁用按钮
+  const btn = document.querySelector(`#seko-task-${idx} .btn-primary`);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 导入中...'; }
   try {
     toast(t('seko.import_submitting') || '正在提交导入任务...');
     const r = await api('/seko/proposal/import', {
@@ -1332,14 +1335,16 @@ async function sekoImport(idx) {
     // 轮询任务状态
     const taskId = r.task_id;
     toast((t('seko.import_submitted') || '导入任务已提交') + ` (${taskId})`);
-    _pollSekoImportTask(taskId);
+    await _pollSekoImportTask(taskId);
   } catch (e) {
     toast((t('seko.import_fail') || '导入失败') + `: ${e.message}`, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = t('seko.import_btn') || '📥 导入项目'; }
   }
 }
 
 async function _pollSekoImportTask(taskId) {
-  const maxWait = 600; // 最长等 10 分钟
+  const maxWait = 960; // 最长等 16 分钟（对齐 Celery soft_time_limit 900s + 余量）
   const interval = 3;
   let waited = 0;
   while (waited < maxWait) {
