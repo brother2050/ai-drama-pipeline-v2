@@ -768,23 +768,65 @@ const CHAR_COLS = [
   { key: 'appearance', label: t('char.appearance'), render: c => (c.appearance || '').substring(0, 40) },
 ];
 
+/** 通用实体列表渲染 */
+function _loadEntityPage(type, { pageId, icon, titleKey, emptyHintKey, emptyDescKey, editFn, newFn, aiFn, card }) {
+  const el = document.getElementById(pageId);
+  const addLabel = t('btn.add').replace('+ ', '');
+  cachedFetch(type, () => api(`/${type}`)).then(d => {
+    const items = d[type] || [];
+    const grid = items.length
+      ? `<div class="entity-grid">${items.map(it => card(it)).join('')}</div>`
+      : `<div class="empty-state"><div class="empty-state-icon">${icon}</div><h3>${t(emptyHintKey)}</h3><p>${t(emptyDescKey)}</p><button class="btn btn-success" onclick="${newFn}()">+ ${addLabel}</button></div>`;
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${t(titleKey)}</h2><div style="display:flex;gap:0.5rem"><button class="btn btn-outline btn-ai" onclick="${aiFn}()">🤖 AI 生成</button><button class="btn btn-success" onclick="${newFn}()">+ ${addLabel}</button></div></div>${grid}</div>`;
+  }).catch(e => { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; });
+}
+
+/** 通用编辑面板 */
+function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, imgLabel, confirmMsg, imgKey = 'reference_images', buildExtra, reload }) {
+  const p = imgPrefix;
+  api(`/${type}`).then(d => {
+    const item = (d[type] || []).find(x => x.id === id);
+    if (!item) { toast(t(notFoundKey), 'error'); return; }
+    const existingImg = (item[imgKey]?.length)
+      ? `<div class="upload-preview"><img src="${esc(item[imgKey][0])}" id="${p}-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="${p}RemoveImg('${id}')">✕</button></div>`
+      : `<div class="upload-area" id="${p}-upload-area" onclick="document.getElementById('${p}-file').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="${p}HandleDrop(event,'${id}')"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`;
+    const body = `<div class="edit-field"><label>${imgLabel}</label><div id="${p}-img-wrap">${existingImg}</div><input type="file" id="${p}-file" accept="image/*" style="display:none" onchange="${p}UploadImg('${id}')"></div>` +
+      fields.map(f => {
+        const v = f.getValue ? f.getValue(item) : (item[f.key] || '');
+        if (f.type === 'select') return `<div class="edit-field"><label>${f.label}</label><select id="${p}-${f.key}">${f.options.map(o => `<option value="${o.value}" ${v===o.value?'selected':''}>${o.label}</option>`).join('')}</select></div>`;
+        if (f.type === 'textarea') return `<div class="edit-field"><label>${f.label}</label><textarea id="${p}-${f.key}" rows="3">${esc(v)}</textarea></div>`;
+        return `<div class="edit-field"><label>${f.label}</label><input id="${p}-${f.key}" value="${esc(v)}"></div>`;
+      }).join('');
+    window[`_${p}ImgRemoved`] = false;
+    _showOverlay(`edit-${type.slice(0,-1)}-overlay`, `${t(titleKey)} ${id}`, body, `save_${p}Edit('${id}')`);
+  }).catch(e => toast(e.message, 'error'));
+  window[`save_${p}Edit`] = function(eid) {
+    const extra = window[`_${p}ImgRemoved`] ? { [imgKey]: [] } : {};
+    window[`_${p}ImgRemoved`] = false;
+    const data = buildExtra ? { ...buildExtra(), ...extra } : { ...extra };
+    fields.forEach(f => { if (!f.getValue) data[f.key] = val(`${p}-${f.key}`); });
+    _crudSave(type, eid, () => data, `edit-${type.slice(0,-1)}-overlay`, reload);
+  };
+  window[`${p}UploadImg`] = async function(eid) { await _uploadImg(type, eid); };
+  window[`${p}HandleDrop`] = function(e, eid) { _handleImgDrop(e, type, eid); };
+  window[`${p}RemoveImg`] = async function(eid) {
+    if (!await modalConfirm(confirmMsg)) return;
+    window[`_${p}ImgRemoved`] = true;
+    _html(document.getElementById(`${p}-img-wrap`), `<div class="upload-area" onclick="document.getElementById('${p}-file').click()"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`);
+  };
+}
+
 async function loadCharacters() {
-  const el = document.getElementById('page-characters');
-  try {
-    const d = await cachedFetch('characters', () => api('/characters'));
-    const items = d.characters || [];
-    const grid = items.length ? `<div class="entity-grid">${items.map(c => {
+  _loadEntityPage('characters', {
+    pageId: 'page-characters', icon: '👤', titleKey: 'char.title',
+    emptyHintKey: 'char.empty_hint', emptyDescKey: 'char.empty_desc',
+    editFn: 'editChar', newFn: 'newChar', aiFn: 'showAIGenCharacter',
+    card: c => {
       const avatar = c.appearance ? esc(c.appearance.substring(0, 2)) : '👤';
-      const coverImg = (c.reference_images && c.reference_images.length) ? `<img src="${esc(c.reference_images[0])}" loading="lazy">` : avatar;
-      return `<div class="entity-card" onclick="editChar('${esc(c.id)}')">
-        <div class="entity-card-thumb">${coverImg}</div>
-        <div class="entity-card-body"><h3>${esc(c.name || c.id)}</h3><p>${esc(c.appearance || '')}</p></div>
-        <div class="entity-card-footer"><span class="entity-card-id">${esc(c.id)}</span>
-          <span>${c.gender === 'male' ? '♂' : c.gender === 'female' ? '♀' : ''}</span></div></div>`;
-    }).join('')}</div>` : `<div class="empty-state"><div class="empty-state-icon">👤</div><h3>${t('char.empty_hint')}</h3><p>${t('char.empty_desc')}</p><button class="btn btn-success" onclick="newChar()">+ ${t('btn.add').replace('+ ', '')}</button></div>`;
-    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-      <h2>${t('char.title')}</h2><div style="display:flex;gap:0.5rem"><button class="btn btn-outline btn-ai" onclick="showAIGenCharacter()">🤖 AI 生成</button><button class="btn btn-success" onclick="newChar()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>${grid}</div>`;
-  } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
+      const thumb = (c.reference_images?.length) ? `<img src="${esc(c.reference_images[0])}" loading="lazy">` : avatar;
+      return `<div class="entity-card" onclick="editChar('${esc(c.id)}')"><div class="entity-card-thumb">${thumb}</div><div class="entity-card-body"><h3>${esc(c.name || c.id)}</h3><p>${esc(c.appearance || '')}</p></div><div class="entity-card-footer"><span class="entity-card-id">${esc(c.id)}</span><span>${c.gender === 'male' ? '♂' : c.gender === 'female' ? '♀' : ''}</span></div></div>`;
+    }
+  });
 }
 function newChar() {
   _showOverlay('new-char-overlay', `+ ${t('char.title').replace(/👤\s?/, '')}`, `
@@ -811,21 +853,18 @@ async function saveNewChar() {
 function deleteChar(id) { _crudDelete('characters', id, t('char.title').replace(/👤\s?/, ''), loadCharacters); }
 
 async function editChar(id) {
-  try {
-  _charImgRemoved = false;
-  const c = ((await cachedFetch('characters', () => api('/characters'))).characters || []).find(x => x.id === id);
-  if (!c) { toast(t('char.not_found'), 'error'); return; }
-  const voiceKey = c.voice?.key || '';
-  const outfitDesc = c.outfits?.default || '';
-  const existingImg = (c.reference_images && c.reference_images.length) ? `<div class="upload-preview"><img src="${esc(c.reference_images[0])}" id="ec-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="ecRemoveImg('${id}')">✕</button></div>` : `<div class="upload-area" id="ec-upload-area" onclick="document.getElementById('ec-file').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="ecHandleDrop(event,'${id}')"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`;
-  _showOverlay('edit-char-overlay', `${t('char.edit_title')} ${id}`, `
-    <div class="edit-field"><label>${t('char.upload_img')}</label><div id="ec-img-wrap">${existingImg}</div><input type="file" id="ec-file" accept="image/*" style="display:none" onchange="ecUploadImg('${id}')"></div>
-    <div class="edit-field"><label>${t('char.name')}</label><input id="ec-name" value="${esc(c.name || '')}"></div>
-    <div class="edit-field"><label>${t('char.gender')}</label><select id="ec-gender"><option value="">-</option><option value="male" ${c.gender === 'male' ? 'selected' : ''}>${t('char.gender.male')}</option><option value="female" ${c.gender === 'female' ? 'selected' : ''}>${t('char.gender.female')}</option></select></div>
-    <div class="edit-field"><label>${t('char.appearance')}</label><textarea id="ec-appearance" rows="3">${esc(c.appearance || '')}</textarea></div>
-    <div class="edit-field"><label>${t('char.voice_key')}</label><input id="ec-voice" value="${esc(voiceKey)}" placeholder="e.g. male-1"></div>
-    <div class="edit-field"><label>${t('char.outfit_desc')}</label><textarea id="ec-outfits" rows="2">${esc(outfitDesc)}</textarea></div>`, `saveCharEdit('${id}')`);
-  } catch (e) { toast(e.message, 'error'); }
+  _editEntityPanel('characters', id, {
+    titleKey: 'char.edit_title', notFoundKey: 'char.not_found', imgPrefix: 'ec', imgLabel: t('char.upload_img'), confirmMsg: '删除定妆照？',
+    reload: loadCharacters,
+    buildExtra() { return { voice: val('ec-voice') ? { key: val('ec-voice') } : null, outfits: val('ec-outfits') ? { default: val('ec-outfits') } : null }; },
+    fields: [
+      { key: 'name', label: t('char.name') },
+      { key: 'gender', label: t('char.gender'), type: 'select', options: [{ value: '', label: '-' }, { value: 'male', label: t('char.gender.male') }, { value: 'female', label: t('char.gender.female') }] },
+      { key: 'appearance', label: t('char.appearance'), type: 'textarea' },
+      { key: 'voice_key', label: t('char.voice_key'), getValue: c => c.voice?.key || '' },
+      { key: 'outfits', label: t('char.outfit_desc'), type: 'textarea', getValue: c => c.outfits?.default || '' },
+    ],
+  });
 }
 
 /** 通用图片上传 */
@@ -854,27 +893,6 @@ function _handleImgDrop(e, entityType, id) {
   if (inp) { const dt = new DataTransfer(); dt.items.add(file); inp.files = dt.files; _uploadImg(entityType, id); }
 }
 
-async function ecUploadImg(id) { await _uploadImg('characters', id); }
-function ecHandleDrop(e, id) { _handleImgDrop(e, 'characters', id); }
-
-let _charImgRemoved = false;
-async function ecRemoveImg(id) {
-  if (!await modalConfirm('删除定妆照？')) return;
-  _charImgRemoved = true;
-  _html(document.getElementById('ec-img-wrap'), `<div class="upload-area" onclick="document.getElementById('ec-file').click()"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`);
-}
-function saveCharEdit(id) {
-  const voiceVal = val('ec-voice');
-  const outfitVal = val('ec-outfits');
-  const extra = _charImgRemoved ? { reference_images: [] } : {};
-  _charImgRemoved = false;
-  _crudSave('characters', id, () => ({
-    name: val('ec-name'), gender: val('ec-gender'), appearance: val('ec-appearance'),
-    voice: voiceVal ? { key: voiceVal } : null,
-    outfits: outfitVal ? { default: outfitVal } : null,
-    ...extra,
-  }), 'edit-char-overlay', loadCharacters);
-}
 
 // ══════════════════════════════════════════════════════════
 // 场景管理
@@ -886,21 +904,15 @@ const SCENE_COLS = [
 ];
 
 async function loadScenes() {
-  const el = document.getElementById('page-scenes');
-  try {
-    const d = await cachedFetch('scenes', () => api('/scenes'));
-    const items = d.scenes || [];
-    const grid = items.length ? `<div class="entity-grid">${items.map(s => {
-      const coverImg = (s.reference_images && s.reference_images.length) ? `<img src="${esc(s.reference_images[0])}" loading="lazy">` : '🏔️';
-      return `<div class="entity-card" onclick="editScene('${esc(s.id)}')">
-        <div class="entity-card-thumb">${coverImg}</div>
-        <div class="entity-card-body"><h3>${esc(s.name || s.id)}</h3><p>${esc(s.description || '')}</p></div>
-        <div class="entity-card-footer"><span class="entity-card-id">${esc(s.id)}</span>
-          <span class="dim" style="font-size:.7rem">${esc(s.lighting || '')}</span></div></div>`;
-    }).join('')}</div>` : `<div class="empty-state"><div class="empty-state-icon">🏔️</div><h3>${t('scene.empty_hint')}</h3><p>${t('scene.empty_desc')}</p><button class="btn btn-success" onclick="newScene()">+ ${t('btn.add').replace('+ ', '')}</button></div>`;
-    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-      <h2>${t('scene.title')}</h2><div style="display:flex;gap:0.5rem"><button class="btn btn-outline btn-ai" onclick="showAIGenScene()">🤖 AI 生成</button><button class="btn btn-success" onclick="newScene()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>${grid}</div>`;
-  } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
+  _loadEntityPage('scenes', {
+    pageId: 'page-scenes', icon: '🏔️', titleKey: 'scene.title',
+    emptyHintKey: 'scene.empty_hint', emptyDescKey: 'scene.empty_desc',
+    editFn: 'editScene', newFn: 'newScene', aiFn: 'showAIGenScene',
+    card: s => {
+      const thumb = (s.reference_images?.length) ? `<img src="${esc(s.reference_images[0])}" loading="lazy">` : '🏔️';
+      return `<div class="entity-card" onclick="editScene('${esc(s.id)}')"><div class="entity-card-thumb">${thumb}</div><div class="entity-card-body"><h3>${esc(s.name || s.id)}</h3><p>${esc(s.description || '')}</p></div><div class="entity-card-footer"><span class="entity-card-id">${esc(s.id)}</span><span class="dim" style="font-size:.7rem">${esc(s.lighting || '')}</span></div></div>`;
+    }
+  });
 }
 function newScene() {
   _showOverlay('new-scene-overlay', `+ ${t('scene.title').replace(/🏔️\s?/, '')}`, `
@@ -922,32 +934,15 @@ async function saveNewScene() {
 function deleteScene(id) { _crudDelete('scenes', id, t('scene.title').replace(/🏔️\s?/, ''), loadScenes); }
 
 async function editScene(id) {
-  try {
-  _sceneImgRemoved = false;
-  const s = ((await cachedFetch('scenes', () => api('/scenes'))).scenes || []).find(x => x.id === id);
-  if (!s) { toast(t('scene.not_found'), 'error'); return; }
-  const existingImg = (s.reference_images && s.reference_images.length) ? `<div class="upload-preview"><img src="${esc(s.reference_images[0])}" id="es-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="esRemoveImg('${id}')">✕</button></div>` : `<div class="upload-area" id="es-upload-area" onclick="document.getElementById('es-file').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="esHandleDrop(event,'${id}')"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`;
-  _showOverlay('edit-scene-overlay', `${t('scene.edit_title')} ${id}`, `
-    <div class="edit-field"><label>${t('scene.upload_img')}</label><div id="es-img-wrap">${existingImg}</div><input type="file" id="es-file" accept="image/*" style="display:none" onchange="esUploadImg('${id}')"></div>
-    <div class="edit-field"><label>${t('scene.name')}</label><input id="es-name" value="${esc(s.name || '')}"></div>
-    <div class="edit-field"><label>${t('scene.desc')}</label><textarea id="es-desc" rows="3">${esc(s.description || '')}</textarea></div>
-    <div class="edit-field"><label>${t('scene.lighting')}</label><input id="es-lighting" value="${esc(s.lighting || '')}"></div>`, `saveSceneEdit('${id}')`);
-  } catch (e) { toast(e.message, 'error'); }
-}
-
-async function esUploadImg(id) { await _uploadImg('scenes', id); }
-function esHandleDrop(e, id) { _handleImgDrop(e, 'scenes', id); }
-
-let _sceneImgRemoved = false;
-async function esRemoveImg(id) {
-  if (!await modalConfirm('删除参考图？')) return;
-  _sceneImgRemoved = true;
-  _html(document.getElementById('es-img-wrap'), `<div class="upload-area" onclick="document.getElementById('es-file').click()"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`);
-}
-function saveSceneEdit(id) {
-  const extra = _sceneImgRemoved ? { reference_images: [] } : {};
-  _sceneImgRemoved = false;
-  _crudSave('scenes', id, () => ({ name: val('es-name'), description: val('es-desc'), lighting: val('es-lighting'), ...extra }), 'edit-scene-overlay', loadScenes);
+  _editEntityPanel('scenes', id, {
+    titleKey: 'scene.edit_title', notFoundKey: 'scene.not_found', imgPrefix: 'es', imgLabel: t('scene.upload_img'), confirmMsg: '删除参考图？',
+    reload: loadScenes,
+    fields: [
+      { key: 'name', label: t('scene.name') },
+      { key: 'description', label: t('scene.desc'), type: 'textarea' },
+      { key: 'lighting', label: t('scene.lighting') },
+    ],
+  });
 }
 
 // ── DOM 取值快捷 ──

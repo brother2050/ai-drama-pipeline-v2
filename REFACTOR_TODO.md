@@ -21,6 +21,9 @@
 | 11 | tasks.py | `tts_single_task` 用 `_init_ctx` 替换 (T3) | ✅ |
 | 12 | tasks.py | `music_task` 用 `_init_ctx` 替换 (T2) | ✅ |
 | 13 | tasks.py | `ai_characters_task` / `ai_scenes_task` 用 `_init_ctx` + `_cfg_dir` 替换 (T1) | ✅ |
+| 14 | tasks.py | `_load_episode_shots` 提取 + preview/produce 统一 (T6) | ✅ |
+| 15 | app.js | `_loadEntityPage` 通用列表渲染 (J2) | ✅ |
+| 16 | app.js | `_editEntityPanel` 通用编辑面板 (J1) | ✅ |
 
 ---
 
@@ -49,10 +52,9 @@
 - 目标：`return _cfg_dir(config_path, "output", f"e{episode:02d}", f"s{shot_id}")`
 - 位置：line ~49
 
-### T6. episode 级任务统一模式
-- `preview_task` / `produce_task` / `post_task` / `portraits_task` 都以 `_ensure_path()` 开头
-- 可提取 `_prepare_episode(config_path, episode)` 返回 `(cfg, shots)` 或 None
-- 减少每个函数 3-4 行重复
+### ~~T6. episode 级任务统一模式~~ ✅
+- `preview_task` / `produce_task` 用 `_load_episode_shots` 统一加载+空检查
+- 减少每个函数 1-2 行重复
 
 ---
 
@@ -71,15 +73,13 @@
 
 ## 📋 待完成 — app.js
 
-### J1. `editChar` / `editScene` 编辑面板结构重复
-- 两者都有：加载数据 → 构建表单 → _showOverlay → saveXxxEdit
-- 可提取 `_editEntityPanel(type, id, fields, saveFn)` 通用编辑器
-- 中等收益
+### ~~J1. `editChar` / `editScene` 编辑面板结构重复~~ ✅
+- 提取 `_editEntityPanel(type, id, cfg)` 通用编辑器
+- 涵盖图片上传、表单构建、save/cancel
 
-### J2. `loadCharacters` / `loadScenes` 列表渲染重复
-- 都是：fetch → 构建卡片 grid → 空状态引导
-- 可提取 `_loadEntityPage(type, title, editFn, newFn, aiFn)` 
-- 中等收益
+### ~~J2. `loadCharacters` / `loadScenes` 列表渲染重复~~ ✅
+- 提取 `_loadEntityPage(type, cfg)` 通用列表渲染
+- 涵盖卡片 grid、空状态引导、header 按钮
 
 ### J3. `newChar` / `newScene` 新建面板可合并
 - 结构几乎相同，字段不同

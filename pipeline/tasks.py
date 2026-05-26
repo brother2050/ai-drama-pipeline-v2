@@ -172,6 +172,12 @@ def _prepare(config_path: str, episode: int, shot_id: str, step: str, tool: str,
     return cfg, Container(cfg.data), shot, None
 
 
+def _load_episode_shots(config_path: str, episode: int) -> list[dict] | None:
+    """加载指定集的镜头列表，为空时返回 None"""
+    shots = _load_shots(config_path, episode)
+    return shots if shots else None
+
+
 def _skip(shot_id, step, reason): return {"shot_id": shot_id, "step": step, "status": "skipped", "reason": reason}
 def _err(shot_id, step, reason): return {"shot_id": shot_id, "step": step, "status": "error", "reason": reason}
 def _done(shot_id, step, path, **kw): return {"shot_id": shot_id, "step": step, "status": "done", "path": path, **kw}
@@ -423,8 +429,7 @@ def _iterate_shots(self, config_path: str, episode: int, shots: list[dict], prog
 
 @app.task(bind=True, name="pipeline.preview", soft_time_limit=1800)
 def preview_task(self, config_path: str, episode: int, preset: str = "draft"):
-    _ensure_path()
-    shots = _load_shots(config_path, episode)
+    shots = _load_episode_shots(config_path, episode)
     if not shots:
         return {"status": "empty", "message": f"第{episode}集没有镜头"}
     return {"status": "done", "episode": episode, "preset": preset,
@@ -433,8 +438,7 @@ def preview_task(self, config_path: str, episode: int, preset: str = "draft"):
 
 @app.task(bind=True, name="pipeline.produce", soft_time_limit=7200)
 def produce_task(self, config_path: str, episode: int, vertical: bool = False):
-    _ensure_path()
-    shots = _load_shots(config_path, episode)
+    shots = _load_episode_shots(config_path, episode)
     if not shots:
         return {"status": "empty", "message": f"第{episode}集没有镜头"}
     try:
