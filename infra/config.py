@@ -72,7 +72,7 @@ class Config:
     SYSTEM_CONFIG = None  # 延迟设置
 
     DEFAULTS: dict[str, Any] = {
-        "project": {"episodes": 1, "fps": 24, "resolution": [1280, 720],
+        "project": {"episodes": 1, "fps": 24,
                      "style": "cinematic", "genre": "urban"},
         "comfyui": {"url": "http://127.0.0.1:8188", "timeout": 300, "api_key": ""},
         "models": {"tts_backend": "mimo-voicedesign", "lip_sync_backend": "musetalk",
@@ -274,14 +274,6 @@ class Config:
                         )
                 except (ValueError, TypeError):
                     self._warnings.append(f"配置 {field} 不是有效数值: {val}")
-
-        # 分辨率格式
-        res = self._get_raw("project.resolution")
-        if res is not None:
-            if not isinstance(res, list) or len(res) != 2:
-                self._warnings.append("project.resolution 应为 [width, height] 格式")
-            elif not all(isinstance(x, (int, float)) and x > 0 for x in res):
-                self._warnings.append("project.resolution 的值必须为正数")
 
         if self._warnings:
             for w in self._warnings:

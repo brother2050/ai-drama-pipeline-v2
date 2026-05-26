@@ -5,7 +5,6 @@ project:
   name: "AI短剧"
   episodes: 1
   fps: 24
-  resolution: [1280, 720]
   style: "cinematic"
   genre: "urban"
 
