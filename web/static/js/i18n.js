@@ -188,6 +188,8 @@ const I18N = {
   'char.outfits': { zh: '服装', en: 'Outfits' },
   'char.voice': { zh: '语音', en: 'Voice' },
   'char.voice_key': { zh: '语音 Key', en: 'Voice Key' },
+  'char.voice_desc': { zh: '声音描述', en: 'Voice Description' },
+  'char.personality': { zh: '性格', en: 'Personality' },
   'char.outfit_desc': { zh: '服装描述', en: 'Outfit Description' },
 
   // 场景补充
