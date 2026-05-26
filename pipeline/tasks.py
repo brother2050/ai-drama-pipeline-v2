@@ -610,6 +610,97 @@ def portraits_task(self, config_path: str):
     return {"status": "done"}
 
 
+@app.task(bind=True, name="pipeline.scene_images", soft_time_limit=1800)
+def scene_images_task(self, config_path: str):
+    """为所有场景批量生成参考图"""
+    _ensure_path()
+    self.update_state(state="PROGRESS", meta={"step": "scene_images", "progress": 10, "message": "加载场景..."})
+    try:
+        from engines.workflow_builder import WorkflowBuilder
+        from engines.prompt import translate_to_english
+        from infra.config import Config
+        from api import _ensure_registered; _ensure_registered()
+        from api.registry import Container
+        import yaml
+
+        cfg = Config(config_path)
+        cont = Container(cfg.data)
+        comfyui = cont.get("image")
+
+        llm = None
+        try:
+            if cfg.get("llm", {}).get("enabled"):
+                llm = cont.get("llm")
+        except Exception:
+            pass
+
+        scenes_dir = Path(cfg.project_dir) / "config" / "scenes"
+        if not scenes_dir.exists():
+            return {"status": "error", "reason": "场景配置目录不存在"}
+
+        scene_files = [f for f in scenes_dir.glob("*.yaml") if not f.stem.endswith(".example")]
+        if not scene_files:
+            return {"status": "error", "reason": "没有场景配置"}
+
+        models = cfg.get("models", {})
+        wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=comfyui)
+        wb.load_workflows()
+
+        generated = 0
+        total = len(scene_files)
+        for i, f in enumerate(scene_files):
+            with open(f, encoding="utf-8") as fh:
+                data = yaml.safe_load(fh) or {}
+            scene = data.get("scene", {})
+            sid = scene.get("id", f.stem)
+            sname = scene.get("name", sid)
+            description = scene.get("description", "")
+
+            self.update_state(state="PROGRESS", meta={
+                "step": "scene_images", "progress": int(10 + i / total * 80),
+                "message": f"[{i+1}/{total}] {sname}",
+                "current": i + 1, "total": total})
+
+            # 跳过已有参考图的场景
+            scene_asset_dir = Path(cfg.project_dir) / "assets" / "scenes" / sid
+            if scene_asset_dir.exists():
+                existing = list(scene_asset_dir.glob("*.png")) + list(scene_asset_dir.glob("*.jpg"))
+                if existing:
+                    logger.info(f"  场景 {sname} 已有 {len(existing)} 张图，跳过")
+                    continue
+
+            scene_asset_dir.mkdir(parents=True, exist_ok=True)
+            scene_desc_en = translate_to_english(description, llm=llm)
+
+            fake_shot = {"characters": "", "emotion": "neutral",
+                         "shot_type": "全景", "camera": "固定"}
+            _, wf = wb.build_first_frame(fake_shot, scene_desc=scene_desc_en)
+            if not wf:
+                logger.warning(f"  ⚠ 场景 {sname}: 工作流为空")
+                continue
+
+            try:
+                files = comfyui.generate(wf, str(scene_asset_dir))
+                if files:
+                    img_url = f"/api/assets/scenes/{sid}/{Path(files[0]).name}"
+                    scene.setdefault("reference_images", [])
+                    prefix = f"/api/assets/scenes/{sid}/cover"
+                    scene["reference_images"] = [u for u in scene["reference_images"] if not u.startswith(prefix)]
+                    scene["reference_images"].append(img_url)
+                    data["scene"] = scene
+                    with open(f, "w", encoding="utf-8") as fh:
+                        yaml.dump(data, fh, allow_unicode=True, default_flow_style=False)
+                    generated += 1
+                    logger.info(f"  ✅ 场景 {sname}: 生成完成")
+            except Exception as e:
+                logger.error(f"  ❌ 场景 {sname}: {e}")
+
+        return {"status": "done", "generated": generated, "total": total}
+    except Exception as e:
+        logger.error(f"场景图批量生成失败: {e}")
+        return {"status": "error", "reason": str(e)}
+
+
 # ══════════════════════════════════════════════════════════
 #  独立工具任务
 # ══════════════════════════════════════════════════════════

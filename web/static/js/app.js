@@ -431,6 +431,7 @@ function renderWB(episodes) {
       ${_stepBtns().map(b => `<button class="btn btn-outline" onclick="batchRun('${b.step}')">${b.icon} ${t('wb.batch_label')} ${b.label}</button>`).join('')}
       <span class="dim" style="margin:0 0.3rem">|</span>
       <button class="btn btn-outline" onclick="runPortraits()">📸 ${t('wb.gen_portraits')}</button>
+      <button class="btn btn-outline" onclick="runSceneImages()">🏔️ ${t('wb.gen_scene_images')}</button>
       <button class="btn btn-outline" onclick="runPost()">🎞️ ${t('wb.post_process')}</button>
       <button class="btn btn-outline" onclick="runMusic()">🎵 ${t('wb.gen_music')}</button>
       <button class="btn btn-outline" onclick="runSubtitle()">📝 ${t('wb.gen_subtitle')}</button>
@@ -757,6 +758,7 @@ async function _runTool(apiPath, body, label) {
 }
 
 async function runPortraits() { await _runTool('/tools/portraits', {}, t('wb.gen_portraits')); }
+async function runSceneImages() { await _runTool('/tools/scene-images', {}, t('wb.gen_scene_images')); }
 async function runPost() { await _runTool('/tools/post', { episode: ep }, t('wb.post_process')); }
 
 async function runAll() {

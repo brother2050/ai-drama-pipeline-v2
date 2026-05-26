@@ -40,6 +40,7 @@ app.conf.update(
         "pipeline.produce": {"queue": "drama"},
         "pipeline.post": {"queue": "drama"},
         "pipeline.portraits": {"queue": "drama"},
+        "pipeline.scene_images": {"queue": "drama"},
         "pipeline.tts_single": {"queue": "drama"},
         "pipeline.music": {"queue": "drama"},
         "pipeline.subtitle": {"queue": "drama"},

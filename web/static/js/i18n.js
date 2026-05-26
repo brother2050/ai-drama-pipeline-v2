@@ -177,6 +177,7 @@ const I18N = {
   'wb.add_shots_first': { zh: '先在分镜表添加镜头', en: 'Add shots in Storyboard first' },
   'wb.go_edit_btn': { zh: '去编辑', en: 'Go Edit' },
   'wb.gen_portraits': { zh: '定妆照', en: 'Portraits' },
+  'wb.gen_scene_images': { zh: '场景图', en: 'Scene Images' },
   'wb.post_process': { zh: '后期合成', en: 'Post' },
   'wb.run_all': { zh: '一键全流程', en: 'Run All' },
   'wb.tools': { zh: '工具', en: 'Tools' },
