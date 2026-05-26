@@ -607,8 +607,9 @@ const _SHOT_FIELDS = [['scene', 'ed-scene'], ['characters', 'ed-chars'], ['actio
 /** 从编辑面板读取字段值到 shots[idx] */
 function _collectShotFields(idx) {
   const s = shots[idx];
+  const _defaults = { duration: 4, emotion: 'neutral', language: 'zh' };
   for (const [k, id] of _SHOT_FIELDS)
-    s[k] = document.getElementById(id)?.value || (k === 'duration' ? 4 : k === 'emotion' ? 'neutral' : '');
+    s[k] = document.getElementById(id)?.value || _defaults[k] || '';
   return s;
 }
 
@@ -1155,7 +1156,7 @@ async function loadStoryboard() {
               <div class="timeline-info-head"><span class="timeline-sid">${esc(sid)}</span><span class="timeline-meta">${esc(s.scene || '')} · ${esc(s.characters || '')}</span></div>
               <div class="timeline-info-body">${esc((s.action || '').substring(0, 60))}${(s.action||'').length > 60 ? '...' : ''}</div>
               ${s.dialogue && s.dialogue !== '......' ? `<div class="timeline-info-dialogue">"${esc((s.dialogue || '').substring(0, 50))}"</div>` : ''}
-              <div class="timeline-meta" style="margin-top:.25rem">${esc(s.camera || '')} · ${esc(s.shot_type || '')} · ${s.duration || 4}s · ${esc(s.emotion || 'neutral')}</div>
+              <div class="timeline-meta" style="margin-top:.25rem">${esc(s.camera || '')} · ${esc(s.shot_type || '')} · ${s.duration || 4}s · ${esc(s.emotion || 'neutral')} · ${LANGUAGES.find(l => l.value === (s.language || 'zh'))?.label || s.language || 'zh'}</div>
               <div class="timeline-actions">${_actionBtns(i)}</div>
             </div>
           </div></div>`;
@@ -1585,8 +1586,8 @@ async function saveCfg() {
     const ttsApiKey = $val('cfg-tts-key');
     const ttsCfg = {};
     if (ttsUrl) ttsCfg.api_url = ttsUrl;
-    if (ttsApiKey) ttsCfg.api_key = ttsApiKey;
-    if (Object.keys(ttsCfg).length) sys.models[ttsKey] = ttsCfg;
+    ttsCfg.api_key = ttsApiKey || '';  // 保存空串可清除旧 key
+    sys.models[ttsKey] = ttsCfg;
     // LipSync
     const lsBackend = $val('cfg-lipsync');
     sys.models.lip_sync_backend = lsBackend;
@@ -1652,28 +1653,33 @@ async function testTtsPreview() {
       const poll = async () => {
         for (let i = 0; i < 60; i++) {
           await new Promise(res => setTimeout(res, 1000));
-          const info = await api(`/tasks/${r.task_id}`);
+          let info;
+          try { info = await api(`/tasks/${r.task_id}`); } catch { continue; }
           if (info.status === 'success') {
             const audioPath = info.result?.path || info.result?.audio || info.result?.output;
             if (audioPath) {
               const audio = new Audio(`/api/project-file/${audioPath}`);
-              audio.play();
+              audio.play().catch(() => {});
               if (resultEl) resultEl.innerHTML = `<span style="color:#22c55e">✅ 播放中...</span>`;
             } else {
               if (resultEl) resultEl.innerHTML = `<span style="color:#22c55e">✅ 完成</span>`;
             }
             toast('✅ TTS 试听完成');
+            if (btn) btn.disabled = false;
             return;
           }
-          if (info.status === 'failed') {
-            if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">❌ ${esc(info.error || info.reason || '失败')}</span>`;
-            toast(`❌ TTS 失败: ${info.error || info.reason}`, 'error');
+          if (info.status === 'failed' || info.status === 'cancelled') {
+            if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">❌ ${esc(info.error || info.reason || info.status)}</span>`;
+            toast(`❌ TTS: ${info.error || info.reason || info.status}`, 'error');
+            if (btn) btn.disabled = false;
             return;
           }
         }
         if (resultEl) resultEl.innerHTML = `<span style="color:#eab308">⏰ 超时</span>`;
+        if (btn) btn.disabled = false;
       };
       poll();
+      return; // 不在下方 re-enable，由 poll 管理
     }
   } catch (e) {
     if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">❌ ${esc(e.message)}</span>`;
