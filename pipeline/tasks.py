@@ -604,8 +604,7 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
 def _load_yaml_entities(directory, key: str) -> list:
     """加载目录下所有 YAML 实体"""
     import yaml
-    from pathlib import Path as P
-    d = P(directory)
+    d = Path(directory)
     if not d.exists():
         return []
     result = []

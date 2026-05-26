@@ -826,24 +826,8 @@ def save_storyboard(episode: int, data: dict):
 
 
 # ══════════════════════════════════════════════════════════
-# LLM 内容生成
+# LLM 内容生成（异步，通过 Celery）
 # ══════════════════════════════════════════════════════════
-
-def _get_llm_for_api():
-    """获取 LLM 实例（API 层）"""
-    cfg = _merged_cfg()
-    llm_cfg = cfg.get("llm", {})
-    if not llm_cfg.get("enabled"):
-        raise HTTPException(400, "LLM 未启用。请在 project.yaml 中设置 llm.enabled: true")
-
-    from api import _ensure_registered; _ensure_registered()
-    from api.registry import Container
-    cont = Container(cfg)
-    try:
-        return cont.get("llm")
-    except Exception as e:
-        raise HTTPException(503, f"LLM 不可用: {e}")
-
 
 @router.post("/llm/storyboard")
 def llm_generate_storyboard(req: StoryboardGenRequest):

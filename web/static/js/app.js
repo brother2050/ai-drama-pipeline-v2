@@ -212,12 +212,13 @@ async function _crudSave(endpoint, id, fieldsFn, overlayId, reload) {
   try { await api(`/${endpoint}`, { method: 'POST', body: { id, ...fieldsFn() } }); invalidateCache(endpoint); document.getElementById(overlayId)?.remove(); toast(t('toast.saved')); reload(); } catch (e) { toast(e.message, 'error'); }
 }
 
-function _showOverlay(id, title, bodyHtml, saveFn) {
+function _showOverlay(id, title, bodyHtml, saveFn, saveLabel) {
+  const btnText = saveLabel || `💾 ${t('btn.save').replace('💾 ', '')}`;
   const o = document.createElement('div'); o.className = 'edit-overlay'; o.id = id;
   o.innerHTML = `<div class="edit-panel"><div class="edit-header"><h3>${esc(title)}</h3>
     <button class="btn btn-sm btn-outline" onclick="document.getElementById('${id}')?.remove()">✕</button></div>
     <div class="edit-body">${bodyHtml}</div><div class="edit-footer">
-    <button class="btn btn-primary" onclick="${saveFn}">💾 ${t('btn.save').replace('💾 ', '')}</button>
+    <button class="btn btn-primary" onclick="${saveFn}">${btnText}</button>
     <button class="btn btn-outline" onclick="document.getElementById('${id}')?.remove()">${t('btn.cancel')}</button></div></div>`;
   document.body.appendChild(o);
   o.querySelector('input,textarea')?.focus();
@@ -820,7 +821,7 @@ function showAIGenStoryboard() {
       <div class="edit-field"><label>目标时长(秒)</label><input id="ai-sb-dur" type="number" value="90" min="10" max="600"></div>
     </div>
     <div class="edit-field"><label><input type="checkbox" id="ai-sb-append"> 追加到现有分镜表（不覆盖）</label></div>
-    <div id="ai-sb-status" class="dim" style="margin-top:0.5rem"></div>`, `doAIGenStoryboard()`);
+    <div id="ai-sb-status" class="dim" style="margin-top:0.5rem"></div>`, `doAIGenStoryboard()`, '🚀 生成');
 }
 
 async function doAIGenStoryboard() {
@@ -875,7 +876,7 @@ function showAIGenCharacter() {
   _showOverlay('ai-gen-char-overlay', '🤖 AI 生成角色', `
     <div class="edit-field"><label>角色描述（每行一个角色）</label>
       <textarea id="ai-char-desc" rows="6" placeholder="输入角色描述，例如：\n\n22岁温柔女生，长发，喜欢穿浅色衣服，说话轻声细语\n25岁帅气男生，短发阳光，运动型，性格开朗"></textarea></div>
-    <div id="ai-char-status" class="dim" style="margin-top:0.5rem"></div>`, `doAIGenCharacter()`);
+    <div id="ai-char-status" class="dim" style="margin-top:0.5rem"></div>`, `doAIGenCharacter()`, '🚀 生成');
 }
 
 async function doAIGenCharacter() {
@@ -916,7 +917,7 @@ function showAIGenScene() {
   _showOverlay('ai-gen-scene-overlay', '🤖 AI 生成场景', `
     <div class="edit-field"><label>场景描述（每行一个场景）</label>
       <textarea id="ai-scene-desc" rows="6" placeholder="输入场景描述，例如：\n\n现代简约客厅，米色沙发，落地窗暖光\n繁华商业街，霓虹灯闪烁，人来人往"></textarea></div>
-    <div id="ai-scene-status" class="dim" style="margin-top:0.5rem"></div>`, `doAIGenScene()`);
+    <div id="ai-scene-status" class="dim" style="margin-top:0.5rem"></div>`, `doAIGenScene()`, '🚀 生成');
 }
 
 async function doAIGenScene() {
