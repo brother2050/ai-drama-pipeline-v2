@@ -152,8 +152,6 @@ def _normalize_character(char: dict) -> dict:
     voice = char.get("voice")
     if isinstance(voice, dict):
         if "key" not in voice:
-            # 从 voice_description 推断一个 key，或用默认值
-            desc = voice.get("voice_description", "")
             gender = char.get("gender", "")
             prefix = "male" if gender == "male" else "female" if gender == "female" else "voice"
             voice["key"] = f"{prefix}-1"
@@ -408,8 +406,9 @@ def _postprocess_shots(shots: list[dict], episode: int) -> list[dict]:
             shot["duration"] = max(2, min(8, d))
         except (ValueError, TypeError):
             shot["duration"] = 4
-        # 清理 dialogue 中的引号
-        if shot.get("dialogue"):
-            shot["dialogue"] = shot["dialogue"].strip('"\'')
+        # 清理 dialogue / action_en / dialogue_en 中的引号
+        for _k in ("dialogue", "action_en", "dialogue_en"):
+            if shot.get(_k):
+                shot[_k] = shot[_k].strip('"\'')
         result.append(shot)
     return result

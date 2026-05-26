@@ -872,7 +872,7 @@ function _newEntityPanel(type, { titleKey, fields, buildExtra, reload }) {
 function newChar() {
   _newEntityPanel('characters', {
     titleKey: 'char.title', reload: loadCharacters,
-    buildExtra() { return { voice: { key: $val('nc-voice') || '', voice_description: $val('nc-voice_desc') || '' }, outfits: $val('nc-outfits') ? { default: $val('nc-outfits') } : null }; },
+    buildExtra() { return { voice: { key: $val('nc-voice_key') || '', voice_description: $val('nc-voice_desc') || '' }, outfits: $val('nc-outfits') ? { default: $val('nc-outfits') } : null }; },
     fields: [
       { key: 'name', label: t('char.name') },
       { key: 'gender', label: t('char.gender'), type: 'select', options: [{ value: '', label: '-' }, { value: 'male', label: t('char.gender.male') }, { value: 'female', label: t('char.gender.female') }] },
@@ -891,7 +891,7 @@ async function editChar(id) {
   _editEntityPanel('characters', id, {
     titleKey: 'char.edit_title', notFoundKey: 'char.not_found', imgPrefix: 'ec', imgLabel: t('char.upload_img'), confirmMsg: '删除定妆照？',
     reload: loadCharacters,
-    buildExtra() { return { voice: { key: $val('ec-voice') || '', voice_description: $val('ec-voice_desc') || '' }, outfits: $val('ec-outfits') ? { default: $val('ec-outfits') } : null }; },
+    buildExtra() { return { voice: { key: $val('ec-voice_key') || '', voice_description: $val('ec-voice_desc') || '' }, outfits: $val('ec-outfits') ? { default: $val('ec-outfits') } : null }; },
     fields: [
       { key: 'name', label: t('char.name') },
       { key: 'gender', label: t('char.gender'), type: 'select', options: [{ value: '', label: '-' }, { value: 'male', label: t('char.gender.male') }, { value: 'female', label: t('char.gender.female') }] },
