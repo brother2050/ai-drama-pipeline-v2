@@ -657,26 +657,9 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
             char_descriptions.append("\n".join(desc_parts))
 
         try:
-            new_chars = generate_characters(llm, char_descriptions)
-            # generate_characters 逐条生成，失败的会跳过，需要按返回的 name/id 匹配
+            new_chars = generate_characters(llm, char_descriptions, expected_ids=missing_chars)
             for char in new_chars:
-                # 尝试从返回的 id 或 name 匹配到 missing_chars 中的 ID
-                gen_id = char.get("id", "")
-                matched_id = None
-                for cid in missing_chars:
-                    if cid == gen_id or cid in gen_id or gen_id in cid:
-                        matched_id = cid
-                        break
-                if not matched_id:
-                    # 回退：按顺序取还没生成的
-                    for cid in missing_chars:
-                        if cid not in generated_chars:
-                            matched_id = cid
-                            break
-                if not matched_id:
-                    matched_id = gen_id or "unknown"
-                char["id"] = matched_id
-                cid = expected_id
+                cid = char.get("id", "unknown")
                 path = char_dir / f"{cid}.yaml"
                 with open(path, "w", encoding="utf-8") as f:
                     _yaml.dump({"character": char}, f, allow_unicode=True, default_flow_style=False)
@@ -714,23 +697,9 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
             scene_descriptions.append("\n".join(desc_parts))
 
         try:
-            new_scenes = generate_scenes(llm, scene_descriptions)
+            new_scenes = generate_scenes(llm, scene_descriptions, expected_ids=missing_scenes)
             for scene in new_scenes:
-                gen_id = scene.get("id", "")
-                matched_id = None
-                for sid in missing_scenes:
-                    if sid == gen_id or sid in gen_id or gen_id in sid:
-                        matched_id = sid
-                        break
-                if not matched_id:
-                    for sid in missing_scenes:
-                        if sid not in generated_scenes:
-                            matched_id = sid
-                            break
-                if not matched_id:
-                    matched_id = gen_id or "unknown"
-                scene["id"] = matched_id
-                sid = expected_id
+                sid = scene.get("id", "unknown")
                 path = scene_dir / f"{sid}.yaml"
                 with open(path, "w", encoding="utf-8") as f:
                     _yaml.dump({"scene": scene}, f, allow_unicode=True, default_flow_style=False)
