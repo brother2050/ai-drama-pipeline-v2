@@ -1906,7 +1906,7 @@ async function _getRefCounts(type) {
       const d = await cachedFetch(`storyboard/${e}`, () => api(`/storyboard/${e}`));
       (d.shots || []).forEach(s => {
         const names = (type === 'characters' ? s.characters : s.scene) || '';
-        names.split(/[,、]/).map(n => n.trim()).filter(Boolean).forEach(n => { counts[n] = (counts[n] || 0) + 1; });
+        names.split(/[+、,]/).map(n => n.trim()).filter(Boolean).forEach(n => { counts[n] = (counts[n] || 0) + 1; });
       });
     }
     return counts;
