@@ -305,8 +305,10 @@ def test_tool(name: str):
 
         elif name == "comfyui":
             url = cfg.get("comfyui", {}).get("url", "http://127.0.0.1:8188")
+            api_key = cfg.get("comfyui", {}).get("api_key", "")
             import httpx
-            r = httpx.get(f"{url}/system_stats", timeout=5)
+            headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+            r = httpx.get(f"{url}/system_stats", timeout=5, headers=headers)
             data = r.json() if r.status_code == 200 else {}
             vram = data.get("devices", [{}])[0].get("vram_total", 0) if data.get("devices") else 0
             msg = f"连接成功" + (f" · VRAM {vram // 1024 // 1024}MB" if vram else "")
