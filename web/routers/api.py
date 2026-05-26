@@ -1116,6 +1116,19 @@ def copy_asset_to_project(entity_type: str, entity_id: str):
         dst_img = proj_dir / entity_id
         shutil.copytree(str(src_img), str(dst_img), dirs_exist_ok=True)
 
+    # 同步数据库
+    try:
+        data = yaml.safe_load(dst.read_text(encoding="utf-8")) or {}
+        entity = data.get(entity_type.rstrip("s"), {})
+        if entity_type == "characters":
+            from infra.database.characters import upsert as db_up
+        else:
+            from infra.database.scenes import upsert as db_up
+        from infra.database.pool import get_pool
+        db_up(get_pool(), entity_id, entity)
+    except Exception as e:
+        logger.debug(f"数据库同步跳过: {e}")
+
     return {"ok": True, "message": f"已复制 {entity_id} 到当前项目"}
 
 

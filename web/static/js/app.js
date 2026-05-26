@@ -1453,7 +1453,7 @@ async function doImport() {
 
   if (!newShots.length) { _html(statusEl, `❌ ${t('sb.import_parse_err')}`); return; }
 
-  const finalShots = mode === 'overwrite' ? newShots : [...shots, ...newShots];
+  const finalShots = mode === 'overwrite' ? newShots : [...(await api(`/storyboard/${ep}`)).shots, ...newShots];
   try {
     await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: finalShots } });
     shots = finalShots;
@@ -1583,6 +1583,7 @@ async function _loadFinalPreview() {
 
 let _chatOpen = false;
 let _chatHistory = [];
+let _chatSending = false;
 
 function toggleChat() {
   _chatOpen = !_chatOpen;
@@ -1614,11 +1615,14 @@ function _renderChatHistory() {
 }
 
 async function sendChatMsg() {
+  if (_chatSending) return;
   const input = document.getElementById('chat-input');
   const text = input?.value?.trim();
   if (!text) { toast(t('chat.empty'), 'error'); return; }
   input.value = '';
+  _chatSending = true;
   _chatHistory.push({ role: 'user', text });
+  if (_chatHistory.length > 100) _chatHistory.splice(0, _chatHistory.length - 100);
   _renderChatHistory();
 
   _chatHistory.push({ role: 'ai', text: t('chat.thinking') });
@@ -1656,6 +1660,7 @@ async function sendChatMsg() {
     _chatHistory.pop();
     _chatHistory.push({ role: 'err', text: `❌ ${e.message}` });
   }
+  _chatSending = false;
   _renderChatHistory();
 }
 
