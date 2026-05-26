@@ -2,6 +2,7 @@
 from __future__ import annotations
 import logging
 from api.registry import BackendMeta, registry
+from infra.http import auth_headers
 
 logger = logging.getLogger(__name__)
 
@@ -16,10 +17,7 @@ class AnimateDiff:
         self._api_key = config.get("api_key", "")
 
     def _headers(self) -> dict:
-        h = {"Content-Type": "application/json"}
-        if self._api_key:
-            h["Authorization"] = f"Bearer {self._api_key}"
-        return h
+        return auth_headers(self._api_key)
 
     @property
     def name(self): return "animatediff"
@@ -53,10 +51,7 @@ class CogVideoX:
         self._api_key = config.get("api_key", "")
 
     def _headers(self) -> dict:
-        h = {"Content-Type": "application/json"}
-        if self._api_key:
-            h["Authorization"] = f"Bearer {self._api_key}"
-        return h
+        return auth_headers(self._api_key)
 
     @property
     def name(self): return "cogvideox"

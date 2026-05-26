@@ -471,7 +471,7 @@ def step_lipsync(self, config_path, episode, shot_id): return _step_task(self, "
 # ══════════════════════════════════════════════════════════
 
 @app.task(bind=True, name="pipeline.shot", soft_time_limit=1800)
-def shot_task(self, config_path: str, episode: int, shot_data: dict):
+def shot_task(self, config_path: str, episode: int, shot_data: dict) -> dict:
     shot_id = shot_data.get("shot_id", "")
     if not shot_id:
         return {"shot_id": "", "status": "error", "reason": "镜头数据缺少 shot_id"}
@@ -520,7 +520,7 @@ def _iterate_shots(self, config_path: str, episode: int, shots: list[dict], prog
 
 
 @app.task(bind=True, name="pipeline.preview", soft_time_limit=1800)
-def preview_task(self, config_path: str, episode: int, preset: str = "draft"):
+def preview_task(self, config_path: str, episode: int, preset: str = "draft") -> dict:
     shots = _load_episode_shots(config_path, episode)
     if not shots:
         return {"status": "empty", "message": f"第{episode}集没有镜头"}
@@ -567,7 +567,7 @@ def _apply_preset(config_path: str, preset: str) -> str:
 
 
 @app.task(bind=True, name="pipeline.produce", soft_time_limit=7200)
-def produce_task(self, config_path: str, episode: int, vertical: bool = False):
+def produce_task(self, config_path: str, episode: int, vertical: bool = False) -> dict:
     shots = _load_episode_shots(config_path, episode)
     if not shots:
         return {"status": "empty", "message": f"第{episode}集没有镜头"}
@@ -586,7 +586,7 @@ def produce_task(self, config_path: str, episode: int, vertical: bool = False):
 
 
 @app.task(bind=True, name="pipeline.post", soft_time_limit=1200)
-def post_task(self, config_path: str, episode: int, vertical: bool = False):
+def post_task(self, config_path: str, episode: int, vertical: bool = False) -> dict:
     _ensure_path()
     self.update_state(state="PROGRESS", meta={"step": "post", "progress": 10})
     try:
@@ -598,7 +598,7 @@ def post_task(self, config_path: str, episode: int, vertical: bool = False):
 
 
 @app.task(bind=True, name="pipeline.portraits", soft_time_limit=1800)
-def portraits_task(self, config_path: str):
+def portraits_task(self, config_path: str) -> dict:
     _ensure_path()
     self.update_state(state="PROGRESS", meta={"step": "portraits", "progress": 10})
     try:
@@ -611,7 +611,7 @@ def portraits_task(self, config_path: str):
 
 
 @app.task(bind=True, name="pipeline.scene_images", soft_time_limit=1800)
-def scene_images_task(self, config_path: str):
+def scene_images_task(self, config_path: str) -> dict:
     """为所有场景批量生成参考图"""
     _ensure_path()
     self.update_state(state="PROGRESS", meta={"step": "scene_images", "progress": 10, "message": "加载场景..."})
@@ -749,7 +749,7 @@ def tts_single_task(self, config_path: str, text: str, voice_config: dict | None
 
 
 @app.task(bind=True, name="pipeline.music", soft_time_limit=120)
-def music_task(self, config_path: str, duration: float, mood: str, output: str):
+def music_task(self, config_path: str, duration: float, mood: str, output: str) -> dict:
     cfg, _ = _init_ctx(config_path)
     from post.music import MusicGenerator
     gen = MusicGenerator(backend=cfg.get("models", {}).get("music_backend", "template"), config=cfg.data)
@@ -976,7 +976,7 @@ def _load_yaml_entities(directory, key: str) -> list:
 
 
 @app.task(bind=True, name="pipeline.ai.characters", soft_time_limit=300)
-def ai_characters_task(self, config_path: str, descriptions: list[str]):
+def ai_characters_task(self, config_path: str, descriptions: list[str]) -> dict:
     """AI 生成角色（异步）"""
     from engines.llm_generator import generate_characters
     import yaml
@@ -1020,7 +1020,7 @@ def ai_characters_task(self, config_path: str, descriptions: list[str]):
 
 
 @app.task(bind=True, name="pipeline.ai.scenes", soft_time_limit=300)
-def ai_scenes_task(self, config_path: str, descriptions: list[str]):
+def ai_scenes_task(self, config_path: str, descriptions: list[str]) -> dict:
     """AI 生成场景（异步）"""
     from engines.llm_generator import generate_scenes
     import yaml
@@ -1067,7 +1067,7 @@ def ai_scenes_task(self, config_path: str, descriptions: list[str]):
 # ══════════════════════════════════════════════════════════
 
 @app.task(bind=True, name="ai_chat_edit", soft_time_limit=300)
-def ai_chat_edit_task(self, config_path: str, episode: int, message: str, current_shots: list):
+def ai_chat_edit_task(self, config_path: str, episode: int, message: str, current_shots: list) -> dict:
     """对话式编辑分镜 — 用自然语言修改分镜表"""
     self.update_state(state="PROGRESS", meta={"step": "chat_edit", "progress": 10, "message": "正在初始化 LLM..."})
 
@@ -1308,7 +1308,7 @@ def seko_import_task(
     import_scenes: bool = True,
     import_storyboard: bool = True,
     download_images: bool = True,
-):
+) -> dict:
     """Seko 策划案导入任务（异步）
 
     解析 Seko 返回的策划案 JSON，将角色/场景/分镜导入项目，

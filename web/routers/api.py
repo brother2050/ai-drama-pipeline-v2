@@ -659,22 +659,6 @@ def get_system_config():
         return yaml.safe_load(f) or {}
 
 
-_SENSITIVE_KEYS = {"api_key", "api_secret", "password", "token", "dsn", "secret", "access_key", "private_key"}
-
-
-def _redact_sensitive(d: dict) -> dict:
-    """递归脱敏敏感字段"""
-    result = {}
-    for k, v in d.items():
-        if isinstance(v, dict):
-            result[k] = _redact_sensitive(v)
-        elif any(s in k.lower() for s in _SENSITIVE_KEYS) and isinstance(v, str) and v:
-            result[k] = "***"
-        else:
-            result[k] = v
-    return result
-
-
 @router.post("/system/config")
 def update_system_config(data: dict = Body(...)):
     """更新系统全局配置"""

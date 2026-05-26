@@ -15,7 +15,25 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["ApiClient"]
+__all__ = ["ApiClient", "auth_headers"]
+
+
+def auth_headers(api_key: str = "", content_type: str = "application/json") -> dict:
+    """构建带 API Key 的请求头
+
+    Args:
+        api_key: API Key（为空时不添加 Authorization）
+        content_type: Content-Type 值（为空时不添加）
+
+    Returns:
+        请求头字典
+    """
+    h = {}
+    if content_type:
+        h["Content-Type"] = content_type
+    if api_key:
+        h["Authorization"] = f"Bearer {api_key}"
+    return h
 
 
 class ApiClient:

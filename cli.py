@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -26,6 +25,8 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from infra.network import port_ok as _port_open
+
 # 配置日志
 import logging
 logging.basicConfig(
@@ -34,16 +35,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("cli")
-
-
-# ── 工具函数 ──
-
-def _port_open(port: int, host: str = "127.0.0.1") -> bool:
-    try:
-        with socket.create_connection((host, port), timeout=2):
-            return True
-    except OSError:
-        return False
 
 
 def _load_env():

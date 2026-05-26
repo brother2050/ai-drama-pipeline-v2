@@ -7,17 +7,10 @@ from __future__ import annotations
 import logging
 import os
 import shutil
-import socket
+
+from infra.network import port_ok as _port_ok
 
 logger = logging.getLogger(__name__)
-
-
-def _port_ok(port: int, host: str = "127.0.0.1") -> bool:
-    try:
-        with socket.create_connection((host, port), timeout=2):
-            return True
-    except OSError:
-        return False
 
 
 def _url_ok(url: str, path: str = "/", headers: dict | None = None) -> bool:

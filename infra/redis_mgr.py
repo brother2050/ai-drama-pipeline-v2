@@ -1,20 +1,16 @@
 """Redis 管理器"""
 from __future__ import annotations
 import logging
-import os
 import shutil
-import socket
 import subprocess
+
+from infra.network import port_ok
 
 logger = logging.getLogger(__name__)
 
 
 def is_redis_running(host: str = "127.0.0.1", port: int = 6379) -> bool:
-    try:
-        with socket.create_connection((host, port), timeout=2):
-            return True
-    except OSError:
-        return False
+    return port_ok(port, host)
 
 
 def ensure_redis():

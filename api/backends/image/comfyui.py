@@ -4,6 +4,7 @@ import json, logging, time, uuid
 from pathlib import Path
 import httpx
 from api.registry import BackendMeta, registry
+from infra.http import auth_headers
 
 logger = logging.getLogger(__name__)
 
@@ -17,17 +18,12 @@ class ComfyUI:
     def name(self): return "comfyui"
 
     def _headers(self) -> dict:
-        h = {"Content-Type": "application/json"}
-        if self._api_key:
-            h["Authorization"] = f"Bearer {self._api_key}"
-        return h
+        return auth_headers(self._api_key)
 
     def upload_image(self, filepath: str, overwrite: bool = True) -> dict:
         """上传图片到 ComfyUI 服务器（用于 IP-Adapter 等需要参考图的节点）"""
         with httpx.Client(timeout=30) as c:
-            headers = {}
-            if self._api_key:
-                headers["Authorization"] = f"Bearer {self._api_key}"
+            headers = auth_headers(self._api_key, content_type="")
             with open(filepath, "rb") as f:
                 r = c.post(f"{self._url}/upload/image",
                            files={"image": (Path(filepath).name, f)},
