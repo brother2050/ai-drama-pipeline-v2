@@ -1066,7 +1066,7 @@ def ai_scenes_task(self, config_path: str, descriptions: list[str]):
 # 4.1 对话式编辑 — LLM Chat Edit
 # ══════════════════════════════════════════════════════════
 
-@app.task(bind=True, name="ai_chat_edit")
+@app.task(bind=True, name="ai_chat_edit", soft_time_limit=300)
 def ai_chat_edit_task(self, config_path: str, episode: int, message: str, current_shots: list):
     """对话式编辑分镜 — 用自然语言修改分镜表"""
     self.update_state(state="PROGRESS", meta={"step": "chat_edit", "progress": 10, "message": "正在初始化 LLM..."})
