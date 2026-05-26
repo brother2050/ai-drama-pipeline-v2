@@ -542,6 +542,16 @@ function previewRes(sid, type) {
 const _cameras = () => [t('camera.fixed'), t('camera.push_in'), t('camera.pan'), t('camera.handheld'), t('camera.orbit'), t('camera.top'), t('camera.bottom')];
 const _shotTypes = () => [t('shot.closeup'), t('shot.medium_close'), t('shot.medium'), t('shot.over_shoulder'), t('shot.full'), t('shot.wide'), t('shot.extreme_wide')];
 const EMOTIONS = ['neutral', 'happy', 'sad', 'angry', 'worried', 'surprised', 'calm', 'determined'];
+const LANGUAGES = [{ value: 'zh', label: '中文' }, { value: 'en', label: 'English' }, { value: 'ja', label: '日本語' }, { value: 'ko', label: '한국어' }, { value: 'fr', label: 'Français' }, { value: 'de', label: 'Deutsch' }, { value: 'es', label: 'Español' }];
+
+// TTS 后端 → 角色 voice 参数字段定义
+const TTS_VOICE_FIELDS = {
+  'mimo-voicedesign': [{ key: 'voice_description', label: () => t('char.voice_desc'), type: 'textarea' }],
+  'mimo-voiceclone': [{ key: 'reference_audio', label: () => t('char.voice_ref_audio'), placeholder: '/path/to/ref.wav' }],
+  'gpt-sovits': [{ key: 'reference_audio', label: () => t('char.voice_ref_audio'), placeholder: '/path/to/ref.wav' }, { key: 'prompt_text', label: () => t('char.voice_prompt_text') }],
+  'cosyvoice': [{ key: 'speaker', label: () => t('char.voice_speaker'), placeholder: 'default' }],
+  'fish-speech': [{ key: 'reference_id', label: () => t('char.voice_ref_id') }],
+};
 
 function _selectOpts(options, current) { return options.map(o => `<option ${current === o ? 'selected' : ''}>${o}</option>`).join(''); }
 
@@ -573,6 +583,7 @@ async function editShot(idx) {
       <div class="edit-field"><label>${t('edit.shot_type')}</label><select id="ed-shottype">${_selectOpts(_shotTypes(), s.shot_type)}</select></div>
       <div class="edit-field"><label>${t('edit.duration')}</label><input id="ed-dur" type="number" value="${s.duration || 4}" min="1" max="30"></div>
       <div class="edit-field"><label>${t('edit.emotion')}</label><select id="ed-emo">${_selectOpts(EMOTIONS, s.emotion)}</select></div>
+      <div class="edit-field"><label>${t('edit.language')}</label><select id="ed-lang">${LANGUAGES.map(l => `<option value="${l.value}" ${(s.language || 'zh') === l.value ? 'selected' : ''}>${l.label}</option>`).join('')}</select></div>
     </div>
     <div class="edit-nav-row">
       ${idx > 0 ? `<button class="btn btn-xs btn-outline" onclick="_saveAndEdit(${idx},${idx-1})">${t('edit.prev_shot')}</button>` : '<span></span>'}
@@ -591,7 +602,7 @@ function updateCharCount(inputId, countId) {
   if (inp && cnt) cnt.textContent = t('edit.char_count', { count: inp.value.length });
 }
 
-const _SHOT_FIELDS = [['scene', 'ed-scene'], ['characters', 'ed-chars'], ['action', 'ed-action'], ['action_en', 'ed-action-en'], ['dialogue', 'ed-dialogue'], ['dialogue_en', 'ed-dialogue-en'], ['outfit', 'ed-outfit'], ['camera', 'ed-camera'], ['shot_type', 'ed-shottype'], ['duration', 'ed-dur'], ['emotion', 'ed-emo']];
+const _SHOT_FIELDS = [['scene', 'ed-scene'], ['characters', 'ed-chars'], ['action', 'ed-action'], ['action_en', 'ed-action-en'], ['dialogue', 'ed-dialogue'], ['dialogue_en', 'ed-dialogue-en'], ['outfit', 'ed-outfit'], ['camera', 'ed-camera'], ['shot_type', 'ed-shottype'], ['duration', 'ed-dur'], ['emotion', 'ed-emo'], ['language', 'ed-lang']];
 
 /** 从编辑面板读取字段值到 shots[idx] */
 function _collectShotFields(idx) {
@@ -801,7 +812,7 @@ function _loadEntityPage(type, { pageId, icon, titleKey, emptyHintKey, emptyDesc
 }
 
 /** 通用编辑面板 */
-function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, imgLabel, confirmMsg, imgKey = 'reference_images', buildExtra, reload }) {
+function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, imgLabel, confirmMsg, imgKey = 'reference_images', buildExtra, reload, extraHtml }) {
   const p = imgPrefix;
   api(`/${type}`).then(d => {
     const item = (d[type] || []).find(x => x.id === id);
@@ -815,7 +826,7 @@ function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, 
         if (f.type === 'select') return `<div class="edit-field"><label>${f.label}</label><select id="${p}-${f.key}">${f.options.map(o => `<option value="${o.value}" ${v===o.value?'selected':''}>${o.label}</option>`).join('')}</select></div>`;
         if (f.type === 'textarea') return `<div class="edit-field"><label>${f.label}</label><textarea id="${p}-${f.key}" rows="3">${esc(v)}</textarea></div>`;
         return `<div class="edit-field"><label>${f.label}</label><input id="${p}-${f.key}" value="${esc(v)}"></div>`;
-      }).join('');
+      }).join('') + (typeof extraHtml === 'function' ? extraHtml(item) : (extraHtml || ''));
     window[`_${p}ImgRemoved`] = false;
     _showOverlay(`edit-${type.slice(0,-1)}-overlay`, `${t(titleKey)} ${id}`, body, `save_${p}Edit('${id}')`);
   }).catch(e => toast(e.message, 'error'));
@@ -848,14 +859,14 @@ async function loadCharacters() {
   });
 }
 /** 通用新建面板 */
-function _newEntityPanel(type, { titleKey, fields, buildExtra, reload }) {
+function _newEntityPanel(type, { titleKey, fields, buildExtra, reload, extraHtml }) {
   const p = `n${type[0]}`; // nc / ns
   const body = `<div class="edit-field"><label>ID</label><input id="${p}-id" placeholder="a-z, 0-9, _-"></div>` +
     fields.map(f => {
       if (f.type === 'select') return `<div class="edit-field"><label>${f.label}</label><select id="${p}-${f.key}">${f.options.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}</select></div>`;
       if (f.type === 'textarea') return `<div class="edit-field"><label>${f.label}</label><textarea id="${p}-${f.key}" rows="3"></textarea></div>`;
       return `<div class="edit-field"><label>${f.label}</label><input id="${p}-${f.key}"${f.placeholder ? ` placeholder="${f.placeholder}"` : ''}></div>`;
-    }).join('');
+    }).join('') + (extraHtml || '');
   _showOverlay(`new-${type.slice(0,-1)}-overlay`, `+ ${t(titleKey)}`, body, `save_${p}New()`);
   window[`save_${p}New`] = async function() {
     const id = $val(`${p}-id`);
@@ -869,34 +880,71 @@ function _newEntityPanel(type, { titleKey, fields, buildExtra, reload }) {
   };
 }
 
+/** 获取当前 TTS 后端名称（缓存） */
+async function _getTtsBackend() {
+  try {
+    const cfg = await cachedFetch('sysconfig', () => api('/system/config'));
+    return cfg.models?.tts_backend || 'mimo-voicedesign';
+  } catch { return 'mimo-voicedesign'; }
+}
+
+/** 构建 TTS 语音参数 HTML 字段 */
+function _ttsVoiceFieldsHtml(prefix, voiceData = {}) {
+  const backend = _cache.get('sysconfig')?.data?.models?.tts_backend || 'mimo-voicedesign';
+  const fields = TTS_VOICE_FIELDS[backend] || TTS_VOICE_FIELDS['mimo-voicedesign'];
+  return `<div class="edit-field" style="margin-top:.5rem"><label>⚙️ ${t('char.voice_params')} <span class="dim" style="font-size:.75rem">(${backend})</span></label></div>` +
+    fields.map(f => {
+      const v = voiceData[f.key] || '';
+      const lbl = typeof f.label === 'function' ? f.label() : f.label;
+      const ph = f.placeholder ? ` placeholder="${esc(f.placeholder)}"` : '';
+      if (f.type === 'textarea') return `<div class="edit-field"><label>${lbl}</label><textarea id="${prefix}-${f.key}" rows="2"${ph}>${esc(v)}</textarea></div>`;
+      return `<div class="edit-field"><label>${lbl}</label><input id="${prefix}-${f.key}" value="${esc(v)}"${ph}></div>`;
+    }).join('');
+}
+
+/** 从表单收集 TTS voice 参数 */
+function _collectVoiceConfig(prefix) {
+  const backend = _cache.get('sysconfig')?.data?.models?.tts_backend || 'mimo-voicedesign';
+  const fields = TTS_VOICE_FIELDS[backend] || TTS_VOICE_FIELDS['mimo-voicedesign'];
+  const voice = {};
+  for (const f of fields) {
+    const val = $val(`${prefix}-${f.key}`);
+    if (val) voice[f.key] = val;
+  }
+  return Object.keys(voice).length ? voice : null;
+}
+
 function newChar() {
-  _newEntityPanel('characters', {
-    titleKey: 'char.title', reload: loadCharacters,
-    buildExtra() { return { voice: $val('nc-voice_desc') ? { voice_description: $val('nc-voice_desc') } : null, outfits: $val('nc-outfits') ? { default: $val('nc-outfits') } : null }; },
-    fields: [
-      { key: 'name', label: t('char.name') },
-      { key: 'gender', label: t('char.gender'), type: 'select', options: [{ value: '', label: '-' }, { value: 'male', label: t('char.gender.male') }, { value: 'female', label: t('char.gender.female') }] },
-      { key: 'appearance', label: t('char.appearance'), type: 'textarea' },
-      { key: 'personality', label: t('char.personality') || '性格', type: 'textarea' },
-      { key: 'voice_desc', label: t('char.voice_desc') || '声音描述', type: 'textarea', getValue: true },
-      { key: 'outfits', label: t('char.outfit_desc'), type: 'textarea', getValue: true },
-    ],
+  _getTtsBackend().then(() => {
+    _newEntityPanel('characters', {
+      titleKey: 'char.title', reload: loadCharacters,
+      buildExtra() { return { voice: _collectVoiceConfig('nc'), outfits: $val('nc-outfits') ? { default: $val('nc-outfits') } : null }; },
+      extraHtml: _ttsVoiceFieldsHtml('nc'),
+      fields: [
+        { key: 'name', label: t('char.name') },
+        { key: 'gender', label: t('char.gender'), type: 'select', options: [{ value: '', label: '-' }, { value: 'male', label: t('char.gender.male') }, { value: 'female', label: t('char.gender.female') }] },
+        { key: 'appearance', label: t('char.appearance'), type: 'textarea' },
+        { key: 'personality', label: t('char.personality') || '性格', type: 'textarea' },
+        { key: 'outfits', label: t('char.outfit_desc'), type: 'textarea', getValue: true },
+      ],
+    });
   });
 }
 async function saveNewChar() { /* handled by _newEntityPanel */ }
 function deleteChar(id) { deleteCharWithRef(id); }
 
 async function editChar(id) {
+  await _getTtsBackend();
   _editEntityPanel('characters', id, {
     titleKey: 'char.edit_title', notFoundKey: 'char.not_found', imgPrefix: 'ec', imgLabel: t('char.upload_img'), confirmMsg: '删除定妆照？',
     reload: loadCharacters,
-    buildExtra() { return { voice: $val('ec-voice_desc') ? { voice_description: $val('ec-voice_desc') } : null, outfits: $val('ec-outfits') ? { default: $val('ec-outfits') } : null }; },
+    buildExtra() { return { voice: _collectVoiceConfig('ec'), outfits: $val('ec-outfits') ? { default: $val('ec-outfits') } : null }; },
+    extraHtml: (item) => _ttsVoiceFieldsHtml('ec', item.voice || {}),
     fields: [
       { key: 'name', label: t('char.name') },
       { key: 'gender', label: t('char.gender'), type: 'select', options: [{ value: '', label: '-' }, { value: 'male', label: t('char.gender.male') }, { value: 'female', label: t('char.gender.female') }] },
       { key: 'appearance', label: t('char.appearance'), type: 'textarea' },
       { key: 'personality', label: t('char.personality') || '性格', type: 'textarea', getValue: c => c.personality || '' },
-      { key: 'voice_desc', label: t('char.voice_desc') || '声音描述', type: 'textarea', getValue: c => c.voice?.voice_description || '' },
       { key: 'outfits', label: t('char.outfit_desc'), type: 'textarea', getValue: c => c.outfits?.default || '' },
     ],
   });
@@ -976,7 +1024,7 @@ function $val(id) { return document.getElementById(id)?.value || ''; }
 // 分镜表
 // ══════════════════════════════════════════════════════════
 
-const SB_FIELDS = ['scene', 'characters', 'action', 'dialogue', 'camera', 'shot_type', 'duration', 'emotion'];
+const SB_FIELDS = ['scene', 'characters', 'action', 'dialogue', 'camera', 'shot_type', 'duration', 'emotion', 'language'];
 let _sbViewMode = localStorage.getItem('sb_view') || 'table'; // 'table' | 'timeline'
 
 function _sbViewToggle() {
@@ -1126,8 +1174,9 @@ async function loadStoryboard() {
         <td><select class="sb-inline-input" data-idx="${i}" data-field="shot_type" onchange="updateShotField(this)">${_selectOpts(_shotTypes(), s.shot_type)}</select></td>
         <td><input class="sb-inline-input" type="number" value="${s.duration || 4}" min="1" max="30" data-idx="${i}" data-field="duration" onchange="updateShotField(this)"></td>
         <td><select class="sb-inline-input" data-idx="${i}" data-field="emotion" onchange="updateShotField(this)">${_selectOpts(EMOTIONS, s.emotion)}</select></td>
+        <td><select class="sb-inline-input" data-idx="${i}" data-field="language" onchange="updateShotField(this)">${LANGUAGES.map(l => `<option value="${l.value}" ${(s.language || 'zh') === l.value ? 'selected' : ''}>${l.label}</option>`).join('')}</select></td>
         <td><button class="btn btn-xs btn-danger" onclick="deleteShotFromSB(${i})">🗑️</button></td></tr>`).join('');
-      el.innerHTML = header + `<div style="overflow-x:auto"><table><thead><tr><th></th><th>${t('sb.shot_id')}</th><th>${t('edit.scene')}</th><th>${t('edit.characters')}</th><th>${t('edit.action')}</th><th>${t('edit.dialogue')}</th><th>${t('edit.camera')}</th><th>${t('edit.shot_type')}</th><th>${t('edit.duration')}</th><th>${t('sb.emotion')}</th><th></th></tr></thead>
+      el.innerHTML = header + `<div style="overflow-x:auto"><table><thead><tr><th></th><th>${t('sb.shot_id')}</th><th>${t('edit.scene')}</th><th>${t('edit.characters')}</th><th>${t('edit.action')}</th><th>${t('edit.dialogue')}</th><th>${t('edit.camera')}</th><th>${t('edit.shot_type')}</th><th>${t('edit.duration')}</th><th>${t('sb.emotion')}</th><th>${t('edit.language')}</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div></div>`;
       _initSortable();
     }
@@ -1187,7 +1236,7 @@ async function addShot() {
   const maxNum = Math.max(0, ...shots.map(s => parseInt(s.shot_id, 10)).filter(n => !isNaN(n)));
   const newId = String(maxNum + 1).padStart(3, '0');
   pushUndo(`${t('btn.add')} ${newId}`);
-  const newShot = { episode: ep, shot_id: newId, scene: '', characters: '', action: '', dialogue: '', camera: _cameras()[0], shot_type: _shotTypes()[2], duration: 4, emotion: 'neutral', outfit: '', action_en: '', dialogue_en: '' };
+  const newShot = { episode: ep, shot_id: newId, scene: '', characters: '', action: '', dialogue: '', camera: _cameras()[0], shot_type: _shotTypes()[2], duration: 4, emotion: 'neutral', language: 'zh', outfit: '', action_en: '', dialogue_en: '' };
   shots.push(newShot);
   try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.created')); loadStoryboard(); } catch (e) { toast(e.message, 'error'); }
 }
@@ -1442,14 +1491,20 @@ async function deleteProj(n) {
 // 系统设置
 // ══════════════════════════════════════════════════════════
 
-function _backendSection(label, icon, idPrefix, backends, backend, url, available, reason) {
+function _backendSection(label, icon, idPrefix, backends, backend, url, available, reason, opts = {}) {
   const toolName = idPrefix === 'lipsync' ? 'lipsync' : idPrefix;
+  const apiKeyHtml = opts.showApiKey ? `<div class="form-row"><label>${t('set.tts_api_key')}</label><div style="display:flex;gap:.3rem;flex:1"><input id="cfg-${idPrefix}-key" type="password" value="${esc(opts.apiKey || '')}" style="flex:1" placeholder="MIMO_API_KEY"><button class="btn btn-xs btn-outline" onclick="_toggleKeyVis('cfg-${idPrefix}-key','cfg-${idPrefix}-key-toggle')" id="cfg-${idPrefix}-key-toggle">👁</button></div></div>` : '';
+  const testHtml = opts.showTest ? `<div style="margin-top:.5rem"><div class="form-row"><label>${t('set.tts_test_text')}</label><input id="cfg-${idPrefix}-test-text" value="${esc(opts.testText || '你好，这是一段测试语音。')}" style="flex:1"></div>
+    <button class="btn btn-xs btn-outline" onclick="testTtsPreview()" id="test-btn-tts-preview" style="margin-top:.3rem">🎤 ${t('set.tts_test')}</button>
+    <span id="test-result-tts-preview" class="dim" style="font-size:0.8rem;margin-left:0.3rem"></span></div>` : '';
   return `<div class="config-section"><h3>${icon} ${label}</h3>
     <div class="form-row"><label>${t('set.backend')}</label><select id="cfg-${idPrefix}" onchange="_updateUrl('${idPrefix}')">${backends.map(b => `<option value="${b}" ${backend === b ? 'selected' : ''}>${b}</option>`).join('')}</select></div>
     <div class="form-row"><label>${t('set.address')}</label><input id="cfg-${idPrefix}-url" value="${esc(url)}"></div>
+    ${apiKeyHtml}
     <div class="tool-status-inline"><span class="status-dot ${available ? 'ok' : 'err'}"></span>${available ? t('dash.available') : reason || t('dash.unavailable')}
       <button class="btn btn-xs btn-outline" onclick="testTool('${toolName}')" id="test-btn-${toolName}">🔌 ${t('set.test')}</button>
-      <span id="test-result-${toolName}" class="dim" style="font-size:0.8rem;margin-left:0.3rem"></span></div></div>`;
+      <span id="test-result-${toolName}" class="dim" style="font-size:0.8rem;margin-left:0.3rem"></span></div>
+    ${testHtml}</div>`;
 }
 
 function _updateUrl(prefix) {
@@ -1457,6 +1512,9 @@ function _updateUrl(prefix) {
   const cfg = _cache.get('sysconfig')?.data || {};
   const inp = document.getElementById(`cfg-${prefix}-url`);
   if (inp) inp.value = cfg.models?.[key]?.api_url || '';
+  // 同步 API Key 字段
+  const keyInp = document.getElementById(`cfg-${prefix}-key`);
+  if (keyInp) keyInp.value = cfg.models?.[key]?.api_key || '';
 }
 
 function _resolveBackendUrl(cfg, prefix) {
@@ -1484,7 +1542,7 @@ async function loadSettings() {
         </div>
       </div>
       <div class="card"><h2>🔧 系统配置</h2>
-        ${_backendSection(t('set.tts'), '🎤', 'tts', ['mimo-voicedesign', 'mimo-voiceclone', 'gpt-sovits', 'cosyvoice', 'fish-speech'], tts.backend, tts.url, tools.tts?.available, tools.tts?.reason)}
+        ${_backendSection(t('set.tts'), '🎤', 'tts', ['mimo-voicedesign', 'mimo-voiceclone', 'gpt-sovits', 'cosyvoice', 'fish-speech'], tts.backend, tts.url, tools.tts?.available, tools.tts?.reason, { showApiKey: true, apiKey: sysCfg.models?.[tts.backend.replace(/-/g, '_')]?.api_key || '', showTest: true })}
         ${_backendSection(t('set.lipsync'), '👄', 'lipsync', ['musetalk', 'sadtalker', 'wav2lip'], ls.backend, ls.url, tools.lipsync?.available, tools.lipsync?.reason)}
         <div class="config-section"><h3>🎨 ComfyUI</h3>
           <div class="form-row"><label>${t('set.address')}</label><input id="cfg-comfyui" value="${esc(sysCfg.comfyui?.url || '')}"></div>
@@ -1524,7 +1582,11 @@ async function saveCfg() {
     sys.models.tts_backend = ttsBackend;
     const ttsKey = ttsBackend.replace(/-/g, '_');
     const ttsUrl = $val('cfg-tts-url');
-    if (ttsUrl) sys.models[ttsKey] = { api_url: ttsUrl };
+    const ttsApiKey = $val('cfg-tts-key');
+    const ttsCfg = {};
+    if (ttsUrl) ttsCfg.api_url = ttsUrl;
+    if (ttsApiKey) ttsCfg.api_key = ttsApiKey;
+    if (Object.keys(ttsCfg).length) sys.models[ttsKey] = ttsCfg;
     // LipSync
     const lsBackend = $val('cfg-lipsync');
     sys.models.lip_sync_backend = lsBackend;
@@ -1573,6 +1635,49 @@ async function testTool(name) {
   } catch (e) {
     if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">❌ ${esc(e.message)}</span>`;
     toast(`❌ ${name}: ${e.message}`, 'error');
+  }
+  if (btn) btn.disabled = false;
+}
+
+async function testTtsPreview() {
+  const btn = document.getElementById('test-btn-tts-preview');
+  const resultEl = document.getElementById('test-result-tts-preview');
+  const text = $val('cfg-tts-test-text') || '你好，这是一段测试语音。';
+  if (btn) btn.disabled = true;
+  if (resultEl) resultEl.innerHTML = '⏳ 合成中...';
+  try {
+    const r = await api('/tools/tts', { method: 'POST', body: { text, language: 'zh' } });
+    if (r.task_id) {
+      // 轮询任务
+      const poll = async () => {
+        for (let i = 0; i < 60; i++) {
+          await new Promise(res => setTimeout(res, 1000));
+          const info = await api(`/tasks/${r.task_id}`);
+          if (info.status === 'success') {
+            const audioPath = info.result?.path || info.result?.audio || info.result?.output;
+            if (audioPath) {
+              const audio = new Audio(`/api/project-file/${audioPath}`);
+              audio.play();
+              if (resultEl) resultEl.innerHTML = `<span style="color:#22c55e">✅ 播放中...</span>`;
+            } else {
+              if (resultEl) resultEl.innerHTML = `<span style="color:#22c55e">✅ 完成</span>`;
+            }
+            toast('✅ TTS 试听完成');
+            return;
+          }
+          if (info.status === 'failed') {
+            if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">❌ ${esc(info.error || info.reason || '失败')}</span>`;
+            toast(`❌ TTS 失败: ${info.error || info.reason}`, 'error');
+            return;
+          }
+        }
+        if (resultEl) resultEl.innerHTML = `<span style="color:#eab308">⏰ 超时</span>`;
+      };
+      poll();
+    }
+  } catch (e) {
+    if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">❌ ${esc(e.message)}</span>`;
+    toast(`❌ TTS: ${e.message}`, 'error');
   }
   if (btn) btn.disabled = false;
 }
@@ -1667,7 +1772,7 @@ function _parseCSV(text) {
 }
 
 function exportStoryboard() {
-  const headers = ['shot_id', 'scene', 'characters', 'action', 'action_en', 'dialogue', 'dialogue_en', 'camera', 'shot_type', 'duration', 'emotion', 'outfit'];
+  const headers = ['shot_id', 'scene', 'characters', 'action', 'action_en', 'dialogue', 'dialogue_en', 'camera', 'shot_type', 'duration', 'emotion', 'language', 'outfit'];
   const csv = [headers.map(h => _csvEscape(h)).join(',')];
   shots.forEach(s => {
     csv.push(headers.map(h => _csvEscape(s[h])).join(','));
@@ -1904,7 +2009,7 @@ async function sendChatMsg() {
       _chatHistory.push({ role: 'ai', text: `${t('chat.success')}\n${r.message || ''}` });
       if (r.shots && Array.isArray(r.shots)) {
         // 校验并补全缺失字段
-        const defaults = { shot_id: '', scene: '', characters: '', action: '', dialogue: '', camera: '固定', shot_type: '中景', duration: 4, emotion: 'neutral', outfit: '', action_en: '', dialogue_en: '' };
+        const defaults = { shot_id: '', scene: '', characters: '', action: '', dialogue: '', camera: '固定', shot_type: '中景', duration: 4, emotion: 'neutral', language: 'zh', outfit: '', action_en: '', dialogue_en: '' };
         r.shots = r.shots.map((s, i) => {
           const merged = { ...defaults, ...s };
           if (!merged.shot_id) merged.shot_id = String(i + 1).padStart(3, '0');

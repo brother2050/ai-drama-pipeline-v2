@@ -122,7 +122,10 @@ def _process_shot(shot: dict, sm, container, cfg, shot_out: Path, preset: dict):
             tts = container.get("tts")
             char = sm.get_character(char_ids[0]) if char_ids else {}
             voice_config = char.get("voice", {})
-            tts.synthesize(dialogue, str(audio_path), voice_config=voice_config)
+            emotion = shot.get("emotion", "neutral")
+            language = shot.get("language", "zh")
+            tts.synthesize(dialogue, str(audio_path), voice_config=voice_config,
+                           emotion=emotion, language=language)
             logger.info(f"    ✅ TTS: {audio_path.name}")
         except Exception as e:
             logger.warning(f"    ⚠ TTS 失败: {e}")

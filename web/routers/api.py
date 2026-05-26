@@ -1070,6 +1070,25 @@ def get_shot_file(episode: int, shot_id: str, filename: str):
     return FileResponse(str(file_path), media_type=media_types.get(ext, "application/octet-stream"))
 
 
+@router.get("/project-file/{path:path}")
+def get_project_file(path: str):
+    """通用项目文件访问（带路径遍历防护）"""
+    from fastapi.responses import FileResponse
+
+    proj = _proj()
+    file_path = _safe_path(proj, path)
+    if not file_path.exists():
+        raise HTTPException(404, f"文件不存在: {path}")
+
+    ext = file_path.suffix.lower()
+    media_types = {
+        ".wav": "audio/wav", ".mp3": "audio/mpeg",
+        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".mp4": "video/mp4", ".webm": "video/webm",
+    }
+    return FileResponse(str(file_path), media_type=media_types.get(ext, "application/octet-stream"))
+
+
 # ══════════════════════════════════════════════════════════
 # 4.4 Worker 状态
 # ══════════════════════════════════════════════════════════

@@ -65,6 +65,7 @@ const I18N = {
   'edit.shot_type': { zh: '景别', en: 'Shot Type' },
   'edit.duration': { zh: '时长', en: 'Duration' },
   'edit.emotion': { zh: '情绪', en: 'Emotion' },
+  'edit.language': { zh: '语言', en: 'Language' },
   'edit.outfit': { zh: '服装', en: 'Outfit' },
   'edit.outfit_ph': { zh: '对应角色配置中的 outfits key', en: 'Outfit key from character config' },
 
@@ -188,6 +189,11 @@ const I18N = {
   'char.outfits': { zh: '服装', en: 'Outfits' },
   'char.voice': { zh: '语音', en: 'Voice' },
   'char.voice_desc': { zh: '声音描述', en: 'Voice Description' },
+  'char.voice_ref_audio': { zh: '参考音频路径', en: 'Reference Audio Path' },
+  'char.voice_speaker': { zh: '说话人', en: 'Speaker' },
+  'char.voice_ref_id': { zh: '参考 ID', en: 'Reference ID' },
+  'char.voice_prompt_text': { zh: '提示文本', en: 'Prompt Text' },
+  'char.voice_params': { zh: '语音参数', en: 'Voice Parameters' },
   'char.personality': { zh: '性格', en: 'Personality' },
   'char.outfit_desc': { zh: '服装描述', en: 'Outfit Description' },
 
@@ -208,6 +214,16 @@ const I18N = {
   'set.llm_enabled': { zh: '启用', en: 'Enabled' },
   'set.llm_model': { zh: '模型', en: 'Model' },
   'set.test': { zh: '测试连接', en: 'Test' },
+  'set.tts_api_key': { zh: 'API Key', en: 'API Key' },
+  'set.tts_test': { zh: '🎤 试听', en: '🎤 Preview' },
+  'set.tts_test_text': { zh: '试听文本', en: 'Preview Text' },
+  'set.tts_test_hint': { zh: '输入文本，测试 TTS 合成效果', en: 'Enter text to test TTS synthesis' },
+  'set.tts_params': { zh: 'TTS 参数', en: 'TTS Parameters' },
+  'set.tts_speaker': { zh: '说话人', en: 'Speaker' },
+  'set.tts_ref_audio': { zh: '参考音频', en: 'Reference Audio' },
+  'set.tts_ref_id': { zh: '参考 ID', en: 'Reference ID' },
+  'set.tts_voice_desc': { zh: '声音描述', en: 'Voice Description' },
+  'set.tts_prompt_text': { zh: '提示文本', en: 'Prompt Text' },
 
   // 批量补充
   'batch.cancel_btn': { zh: '⏹ 取消', en: '⏹ Cancel' },

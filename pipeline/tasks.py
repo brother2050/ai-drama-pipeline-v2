@@ -250,9 +250,12 @@ def _run_tts(config_path: str, episode: int, shot_id: str) -> dict:
     sm = ShotManager(str(Path(cfg.project_dir) / "storyboard" / "episodes.csv"),
                      str(Path(cfg.project_dir) / "config"))
     voice_config = sm.get_character(char_ids[0]).get("voice", {}) if char_ids else {}
+    emotion = shot.get("emotion", "neutral")
+    language = shot.get("language", "zh")
 
     try:
-        cont.get("tts").synthesize(dialogue, audio_path, voice_config=voice_config)
+        cont.get("tts").synthesize(dialogue, audio_path, voice_config=voice_config,
+                                   emotion=emotion, language=language)
     except Exception as e:
         return _err(shot_id, "tts", f"TTS 合成失败: {e}")
     return _done(shot_id, "tts", audio_path)
@@ -540,23 +543,20 @@ def tts_single_task(self, config_path: str, text: str, voice_config: dict | None
                     emotion: str = "neutral", language: str = "zh"):
     cfg, cont = _init_ctx(config_path)
     self.update_state(state="PROGRESS", meta={"step": "tts", "progress": 20, "message": "TTS..."})
-    import tempfile
-    output = None
-    result = None
-    with tempfile.NamedTemporaryFile(suffix=".wav", prefix="tts_", delete=False) as tmp_f:
-        output = tmp_f.name
+    # 保存到项目目录下，使前端可通过 /api/files 访问
+    from pathlib import Path
+    preview_dir = Path(cfg.project_dir) / "output" / "tts_preview"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    import hashlib, time
+    tag = hashlib.md5(f"{text}{time.time()}".encode()).hexdigest()[:8]
+    output = str(preview_dir / f"preview_{tag}.wav")
     try:
         result = cont.get("tts").synthesize(text, output, voice_config=voice_config or {}, emotion=emotion, language=language)
-        return {"path": result, "text": text}
+        # 返回相对于项目目录的路径
+        rel_path = str(Path(result).relative_to(cfg.project_dir))
+        return {"path": rel_path, "text": text}
     except Exception as e:
         return {"status": "error", "reason": f"TTS 合成失败: {e}", "text": text}
-    finally:
-        # 清理临时文件（如果结果路径不是临时文件本身）
-        if output and os.path.exists(output) and result != output:
-            try:
-                os.unlink(output)
-            except OSError:
-                pass
 
 
 @app.task(bind=True, name="pipeline.music", soft_time_limit=120)
