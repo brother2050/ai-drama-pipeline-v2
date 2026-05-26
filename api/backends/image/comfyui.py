@@ -80,6 +80,7 @@ class ComfyUI:
     def _download_outputs(self, c: httpx.Client, outputs: dict, output_dir: str) -> list[str]:
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         files = []
+        headers = self._headers()
         for node_out in outputs.values():
             for img in node_out.get("images", []):
                 fname = img.get("filename")
@@ -88,7 +89,7 @@ class ComfyUI:
                 fname = Path(fname).name
                 subfolder = Path(img.get("subfolder", "")).name if img.get("subfolder") else ""
                 url = f"{self._url}/view?filename={fname}&subfolder={subfolder}&type=output"
-                r = c.get(url)
+                r = c.get(url, headers=headers)
                 r.raise_for_status()
                 out_path = Path(output_dir) / fname
                 out_path.write_bytes(r.content)
@@ -98,7 +99,7 @@ class ComfyUI:
     def health_check(self) -> tuple[bool, str]:
         try:
             with httpx.Client(timeout=5) as c:
-                r = c.get(f"{self._url}/system_stats")
+                r = c.get(f"{self._url}/system_stats", headers=self._headers())
                 return True, f"ComfyUI reachable (HTTP {r.status_code})"
         except Exception as e:
             return False, f"ComfyUI unreachable: {e}"

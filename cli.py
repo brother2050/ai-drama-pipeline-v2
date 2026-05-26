@@ -219,7 +219,9 @@ def status():
     comfyui_url = cfg.get("comfyui", {}).get("url", "http://127.0.0.1:8188")
     try:
         import httpx
-        r = httpx.get(f"{comfyui_url}/system_stats", timeout=3)
+        api_key = cfg.get("comfyui", {}).get("api_key", "")
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        r = httpx.get(f"{comfyui_url}/system_stats", timeout=3, headers=headers)
         comfyui_ok = r.status_code == 200
     except Exception:
         comfyui_ok = False

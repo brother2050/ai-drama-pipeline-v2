@@ -14,6 +14,13 @@ class AnimateDiff:
                              or "http://127.0.0.1:8188").rstrip("/")
         self._timeout = config.get("timeouts", {}).get("comfyui", 300)
         self._api_key = config.get("api_key", "")
+
+    def _headers(self) -> dict:
+        h = {"Content-Type": "application/json"}
+        if self._api_key:
+            h["Authorization"] = f"Bearer {self._api_key}"
+        return h
+
     @property
     def name(self): return "animatediff"
     def generate(self, workflow: dict, output_dir: str) -> list[str]:
@@ -25,7 +32,7 @@ class AnimateDiff:
         import httpx
         try:
             with httpx.Client(timeout=3) as c:
-                r = c.get(f"{self._comfyui_url}/system_stats")
+                r = c.get(f"{self._comfyui_url}/system_stats", headers=self._headers())
                 return True, f"AnimateDiff via ComfyUI (HTTP {r.status_code})"
         except Exception as e: return False, str(e)
     def shutdown(self): pass
@@ -44,6 +51,13 @@ class CogVideoX:
                              or "http://127.0.0.1:8188").rstrip("/")
         self._timeout = config.get("timeouts", {}).get("comfyui", 300)
         self._api_key = config.get("api_key", "")
+
+    def _headers(self) -> dict:
+        h = {"Content-Type": "application/json"}
+        if self._api_key:
+            h["Authorization"] = f"Bearer {self._api_key}"
+        return h
+
     @property
     def name(self): return "cogvideox"
     def generate(self, workflow: dict, output_dir: str) -> list[str]:
@@ -55,7 +69,7 @@ class CogVideoX:
         import httpx
         try:
             with httpx.Client(timeout=3) as c:
-                r = c.get(f"{self._comfyui_url}/system_stats")
+                r = c.get(f"{self._comfyui_url}/system_stats", headers=self._headers())
                 return True, f"CogVideoX via ComfyUI (HTTP {r.status_code})"
         except Exception as e: return False, str(e)
     def shutdown(self): pass
