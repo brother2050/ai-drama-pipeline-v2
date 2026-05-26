@@ -103,6 +103,8 @@ class Config:
     }
 
     def __init__(self, path: str | None = None):
+        self._mtimes: dict[str, float] = {}
+        self._reloading = False
         self._path = path or self._find_config()
         # 设置系统配置路径
         if Config.SYSTEM_CONFIG is None:
@@ -115,6 +117,8 @@ class Config:
         self._data["_project_dir"] = self._project_dir
         self._warnings: list[str] = []
         self._validate()
+        # 记录源文件 mtime，用于热读取检测
+        self._record_mtimes()
 
     @staticmethod
     def _find_config() -> str:
@@ -161,6 +165,7 @@ class Config:
 
     @property
     def data(self) -> dict:
+        self._check_reload()
         return self._data
 
     @property
@@ -172,7 +177,8 @@ class Config:
         return self._path or ""
 
     def get(self, key: str, default: Any = None) -> Any:
-        """获取配置值（支持 dot notation: 'models.tts_backend'）"""
+        """获取配置值（支持 dot notation: 'models.tts_backend'，文件变化时自动重载）"""
+        self._check_reload()
         keys = key.split(".")
         val = self._data
         for k in keys:
@@ -184,24 +190,76 @@ class Config:
                 return default
         return val
 
+    def _record_mtimes(self) -> None:
+        """记录所有配置源文件的 mtime"""
+        paths = []
+        sys_path = getattr(Config, 'SYSTEM_CONFIG', None)
+        if sys_path and os.path.isfile(sys_path):
+            paths.append(sys_path)
+        if self._path and os.path.isfile(self._path):
+            paths.append(self._path)
+        for p in paths:
+            try:
+                self._mtimes[p] = os.path.getmtime(p)
+            except OSError:
+                pass
+
+    def _check_reload(self) -> bool:
+        """检测源文件是否变化，变化则自动重载。返回是否发生了重载。"""
+        if self._reloading:
+            return False
+        changed = False
+        for p in list(self._mtimes):
+            try:
+                mtime = os.path.getmtime(p)
+                if mtime != self._mtimes[p]:
+                    changed = True
+                    break
+            except OSError:
+                continue
+        if changed:
+            self.reload()
+            return True
+        return False
+
     def reload(self) -> None:
         """重新加载配置"""
+        self._reloading = True
+        try:
+            self._do_reload()
+        finally:
+            self._reloading = False
+
+    def _do_reload(self) -> None:
         self._data = self._merge(self._path)
         self._data["_project_dir"] = self._project_dir
         self._warnings = []
         self._validate()
+        self._record_mtimes()
+
+    def _get_raw(self, key: str, default=None):
+        """内部用：直接读 _data，不触发热重载检查"""
+        val = self._data
+        for k in key.split("."):
+            if isinstance(val, dict):
+                val = val.get(k)
+            else:
+                return default
+            if val is None:
+                return default
+        return val
 
     def _validate(self) -> None:
         """校验配置合法性（不阻断，仅记录警告）"""
-        # 必填字段
+        # 必填字段（直接访问 _data，避免触发 _check_reload 递归）
         for field, desc in self.REQUIRED_FIELDS:
-            val = self.get(field)
+            val = self._get_raw(field)
             if val is None or val == "":
                 self._warnings.append(f"缺少必填配置: {desc} ({field})")
 
         # 数值范围
         for field, (lo, hi) in self.VALID_RANGES.items():
-            val = self.get(field)
+            val = self._get_raw(field)
             if val is not None:
                 try:
                     v = int(val)
@@ -213,7 +271,7 @@ class Config:
                     self._warnings.append(f"配置 {field} 不是有效数值: {val}")
 
         # 分辨率格式
-        res = self.get("project.resolution")
+        res = self._get_raw("project.resolution")
         if res is not None:
             if not isinstance(res, list) or len(res) != 2:
                 self._warnings.append("project.resolution 应为 [width, height] 格式")
