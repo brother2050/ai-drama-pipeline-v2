@@ -1760,32 +1760,17 @@ async function loadEpisodeManager() {
   const el = document.getElementById('ep-manager');
   if (!el) return;
   try {
-    const d = await api('/episodes');
-    const episodes = d.episodes || [1];
-    const cards = [];
-    for (const e of episodes) {
-      try {
-        const sb = await cachedFetch(`storyboard/${e}`, () => api(`/storyboard/${e}`));
-        const ss = sb.shots || [];
-        const totalDur = ss.reduce((sum, s) => sum + (parseInt(s.duration) || 4), 0);
-        // 检查是否有任何镜头生成了资源
-        let doneCount = 0;
-        for (const s of ss) {
-          const sid = s.shot_id || '';
-          if (!sid) continue;
-          try {
-            const r = await cachedFetch(`res/${e}/${sid}`, () => api(`/shots/${e}/${sid}/resources`));
-            if (r.resources?.frame || r.resources?.video) doneCount++;
-          } catch {}
-        }
-        const status = ss.length === 0 ? 'none' : doneCount >= ss.length ? 'done' : doneCount > 0 ? 'progress' : 'none';
-        const statusKey = `ep.status_${status}`;
-        const badgeClass = status === 'done' ? 'badge-green' : status === 'progress' ? 'badge' : '';
-        cards.push(`<div class="ep-card" onclick="ep=${e};navTo('pipeline')"><div class="ep-card-num">EP ${e}</div><div class="ep-card-meta">${ss.length} ${t('ep.shots')} · ${totalDur}s · ${doneCount}/${ss.length} ✅</div><div class="ep-card-status"><span class="badge ${badgeClass}">${t(statusKey)}</span></div></div>`);
-      } catch {
-        cards.push(`<div class="ep-card" onclick="ep=${e};navTo('pipeline')"><div class="ep-card-num">EP ${e}</div><div class="ep-card-meta">0 ${t('ep.shots')}</div><div class="ep-card-status"><span class="badge">${t('ep.status_none')}</span></div></div>`);
-      }
+    const d = await api('/episodes/summary');
+    const episodes = d.episodes || [];
+    if (!episodes.length) {
+      el.innerHTML = `<div class="card" style="margin-top:1rem"><h2>${t('ep.title')}</h2><p class="dim">暂无剧集</p></div>`;
+      return;
     }
+    const cards = episodes.map(ep => {
+      const statusKey = `ep.status_${ep.status}`;
+      const badgeClass = ep.status === 'done' ? 'badge-green' : ep.status === 'progress' ? 'badge' : '';
+      return `<div class="ep-card" onclick="ep=${ep.episode};navTo('pipeline')"><div class="ep-card-num">EP ${ep.episode}</div><div class="ep-card-meta">${ep.shots} ${t('ep.shots')} · ${ep.duration}s · ${ep.done}/${ep.shots} ✅</div><div class="ep-card-status"><span class="badge ${badgeClass}">${t(statusKey)}</span></div></div>`;
+    });
     el.innerHTML = `<div class="card" style="margin-top:1rem"><h2>${t('ep.title')}</h2><div class="ep-grid">${cards.join('')}</div></div>`;
   } catch (e) { el.innerHTML = `<div class="dim">${e.message}</div>`; }
 }

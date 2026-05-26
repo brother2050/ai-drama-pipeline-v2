@@ -858,6 +858,48 @@ def get_episodes():
     return {"episodes": sorted(ep_set), "current": min(ep_set)}
 
 
+@router.get("/episodes/summary")
+def get_episodes_summary():
+    """批量获取所有集数摘要（镜头数、资源进度），避免 N+1 查询"""
+    sb_path = _proj() / "storyboard" / "episodes.csv"
+    if not sb_path.exists():
+        return {"episodes": []}
+
+    # 一次性读取所有数据，按 episode 分组
+    ep_shots: dict[int, list[dict]] = {}
+    with open(sb_path, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            try:
+                ep = int(row.get("episode", 0) or 0)
+            except (ValueError, TypeError):
+                continue
+            if ep > 0:
+                ep_shots.setdefault(ep, []).append(row)
+
+    result = []
+    for ep in sorted(ep_shots):
+        shots = ep_shots[ep]
+        total_dur = sum(int(s.get("duration", 4) or 4) for s in shots)
+        done_count = 0
+        out_base = _proj() / "output" / f"e{ep:02d}"
+        for s in shots:
+            sid = s.get("shot_id", "")
+            if not sid:
+                continue
+            shot_dir = out_base / f"s{sid}"
+            if (shot_dir / "frame.png").exists() or (shot_dir / "video.mp4").exists():
+                done_count += 1
+        status = "none" if not shots else "done" if done_count >= len(shots) else "progress" if done_count > 0 else "none"
+        result.append({
+            "episode": ep,
+            "shots": len(shots),
+            "duration": total_dur,
+            "done": done_count,
+            "status": status,
+        })
+    return {"episodes": result}
+
+
 @router.get("/storyboard/{episode}")
 def get_storyboard(episode: int):
     _check_episode(episode)
