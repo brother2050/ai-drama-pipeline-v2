@@ -230,19 +230,26 @@ def _unique_hash_id(prefix: str, name: str, existing: dict) -> str:
 
 
 # ══════════════════════════════════════════════════════════
-#  核心逻辑函数
+#  核心逻辑函数（可被 preview.py 等模块复用）
 # ══════════════════════════════════════════════════════════
 
-def _run_tts(config_path: str, episode: int, shot_id: str) -> dict:
-    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "tts", "tts")
-    if err:
-        return err
+def tts_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path) -> dict:
+    """TTS 核心逻辑 — 合成台词为音频
 
+    Args:
+        shot_id: 镜头 ID
+        shot: 镜头数据
+        cfg: Config 对象
+        cont: DI 容器
+        out_dir: 输出目录
+
+    Returns:
+        {"status": "done"/"skipped"/"error", ...}
+    """
     dialogue = shot.get("dialogue", "").strip()
     if not dialogue or dialogue == "......":
         return _skip(shot_id, "tts", "无台词")
 
-    out_dir = _shot_dir(config_path, episode, shot_id)
     out_dir.mkdir(parents=True, exist_ok=True)
     audio_path = str(out_dir / "audio.wav")
 
@@ -265,12 +272,19 @@ def _run_tts(config_path: str, episode: int, shot_id: str) -> dict:
     return _done(shot_id, "tts", audio_path)
 
 
-def _run_first_frame(config_path: str, episode: int, shot_id: str) -> dict:
-    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "first_frame", "comfyui")
-    if err:
-        return err
+def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path) -> dict:
+    """首帧生成核心逻辑 — ComfyUI 工作流构建 + 执行
 
-    out_dir = _shot_dir(config_path, episode, shot_id)
+    Args:
+        shot_id: 镜头 ID
+        shot: 镜头数据
+        cfg: Config 对象
+        cont: DI 容器
+        out_dir: 输出目录
+
+    Returns:
+        {"status": "done"/"error", ...}
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
 
     from engines.shot_manager import ShotManager
@@ -330,12 +344,18 @@ def _run_first_frame(config_path: str, episode: int, shot_id: str) -> dict:
     return _done(shot_id, "first_frame", frame_path, prompt=prompt.get("positive", ""))
 
 
-def _run_video(config_path: str, episode: int, shot_id: str) -> dict:
-    cfg, cont, _, err = _prepare(config_path, episode, shot_id, "video", "comfyui", need_shot=False)
-    if err:
-        return err
+def video_core(shot_id: str, cfg, cont, out_dir: Path) -> dict:
+    """视频生成核心逻辑 — 从首帧生成视频
 
-    out_dir = _shot_dir(config_path, episode, shot_id)
+    Args:
+        shot_id: 镜头 ID
+        cfg: Config 对象
+        cont: DI 容器
+        out_dir: 输出目录
+
+    Returns:
+        {"status": "done"/"skipped"/"error", ...}
+    """
     frame_path = out_dir / "frame.png"
     if not frame_path.exists():
         return _skip(shot_id, "video", "首帧不存在，请先执行 Step 2")
@@ -359,12 +379,17 @@ def _run_video(config_path: str, episode: int, shot_id: str) -> dict:
     return _done(shot_id, "video", video_path)
 
 
-def _run_lipsync(config_path: str, episode: int, shot_id: str) -> dict:
-    cfg, cont, _, err = _prepare(config_path, episode, shot_id, "lipsync", "lipsync", need_shot=False)
-    if err:
-        return err
+def lipsync_core(shot_id: str, cont, out_dir: Path) -> dict:
+    """口型同步核心逻辑 — 视频 + 音频 → 口型同步视频
 
-    out_dir = _shot_dir(config_path, episode, shot_id)
+    Args:
+        shot_id: 镜头 ID
+        cont: DI 容器
+        out_dir: 输出目录
+
+    Returns:
+        {"status": "done"/"skipped"/"error", ...}
+    """
     video_path, audio_path = out_dir / "video.mp4", out_dir / "audio.wav"
     if not video_path.exists():
         return _skip(shot_id, "lipsync", "视频不存在，请先执行 Step 3")
@@ -377,6 +402,36 @@ def _run_lipsync(config_path: str, episode: int, shot_id: str) -> dict:
     except Exception as e:
         return _err(shot_id, "lipsync", f"口型同步失败: {e}")
     return _done(shot_id, "lipsync", synced_path)
+
+
+# ── Celery 任务包装（_prepare 防重复 + 核心逻辑）──
+
+def _run_tts(config_path: str, episode: int, shot_id: str) -> dict:
+    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "tts", "tts")
+    if err:
+        return err
+    return tts_core(shot_id, shot, cfg, cont, _shot_dir(config_path, episode, shot_id))
+
+
+def _run_first_frame(config_path: str, episode: int, shot_id: str) -> dict:
+    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "first_frame", "comfyui")
+    if err:
+        return err
+    return first_frame_core(shot_id, shot, cfg, cont, _shot_dir(config_path, episode, shot_id))
+
+
+def _run_video(config_path: str, episode: int, shot_id: str) -> dict:
+    cfg, cont, _, err = _prepare(config_path, episode, shot_id, "video", "comfyui", need_shot=False)
+    if err:
+        return err
+    return video_core(shot_id, cfg, cont, _shot_dir(config_path, episode, shot_id))
+
+
+def _run_lipsync(config_path: str, episode: int, shot_id: str) -> dict:
+    cfg, cont, _, err = _prepare(config_path, episode, shot_id, "lipsync", "lipsync", need_shot=False)
+    if err:
+        return err
+    return lipsync_core(shot_id, cont, _shot_dir(config_path, episode, shot_id))
 
 
 # ══════════════════════════════════════════════════════════

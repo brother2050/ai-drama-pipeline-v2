@@ -1,10 +1,13 @@
-"""快速预览管线 — draft/standard/high 三档"""
+"""快速预览管线 — draft/standard/high 三档
+
+复用 pipeline.tasks 核心逻辑（tts_core / first_frame_core / video_core / lipsync_core），
+不走 Celery 任务和数据库防重复，适合本地快速预览。
+"""
 from __future__ import annotations
 
 import argparse
 import csv
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -64,12 +67,6 @@ def run_preview(config_path: str, episode: int, level: str = "draft"):
 
     logger.info(f"共 {len(shots)} 个镜头，预设: {level}")
 
-    # 加载角色和场景配置
-    from engines.shot_manager import ShotManager
-    config_dir = Path(cfg.project_dir) / "config"
-    sb_path_str = str(sb_path)
-    sm = ShotManager(sb_path_str, str(config_dir), cfg.data)
-
     # 逐镜头处理
     for shot in shots:
         sid = shot.get("shot_id", "001")
@@ -79,7 +76,7 @@ def run_preview(config_path: str, episode: int, level: str = "draft"):
         shot_out.mkdir(parents=True, exist_ok=True)
 
         try:
-            _process_shot(shot, sm, cont, cfg, shot_out, preset)
+            _process_shot(shot, cont, cfg, shot_out, preset)
         except Exception as e:
             logger.error(f"  ❌ 镜头 {sid} 失败: {e}")
             continue
@@ -87,110 +84,39 @@ def run_preview(config_path: str, episode: int, level: str = "draft"):
     logger.info("预览完成")
 
 
-def _process_shot(shot: dict, sm, container, cfg, shot_out: Path, preset: dict):
-    """处理单个镜头"""
-    from engines.prompt import build_prompt, translate_to_english
+def _process_shot(shot: dict, container, cfg, shot_out: Path, preset: dict):
+    """处理单个镜头（复用 pipeline.tasks 核心逻辑）"""
+    from pipeline.tasks import tts_core, first_frame_core, video_core, lipsync_core
 
     shot_id = shot.get("shot_id", "001")
-    char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
-
-    # 获取 LLM 后端用于翻译（可选）
-    llm = None
-    try:
-        if cfg.get("llm", {}).get("enabled"):
-            llm = container.get("llm")
-    except Exception:
-        pass
-
-    # 获取角色描述
-    char_descs = []
-    for cid in char_ids:
-        char = sm.get_character(cid)
-        if char:
-            desc = translate_to_english(char.get("appearance", ""), llm=llm)
-            char_descs.append(desc)
-
-    # 获取场景描述
-    scene_id = shot.get("scene", "")
-    scene = sm.get_scene(scene_id)
-    scene_desc = translate_to_english(scene.get("description", ""), llm=llm) if scene else ""
 
     # 1) TTS 语音合成
-    dialogue = shot.get("dialogue", "").strip()
-    audio_path = shot_out / "audio.wav"
-    if dialogue and dialogue != "......":
-        try:
-            tts = container.get("tts")
-            char = sm.get_character(char_ids[0]) if char_ids else {}
-            voice_config = char.get("voice", {})
-            emotion = shot.get("emotion", "neutral")
-            language = shot.get("language", "zh")
-            tts.synthesize(dialogue, str(audio_path), voice_config=voice_config,
-                           emotion=emotion, language=language)
-            logger.info(f"    ✅ TTS: {audio_path.name}")
-        except Exception as e:
-            logger.warning(f"    ⚠ TTS 失败: {e}")
+    tts_result = tts_core(shot_id, shot, cfg, container, shot_out)
+    if tts_result.get("status") == "done":
+        logger.info(f"    ✅ TTS: audio.wav")
+    elif tts_result.get("status") == "error":
+        logger.warning(f"    ⚠ TTS 失败: {tts_result.get('reason', '')}")
 
-    # 2) 首帧生成（需要 ComfyUI，使用 WorkflowBuilder 含 IP-Adapter）
-    frame_path = shot_out / "frame.png"
-    try:
-        from engines.workflow_builder import WorkflowBuilder
-        from engines.multi_char import MultiCharacterHandler
+    # 2) 首帧生成
+    ff_result = first_frame_core(shot_id, shot, cfg, container, shot_out)
+    if ff_result.get("status") == "done":
+        logger.info(f"    ✅ 首帧: frame.png")
+    elif ff_result.get("status") == "error":
+        logger.warning(f"    ⚠ 首帧失败: {ff_result.get('reason', '')}")
 
-        # 多角色 prompt
-        multi_char_prompt = ""
-        if len(char_ids) > 1:
-            mch = MultiCharacterHandler()
-            chars_data = [sm.get_character(cid) for cid in char_ids]
-            multi_char_prompt = mch.generate_multi_char_prompt([c for c in chars_data if c])
-
-        models = cfg.get("models", {})
-        wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=container.get("image"))
-        wb.load_workflows()
-        prompt, wf = wb.build_first_frame(
-            shot, character_desc=", ".join(char_descs),
-            scene_desc=scene_desc, multi_char_prompt=multi_char_prompt)
-
-        if wf:
-            comfyui = container.get("image")
-            files = comfyui.generate(wf, str(shot_out))
-            if files:
-                os.replace(files[0], frame_path)
-                logger.info(f"    ✅ 首帧: {frame_path.name}")
-        else:
-            logger.warning(f"    ⚠ 首帧工作流为空")
-    except Exception as e:
-        logger.warning(f"    ⚠ 首帧生成失败: {e}")
-
-    # 3) 视频生成（需要 ComfyUI）
-    video_path = shot_out / "video.mp4"
-    if frame_path.exists():
-        try:
-            from engines.workflow_builder import WorkflowBuilder
-            models = cfg.get("models", {})
-            wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=container.get("image"))
-            wb.load_workflows()
-            video_wf = wb.build_video(str(frame_path))
-            if video_wf:
-                video_backend = container.get("video")
-                files = video_backend.generate(video_wf, str(shot_out))
-                if files:
-                    os.replace(files[0], video_path)
-                    logger.info(f"    ✅ 视频: {video_path.name}")
-            else:
-                logger.warning(f"    ⚠ 视频工作流为空（缺少模板）")
-        except Exception as e:
-            logger.warning(f"    ⚠ 视频生成失败: {e}")
+    # 3) 视频生成
+    vid_result = video_core(shot_id, cfg, container, shot_out)
+    if vid_result.get("status") == "done":
+        logger.info(f"    ✅ 视频: video.mp4")
+    elif vid_result.get("status") == "error":
+        logger.warning(f"    ⚠ 视频失败: {vid_result.get('reason', '')}")
 
     # 4) 口型同步
-    if video_path.exists() and audio_path.exists():
-        try:
-            lipsync = container.get("lipsync")
-            synced_path = shot_out / "synced.mp4"
-            lipsync.sync(str(video_path), str(audio_path), str(synced_path))
-            logger.info(f"    ✅ 口型同步: {synced_path.name}")
-        except Exception as e:
-            logger.warning(f"    ⚠ 口型同步失败: {e}")
+    ls_result = lipsync_core(shot_id, container, shot_out)
+    if ls_result.get("status") == "done":
+        logger.info(f"    ✅ 口型同步: synced.mp4")
+    elif ls_result.get("status") == "error":
+        logger.warning(f"    ⚠ 口型同步失败: {ls_result.get('reason', '')}")
 
 
 def main():
