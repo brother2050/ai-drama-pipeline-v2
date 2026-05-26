@@ -1,13 +1,15 @@
 """MiMo VoiceDesign TTS — 云 API，免费，自然语言描述生成声音
 
 使用 MiMo TTS API（chat completions 端点）。
+支持模型: mimo-v2.5-tts, mimo-v2.5-tts-voicedesign, mimo-v2-tts
+
+官方文档: https://platform.xiaomimimo.com/docs/zh-CN/api/chat/openai-api
 """
 
 from __future__ import annotations
 
 import base64
 import io
-import json
 import logging
 import os
 import struct
@@ -25,7 +27,7 @@ __all__ = ["MimoVoiceDesign"]
 class MimoVoiceDesign:
     """MiMo VoiceDesign TTS 后端（云 API，免费）"""
 
-    API_URL = os.environ.get("MIMO_API_ENDPOINT", "https://api-oc.xiaomimimo.com/v1/chat/completions")
+    API_URL = os.environ.get("MIMO_API_ENDPOINT", "https://api.xiaomimimo.com/v1/chat/completions")
     MODEL = os.environ.get("MIMO_TTS_MODEL", "mimo-v2.5-tts")
 
     def __init__(self, config: dict):
@@ -40,25 +42,52 @@ class MimoVoiceDesign:
     def synthesize(self, text: str, output: str, *,
                    voice_config: dict | None = None, emotion: str = "neutral",
                    language: str = "zh") -> str:
-        """合成语音"""
+        """合成语音
+
+        Args:
+            text: 要合成的文本
+            output: 输出 WAV 文件路径
+            voice_config: 声音配置，支持 voice_description (风格描述) 和 voice_id (音色ID)
+            emotion: 情绪（保留参数，通过 voice_description 传递）
+            language: 语言（保留参数）
+        """
         if not self._api_key:
             raise RuntimeError("MIMO_API_KEY 未设置。获取: https://api.xiaomimimo.com")
 
         voice_config = voice_config or {}
         voice_desc = voice_config.get("voice_description", "")
-
-        # 构建 content：style 描述 + 文本
-        if voice_desc:
-            content = f"<style>{voice_desc}</style>{text}"
-        else:
-            content = text
+        voice_id = voice_config.get("voice_id", "")
 
         Path(output).parent.mkdir(parents=True, exist_ok=True)
 
+        # 构建 messages（遵循官方文档格式）
+        messages = []
+
+        # voicedesign 模型必须有 user 消息（风格描述）
+        # 其他模型可选
+        if voice_desc:
+            messages.append({"role": "user", "content": voice_desc})
+        elif "voicedesign" in self.MODEL:
+            # voicedesign 无风格时用默认描述
+            messages.append({"role": "user", "content": "自然流畅的语音"})
+
+        # 合成文本放在 assistant 消息中（官方文档要求）
+        messages.append({"role": "assistant", "content": text})
+
+        # 构建 audio 参数
+        audio_params: dict = {"format": "wav"}
+
+        # mimo-v2.5-tts 支持 voice 音色预设
+        # mimo-v2.5-tts-voicedesign 不支持 voice 字段
+        # 根据模型类型决定是否传 voice
+        if "voicedesign" not in self.MODEL:
+            # 支持的预设: mimo_default, 冰糖, 茉莉, 苏打, 白桦, Mia, Chloe, Milo, Dean
+            audio_params["voice"] = voice_id or "mimo_default"
+
         payload = {
             "model": self.MODEL,
-            "audio": {"format": "wav", "voice": "mimo_default"},
-            "messages": [{"role": "assistant", "content": content}],
+            "audio": audio_params,
+            "messages": messages,
         }
 
         with httpx.Client(timeout=self._timeout) as client:

@@ -1,12 +1,18 @@
 """MiMo VoiceClone TTS — 云 API，参考音频克隆声音
 
 使用 MiMo TTS API（chat completions 端点），通过参考音频克隆声音。
+支持模型: mimo-v2.5-tts-voiceclone, mimo-v2-tts
+
+不同模型的 voice 参数格式不同:
+- mimo-v2.5-tts-voiceclone: audio.voice = "data:audio/wav;base64,<b64>" (DataURL)
+- mimo-v2-tts: audio.voice_audio = {format: "wav", data: "<b64>"} (嵌套对象)
+
+官方文档: https://platform.xiaomimimo.com/docs/zh-CN/api/chat/openai-api
 """
 
 from __future__ import annotations
 
 import base64
-import io
 import logging
 import os
 import struct
@@ -22,8 +28,8 @@ logger = logging.getLogger(__name__)
 class MimoVoiceClone:
     """MiMo VoiceClone TTS 后端（云 API）"""
 
-    API_URL = os.environ.get("MIMO_API_ENDPOINT", "https://api-oc.xiaomimimo.com/v1/chat/completions")
-    MODEL = os.environ.get("MIMO_TTS_CLONE_MODEL", "mimo-v2-tts")
+    API_URL = os.environ.get("MIMO_API_ENDPOINT", "https://api.xiaomimimo.com/v1/chat/completions")
+    MODEL = os.environ.get("MIMO_TTS_CLONE_MODEL", "mimo-v2.5-tts-voiceclone")
 
     def __init__(self, config: dict):
         self._api_key = config.get("api_key") or os.environ.get("MIMO_API_KEY", "")
@@ -36,6 +42,13 @@ class MimoVoiceClone:
     def synthesize(self, text: str, output: str, *,
                    voice_config: dict | None = None, emotion: str = "neutral",
                    language: str = "zh") -> str:
+        """合成语音（克隆参考音频的声音）
+
+        Args:
+            text: 要合成的文本
+            output: 输出 WAV 文件路径
+            voice_config: 必须包含 reference_audio (参考音频路径)
+        """
         if not self._api_key:
             raise RuntimeError("MIMO_API_KEY 未设置")
 
@@ -53,12 +66,18 @@ class MimoVoiceClone:
         with open(ref_audio, "rb") as f:
             audio_b64 = base64.b64encode(f.read()).decode("ascii")
 
+        # 构建 audio 参数（根据模型选择不同格式）
+        audio_params: dict = {"format": "wav"}
+        if "voiceclone" in self.MODEL:
+            # mimo-v2.5-tts-voiceclone: voice 为 DataURL 格式
+            audio_params["voice"] = f"data:audio/wav;base64,{audio_b64}"
+        else:
+            # mimo-v2-tts: voice_audio 为嵌套对象
+            audio_params["voice_audio"] = {"format": "wav", "data": audio_b64}
+
         payload = {
             "model": self.MODEL,
-            "audio": {
-                "format": "wav",
-                "voice_audio": {"format": "wav", "data": audio_b64},
-            },
+            "audio": audio_params,
             "messages": [{"role": "assistant", "content": text}],
         }
 
