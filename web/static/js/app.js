@@ -91,6 +91,8 @@ function modalPrompt(message, defaultValue = '', opts = {}) {
     const o = document.createElement('div'); o.className = 'edit-overlay';
     const inputTag = opts.type === 'select'
       ? `<select id="_mp-input">${(opts.options||[]).map(v => `<option ${v===defaultValue?'selected':''}>${v}</option>`).join('')}</select>`
+      : opts.type === 'textarea'
+      ? `<textarea id="_mp-input" rows="4" style="width:100%" ${opts.placeholder?`placeholder="${esc(opts.placeholder)}"`:''}>${esc(defaultValue)}</textarea>`
       : `<input id="_mp-input" type="${opts.inputType||'text'}" value="${esc(defaultValue)}" ${opts.placeholder?`placeholder="${esc(opts.placeholder)}"`:''}>`;
     o.innerHTML = `<div class="edit-panel" style="width:400px"><div class="edit-header"><h3>${esc(message)}</h3></div>
       <div class="edit-body"><div class="edit-field">${inputTag}</div></div>
@@ -174,7 +176,7 @@ document.querySelectorAll('.nav-item').forEach(item => {
   };
 });
 function navTo(p) { document.querySelector(`.nav-item[data-page="${p}"]`).click(); }
-const PAGES = { dashboard: loadDashboard, characters: loadCharacters, scenes: loadScenes, storyboard: loadStoryboard, pipeline: loadPipeline, projects: loadProjects, settings: loadSettings, assets: loadAssets };
+const PAGES = { dashboard: loadDashboard, characters: loadCharacters, scenes: loadScenes, storyboard: loadStoryboard, pipeline: loadPipeline, projects: loadProjects, settings: loadSettings, seko: loadSeko, assets: loadAssets };
 async function loadPage(p) { if (PAGES[p]) await PAGES[p](); }
 
 document.addEventListener('keydown', e => {
@@ -232,7 +234,7 @@ function _showOverlay(id, title, bodyHtml, saveFn, saveLabel) {
 // 仪表盘
 // ══════════════════════════════════════════════════════════
 
-const TOOL_META = { redis:{icon:'🔴',label:'Redis'}, celery:{icon:'🔧',label:'Celery'}, ffmpeg:{icon:'🎞️',label:'FFmpeg'}, tts:{icon:'🎤',label:'TTS'}, comfyui:{icon:'🎨',label:'ComfyUI'}, lipsync:{icon:'👄',label:'LipSync'}, llm:{icon:'🧠',label:'LLM'}, music:{icon:'🎵',label:'Music'} };
+const TOOL_META = { redis:{icon:'🔴',label:'Redis'}, celery:{icon:'🔧',label:'Celery'}, ffmpeg:{icon:'🎞️',label:'FFmpeg'}, tts:{icon:'🎤',label:'TTS'}, comfyui:{icon:'🎨',label:'ComfyUI'}, lipsync:{icon:'👄',label:'LipSync'}, llm:{icon:'🧠',label:'LLM'}, music:{icon:'🎵',label:'Music'}, seko:{icon:'🎬',label:'Seko'} };
 
 async function loadDashboard() {
   const el = document.getElementById('page-dashboard');
@@ -252,7 +254,7 @@ async function loadDashboard() {
     // 工具状态分组
     const groups = [
       { label: t('dash.infra'), keys: ['redis', 'celery', 'ffmpeg'] },
-      { label: t('dash.ai_tools'), keys: ['tts', 'music'] },
+      { label: t('dash.ai_tools'), keys: ['tts', 'music', 'seko'] },
       { label: t('dash.gpu_tools'), keys: ['comfyui', 'lipsync', 'llm'] },
     ];
     let toolHtml = '';
@@ -1189,6 +1191,122 @@ async function addShot() {
 }
 
 // ══════════════════════════════════════════════════════════
+// Seko 影视策划案
+// ══════════════════════════════════════════════════════════
+
+const _sekoTasks = [];  // { task_id, prompt, status, created, result }
+
+async function loadSeko() {
+  const el = document.getElementById('page-seko');
+  // 检查 API Key
+  let sekoAvailable = false;
+  try {
+    const tools = await api('/tools');
+    sekoAvailable = tools.tools?.seko?.available || false;
+  } catch {}
+
+  const taskRows = _sekoTasks.length ? _sekoTasks.map((t, i) => `
+    <div class="card" style="margin-bottom:.5rem" id="seko-task-${i}">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
+        <div>
+          <span class="dim" style="font-size:.8rem">${t.task_id}</span>
+          <span style="margin-left:.5rem">${esc(t.prompt.slice(0, 60))}${t.prompt.length > 60 ? '...' : ''}</span>
+        </div>
+        <div style="display:flex;gap:.3rem;align-items:center">
+          <span class="status-dot ${t.status === 'OK' ? 'ok' : t.status === 'FAIL' ? 'err' : ''}"></span>
+          <span>${t('seko.status_' + (t.status || 'RUNNING'))}</span>
+          <button class="btn btn-xs btn-outline" onclick="sekoCheckStatus(${i})">${t('seko.check_btn')}</button>
+          ${t.status === 'OK' ? `<button class="btn btn-xs btn-outline" onclick="sekoDownload(${i})">${t('seko.download_btn')}</button>` : ''}
+          <button class="btn btn-xs btn-outline" onclick="sekoModify(${i})">${t('seko.modify_btn')}</button>
+        </div>
+      </div>
+      ${t.result ? `<details style="margin-top:.5rem"><summary>${t('seko.result_title')}</summary><pre style="max-height:400px;overflow:auto;font-size:.8rem;background:var(--bg-secondary,#f5f5f5);padding:.5rem;border-radius:4px">${esc(JSON.stringify(t.result, null, 2))}</pre></details>` : ''}
+    </div>
+  `).join('') : `<div class="card"><p style="color:var(--text-dim,#888)">${t('seko.no_tasks')}</p></div>`;
+
+  el.innerHTML = `
+    <div class="card">
+      <h2>${t('seko.title')}</h2>
+      <p class="dim">${t('seko.desc')}</p>
+      ${!sekoAvailable ? `<div style="background:#fef3cd;color:#856404;padding:.8rem;border-radius:6px;margin-top:.5rem">${t('seko.api_key_unset')}</div>` : ''}
+    </div>
+    <div class="card">
+      <h3>${t('seko.new_proposal')}</h3>
+      <div class="form-row"><label>${t('seko.prompt_label')}</label>
+        <textarea id="seko-prompt" rows="4" style="width:100%" placeholder="${t('seko.prompt_ph')}" ${!sekoAvailable ? 'disabled' : ''}></textarea></div>
+      <button class="btn btn-primary" onclick="sekoSubmit()" id="seko-submit-btn" ${!sekoAvailable ? 'disabled' : ''}>${t('seko.submit_btn')}</button>
+      <span id="seko-submit-msg" class="dim" style="margin-left:.5rem"></span>
+    </div>
+    <div class="card">
+      <h3>${t('seko.task_list')}</h3>
+      ${taskRows}
+    </div>`;
+}
+
+async function sekoSubmit() {
+  const prompt = document.getElementById('seko-prompt')?.value?.trim();
+  if (!prompt) return;
+  const btn = document.getElementById('seko-submit-btn');
+  const msg = document.getElementById('seko-submit-msg');
+  btn.disabled = true; btn.textContent = t('seko.submitting');
+  try {
+    const r = await api('/seko/proposal', { method: 'POST', body: { prompt } });
+    _sekoTasks.unshift({ task_id: r.task_id, prompt, status: 'RUNNING', created: new Date().toLocaleString(), result: null });
+    msg.innerHTML = `<span style="color:#22c55e">${t('seko.submitted', { id: r.task_id })}</span>`;
+    loadSeko();
+  } catch (e) {
+    msg.innerHTML = `<span style="color:#ef4444">${t('seko.submit_fail')}: ${esc(e.message)}</span>`;
+  } finally {
+    btn.disabled = false; btn.textContent = t('seko.submit_btn');
+  }
+}
+
+async function sekoCheckStatus(idx) {
+  const task = _sekoTasks[idx];
+  if (!task) return;
+  task.status = 'RUNNING';
+  loadSeko();
+  try {
+    const r = await api('/seko/proposal/status', { method: 'POST', body: { task_id: task.task_id } });
+    task.status = r.status || 'UNKNOWN';
+    task.result = r.raw?.data?.result || r.raw?.data || null;
+    if (task.status === 'OK') toast(t('toast.task_done'));
+    else if (task.status === 'FAIL') toast(t('toast.task_fail'), 'error');
+    loadSeko();
+  } catch (e) {
+    task.status = 'FAIL';
+    toast(e.message, 'error');
+    loadSeko();
+  }
+}
+
+async function sekoDownload(idx) {
+  const task = _sekoTasks[idx];
+  if (!task) return;
+  try {
+    const r = await api('/seko/proposal/status', {
+      method: 'POST',
+      body: { task_id: task.task_id, download_dir: './projects/default/assets' }
+    });
+    const count = r.downloaded?.length || 0;
+    toast(t('seko.downloaded', { n: count }));
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function sekoModify(idx) {
+  const task = _sekoTasks[idx];
+  if (!task) return;
+  const prompt = await modalPrompt(t('seko.modify_ph'), '', { inputType: 'textarea', placeholder: t('seko.modify_ph') });
+  if (!prompt) return;
+  try {
+    const r = await api('/seko/proposal/modify', { method: 'POST', body: { task_id: task.task_id, prompt } });
+    _sekoTasks.unshift({ task_id: r.task_id, prompt: `[修改] ${prompt}`, status: 'RUNNING', created: new Date().toLocaleString(), result: null });
+    toast(t('seko.task_added'));
+    loadSeko();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════
 // 项目管理
 // ══════════════════════════════════════════════════════════
 
@@ -1300,6 +1418,9 @@ async function loadSettings() {
             <option value="3" ${localStorage.getItem('drama_concurrency')==='3'?'selected':''}>3</option>
             <option value="5" ${localStorage.getItem('drama_concurrency')==='5'?'selected':''}>5</option>
           </select></div></div>
+        <div class="config-section"><h3>🎬 Seko 影视策划</h3>
+          <div class="form-row"><label>API Key</label><div style="display:flex;gap:.3rem;flex:1"><input id="cfg-seko-key" type="password" value="${esc(sysCfg.seko?.api_key || '')}" style="flex:1" placeholder="获取: seko.sensetime.com/explore"><button class="btn btn-xs btn-outline" onclick="_toggleKeyVis('cfg-seko-key','cfg-seko-key-toggle')" id="cfg-seko-key-toggle">👁</button></div></div>
+          <div class="tool-status-inline"><span class="status-dot ${tools.seko?.available ? 'ok' : 'err'}"></span>${tools.seko?.available ? t('dash.available') : tools.seko?.reason || t('dash.unavailable')}</div></div>
         <button class="btn btn-primary" style="margin-top:1rem" onclick="saveCfg()">💾 ${t('btn.save')}</button></div>`;
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
@@ -1325,6 +1446,9 @@ async function saveCfg() {
     // LLM
     const llmEnabled = $val('cfg-llm-enabled') === 'true';
     sys.llm = { enabled: llmEnabled, backend: $val('cfg-llm-backend'), base_url: $val('cfg-llm-url'), model: $val('cfg-llm-model'), api_key: $val('cfg-llm-key') };
+    // Seko
+    const sekoKey = $val('cfg-seko-key');
+    if (sekoKey) sys.seko = { api_key: sekoKey };
 
     await api('/system/config', { method: 'POST', body: sys });
     toast(t('toast.saved'));

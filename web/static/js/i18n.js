@@ -364,6 +364,34 @@ const I18N = {
   'worker.idle': { zh: '💤 Worker 空闲', en: '💤 Worker Idle' },
   'worker.tasks': { zh: '{n} 个任务', en: '{n} tasks' },
   'worker.offline': { zh: '⛔ Worker 离线', en: '⛔ Worker Offline' },
+
+  // Seko 影视策划
+  'nav.seko': { zh: '影视策划', en: 'Seko Proposal' },
+  'seko.title': { zh: '🎬 影视策划案', en: '🎬 Seko Proposal' },
+  'seko.desc': { zh: '基于 Seko AI 一键生成影视策划案，包含故事梗概、美术风格、角色/场景设计、分镜剧本', en: 'AI-powered proposal generation: story, art style, characters, scenes, storyboard' },
+  'seko.api_key_unset': { zh: '⚠️ 请先在系统设置中配置 SEKO_API_KEY', en: '⚠️ Please set SEKO_API_KEY in Settings first' },
+  'seko.new_proposal': { zh: '📝 新建策划案', en: '📝 New Proposal' },
+  'seko.prompt_label': { zh: '故事描述', en: 'Story Description' },
+  'seko.prompt_ph': { zh: '输入你的故事想法，例如：\n"一个程序员穿越到古代用代码拯救世界"', en: 'Enter your story idea, e.g.:\n"A programmer travels back in time to save the ancient world with code"' },
+  'seko.submit_btn': { zh: '🚀 生成策划案', en: '🚀 Generate Proposal' },
+  'seko.submitting': { zh: '提交中...', en: 'Submitting...' },
+  'seko.submitted': { zh: '✅ 策划案已提交，任务ID: {id}', en: '✅ Proposal submitted, task ID: {id}' },
+  'seko.submit_fail': { zh: '❌ 提交失败', en: '❌ Submission failed' },
+  'seko.task_list': { zh: '📋 任务列表', en: '📋 Task List' },
+  'seko.no_tasks': { zh: '暂无任务，提交策划案后在此查看进度', en: 'No tasks yet. Submit a proposal to track progress here' },
+  'seko.status_RUNNING': { zh: '⏳ 处理中', en: '⏳ Running' },
+  'seko.status_OK': { zh: '✅ 成功', en: '✅ OK' },
+  'seko.status_FAIL': { zh: '❌ 失败', en: '❌ Failed' },
+  'seko.check_btn': { zh: '🔄 查询状态', en: '🔄 Check Status' },
+  'seko.checking': { zh: '查询中...', en: 'Checking...' },
+  'seko.download_btn': { zh: '⬇ 下载图片', en: '⬇ Download Images' },
+  'seko.modify_btn': { zh: '✏️ 修改', en: '✏️ Modify' },
+  'seko.modify_title': { zh: '修改策划案', en: 'Modify Proposal' },
+  'seko.modify_ph': { zh: '输入修改指令，例如：\n"把主角改成女性，背景改成赛博朋克"', en: 'Enter modification, e.g.:\n"Change protagonist to female, set in cyberpunk world"' },
+  'seko.modify_submit': { zh: '提交修改', en: 'Submit Modification' },
+  'seko.result_title': { zh: '📄 策划案结果', en: '📄 Proposal Result' },
+  'seko.downloaded': { zh: '✅ 已下载 {n} 张图片', en: '✅ Downloaded {n} images' },
+  'seko.task_added': { zh: '任务已添加到列表', en: 'Task added to list' },
 };
 
 // 当前语言（默认中文）
@@ -378,6 +406,7 @@ const NAV_ICONS = {
   'nav.pipeline': '🎬',
   'nav.projects': '📂',
   'nav.settings': '⚙️',
+  'nav.seko': '🎬',
   'nav.assets': '📦',
 };
 
