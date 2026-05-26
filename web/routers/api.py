@@ -1039,7 +1039,7 @@ def get_worker_status():
     """获取 Celery Worker 状态"""
     try:
         from celery_app import app as celery_app
-        inspect = celery_app.control.inspect(timeout=2.0)
+        inspect = celery_app.control.inspect(timeout=0.5)
         active = inspect.active() or {}
         active_tasks = sum(len(v) for v in active.values())
         return {"status": "online", "active": active_tasks, "workers": list(active.keys())}
@@ -1054,7 +1054,7 @@ def get_worker_status():
 
 def _shared_assets_dir() -> Path:
     """获取全局共享资产目录"""
-    d = _proj().parent.parent / "shared_assets"
+    d = ROOT / "shared_assets"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -1102,7 +1102,7 @@ def copy_asset_to_project(entity_type: str, entity_id: str):
     if not src.exists():
         raise HTTPException(404, f"主体库中不存在: {entity_id}")
 
-    proj_dir = _proj() / entity_type
+    proj_dir = _proj() / "config" / entity_type
     proj_dir.mkdir(parents=True, exist_ok=True)
     dst = proj_dir / f"{entity_id}.yaml"
     if dst.exists():
@@ -1125,7 +1125,7 @@ def add_to_shared_library(entity_type: str, entity_id: str):
     _check_entity_type(entity_type)
     _check_id(entity_id)
 
-    proj_dir = _proj() / entity_type
+    proj_dir = _proj() / "config" / entity_type
     src = proj_dir / f"{entity_id}.yaml"
     if not src.exists():
         raise HTTPException(404, f"项目中不存在: {entity_id}")

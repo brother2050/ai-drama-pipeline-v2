@@ -1710,11 +1710,20 @@ async function loadEpisodeManager() {
         const sb = await cachedFetch(`storyboard/${e}`, () => api(`/storyboard/${e}`));
         const ss = sb.shots || [];
         const totalDur = ss.reduce((sum, s) => sum + (parseInt(s.duration) || 4), 0);
-        const hasResources = ss.some(s => s.has_frame || s.has_video);
-        const status = ss.length === 0 ? 'none' : hasResources ? 'done' : 'progress';
+        // 检查是否有任何镜头生成了资源
+        let doneCount = 0;
+        for (const s of ss) {
+          const sid = s.shot_id || '';
+          if (!sid) continue;
+          try {
+            const r = await cachedFetch(`res/${e}/${sid}`, () => api(`/shots/${e}/${sid}/resources`));
+            if (r.resources?.frame || r.resources?.video) doneCount++;
+          } catch {}
+        }
+        const status = ss.length === 0 ? 'none' : doneCount >= ss.length ? 'done' : doneCount > 0 ? 'progress' : 'none';
         const statusKey = `ep.status_${status}`;
         const badgeClass = status === 'done' ? 'badge-green' : status === 'progress' ? 'badge' : '';
-        cards.push(`<div class="ep-card" onclick="ep=${e};navTo('pipeline')"><div class="ep-card-num">EP ${e}</div><div class="ep-card-meta">${ss.length} ${t('ep.shots')} · ${totalDur}s</div><div class="ep-card-status"><span class="badge ${badgeClass}">${t(statusKey)}</span></div></div>`);
+        cards.push(`<div class="ep-card" onclick="ep=${e};navTo('pipeline')"><div class="ep-card-num">EP ${e}</div><div class="ep-card-meta">${ss.length} ${t('ep.shots')} · ${totalDur}s · ${doneCount}/${ss.length} ✅</div><div class="ep-card-status"><span class="badge ${badgeClass}">${t(statusKey)}</span></div></div>`);
       } catch {
         cards.push(`<div class="ep-card" onclick="ep=${e};navTo('pipeline')"><div class="ep-card-num">EP ${e}</div><div class="ep-card-meta">0 ${t('ep.shots')}</div><div class="ep-card-status"><span class="badge">${t('ep.status_none')}</span></div></div>`);
       }
