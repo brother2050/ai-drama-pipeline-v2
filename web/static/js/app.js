@@ -208,7 +208,7 @@ function _crudPage(title, cols, items, editFn, delFn, newFn, emptyHint) {
   const table = _crudTable(cols, items, editFn, delFn);
   const hint = !items.length && emptyHint ? `<p class="dim" style="margin-top:0.5rem;font-size:0.85rem">${emptyHint}</p>` : '';
   return `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem">
-    <h2>${title}</h2><button class="btn btn-success" onclick="${newFn}()">+ ${t('btn.add').replace('+ ', '')}</button></div>${table}${hint}</div>`;
+    <h2>${title}</h2><button class="btn btn-success" onclick="${newFn}()">+ ${t('btn.add')}</button></div>${table}${hint}</div>`;
 }
 
 async function _crudDelete(endpoint, id, label, reload) {
@@ -220,7 +220,7 @@ async function _crudSave(endpoint, id, fieldsFn, overlayId, reload) {
 }
 
 function _showOverlay(id, title, bodyHtml, saveFn, saveLabel) {
-  const btnText = saveLabel || `💾 ${t('btn.save').replace('💾 ', '')}`;
+  const btnText = saveLabel || `💾 ${t('btn.save')}`;
   const o = document.createElement('div'); o.className = 'edit-overlay'; o.id = id;
   o.innerHTML = `<div class="edit-panel"><div class="edit-header"><h3>${esc(title)}</h3>
     <button class="btn btn-sm btn-outline" onclick="document.getElementById('${id}')?.remove()">✕</button></div>
@@ -430,11 +430,11 @@ function renderWB(episodes) {
       <button class="btn btn-outline" onclick="redo()" title="Ctrl+Shift+Z">↪ ${t('undo.redo')}</button>
       ${STEP_BTNS.map(b => `<button class="btn btn-outline" onclick="batchRun('${b.step}')">${b.icon} ${t('wb.batch_label')} ${b.label}</button>`).join('')}
       <span class="dim" style="margin:0 0.3rem">|</span>
-      <button class="btn btn-outline" onclick="runPortraits()">📸 ${t('wb.gen_portraits').replace('📸 ', '')}</button>
-      <button class="btn btn-outline" onclick="runPost()">🎞️ ${t('wb.post_process').replace('🎞️ ', '')}</button>
-      <button class="btn btn-outline" onclick="runMusic()">🎵 ${t('wb.gen_music').replace('🎵 ', '')}</button>
-      <button class="btn btn-outline" onclick="runSubtitle()">📝 ${t('wb.gen_subtitle').replace('📝 ', '')}</button>
-      <button class="btn btn-primary" onclick="runAll()">🚀 ${t('wb.run_all').replace('🚀 ', '')}</button>
+      <button class="btn btn-outline" onclick="runPortraits()">📸 ${t('wb.gen_portraits')}</button>
+      <button class="btn btn-outline" onclick="runPost()">🎞️ ${t('wb.post_process')}</button>
+      <button class="btn btn-outline" onclick="runMusic()">🎵 ${t('wb.gen_music')}</button>
+      <button class="btn btn-outline" onclick="runSubtitle()">📝 ${t('wb.gen_subtitle')}</button>
+      <button class="btn btn-primary" onclick="runAll()">🚀 ${t('wb.run_all')}</button>
     </div></div>
     <div class="card" style="margin-bottom:.7rem"><h2>${t('wb.flow_title')}</h2>${flowHtml}</div>
     <div id="wb-shots-grid" class="wb-shots-grid"></div>
@@ -785,13 +785,13 @@ const CHAR_COLS = [
 /** 通用实体列表渲染 */
 function _loadEntityPage(type, { pageId, icon, titleKey, emptyHintKey, emptyDescKey, editFn, newFn, aiFn, card }) {
   const el = document.getElementById(pageId);
-  const addLabel = t('btn.add').replace('+ ', '');
+  const addLabel = t('btn.add');
   cachedFetch(type, () => api(`/${type}`)).then(d => {
     const items = d[type] || [];
     const grid = items.length
       ? `<div class="entity-grid">${items.map(it => card(it)).join('')}</div>`
       : `<div class="empty-state"><div class="empty-state-icon">${icon}</div><h3>${t(emptyHintKey)}</h3><p>${t(emptyDescKey)}</p><button class="btn btn-success" onclick="${newFn}()">+ ${addLabel}</button></div>`;
-    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${t(titleKey)}</h2><div style="display:flex;gap:0.5rem"><button class="btn btn-outline btn-ai" onclick="${aiFn}()">🤖 AI 生成</button><button class="btn btn-success" onclick="${newFn}()">+ ${addLabel}</button></div></div>${grid}</div>`;
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${icon} ${t(titleKey)}</h2><div style="display:flex;gap:0.5rem"><button class="btn btn-outline btn-ai" onclick="${aiFn}()">🤖 AI 生成</button><button class="btn btn-success" onclick="${newFn}()">+ ${addLabel}</button></div></div>${grid}</div>`;
   }).catch(e => { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; });
 }
 
@@ -851,7 +851,7 @@ function _newEntityPanel(type, { titleKey, fields, buildExtra, reload }) {
       if (f.type === 'textarea') return `<div class="edit-field"><label>${f.label}</label><textarea id="${p}-${f.key}" rows="3"></textarea></div>`;
       return `<div class="edit-field"><label>${f.label}</label><input id="${p}-${f.key}"${f.placeholder ? ` placeholder="${f.placeholder}"` : ''}></div>`;
     }).join('');
-  _showOverlay(`new-${type.slice(0,-1)}-overlay`, `+ ${t(titleKey).replace(/.\s?/, '')}`, body, `save_${p}New()`);
+  _showOverlay(`new-${type.slice(0,-1)}-overlay`, `+ ${t(titleKey)}`, body, `save_${p}New()`);
   window[`save_${p}New`] = async function() {
     const id = val(`${p}-id`);
     if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) { toast(t('common.id_invalid'), 'error'); return; }
@@ -1085,7 +1085,7 @@ async function loadStoryboard() {
     const ss = d.shots || [];
     const epSelector = _episodeSelectHtml(episodes, 'switchEpisode');
     const header = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${t('sb.title')}</h2>
-      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">${epSelector}${_sbViewToggle()}<button class="btn btn-outline btn-ai" onclick="showAIGenStoryboard()">🤖 AI 生成分镜</button><button class="btn btn-outline" onclick="exportStoryboard()">📤 ${t('sb.export')}</button><button class="btn btn-outline" onclick="showImportDialog()">📥 ${t('sb.import')}</button><button class="btn btn-primary" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline')}</button><button class="btn btn-success" onclick="addShot()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>
+      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">${epSelector}${_sbViewToggle()}<button class="btn btn-outline btn-ai" onclick="showAIGenStoryboard()">🤖 AI 生成分镜</button><button class="btn btn-outline" onclick="exportStoryboard()">📤 ${t('sb.export')}</button><button class="btn btn-outline" onclick="showImportDialog()">📥 ${t('sb.import')}</button><button class="btn btn-primary" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline')}</button><button class="btn btn-success" onclick="addShot()">+ ${t('btn.add')}</button></div></div>
       <p class="dim" style="font-size:.76rem;margin-bottom:.5rem">${t('sb.drag_hint')}</p>`;
 
     if (!ss.length) {
@@ -1191,7 +1191,7 @@ async function loadProjects() {
       const deleteBtn = (!p.active && !p.isDefault) ? `<button class="btn btn-sm btn-danger" onclick="deleteProj('${esc(p.name)}')">🗑️</button>` : '';
       return `<tr><td>${p.active ? '→' : ''}</td><td>${esc(p.name)}</td><td class="dim" style="font-size:0.75rem">${esc(p.path)}</td><td>${p.active ? `<span class="badge badge-green">${t('common.current')}</span>` : switchBtn + deleteBtn}</td></tr>`;
     }).join('');
-    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>${t('proj.title')}</h2><button class="btn btn-success" onclick="newProj()">+ ${t('btn.add').replace('+ ', '')}</button></div>
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>${t('proj.title')}</h2><button class="btn btn-success" onclick="newProj()">+ ${t('btn.add')}</button></div>
       <table><thead><tr><th></th><th>${t('common.name')}</th><th>${t('common.path')}</th><th>${t('common.status')}</th></tr></thead><tbody>${rows}</tbody></table></div>
       <div id="ep-manager"></div>`;
     loadEpisodeManager();
@@ -1289,7 +1289,7 @@ async function loadSettings() {
             <option value="3" ${localStorage.getItem('drama_concurrency')==='3'?'selected':''}>3</option>
             <option value="5" ${localStorage.getItem('drama_concurrency')==='5'?'selected':''}>5</option>
           </select></div></div>
-        <button class="btn btn-primary" style="margin-top:1rem" onclick="saveCfg()">💾 ${t('btn.save').replace('💾 ', '')}</button></div>`;
+        <button class="btn btn-primary" style="margin-top:1rem" onclick="saveCfg()">💾 ${t('btn.save')}</button></div>`;
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 
@@ -1423,7 +1423,7 @@ function showImportDialog() {
       <input type="file" id="import-file" accept=".csv,.json" style="display:block;margin-top:.3rem"></div>
     <div class="edit-field"><label>${t('sb.import_mode')}</label>
       <select id="import-mode"><option value="merge">${t('sb.import_merge')}</option><option value="overwrite">${t('sb.import_overwrite')}</option></select></div>
-    <div id="import-status" class="dim" style="margin-top:.5rem"></div>`, `doImport()`, '📥 ' + t('sb.import'));
+    <div id="import-status" class="dim" style="margin-top:.5rem"></div>`, `doImport()`, `📥 ${t('sb.import')}`);
 }
 
 async function doImport() {
@@ -1492,7 +1492,7 @@ async function deleteCharWithRef(id) {
   if (count > 0) {
     if (!await modalConfirm(t('char.confirm_delete_ref', { n: count }))) return;
   }
-  _crudDelete('characters', id, t('char.title').replace(/👤\s?/, ''), loadCharacters);
+  _crudDelete('characters', id, t('char.title'), loadCharacters);
 }
 
 async function deleteSceneWithRef(id) {
@@ -1501,7 +1501,7 @@ async function deleteSceneWithRef(id) {
   if (count > 0) {
     if (!await modalConfirm(t('scene.confirm_delete_ref', { n: count }))) return;
   }
-  _crudDelete('scenes', id, t('scene.title').replace(/🏔️\s?/, ''), loadScenes);
+  _crudDelete('scenes', id, t('scene.title'), loadScenes);
 }
 
 // ══════════════════════════════════════════════════════════

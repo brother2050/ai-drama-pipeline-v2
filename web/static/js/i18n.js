@@ -2,12 +2,12 @@
 const I18N = {
   // 通用
   'app.title': { zh: '🎬 AI 短剧工作台 v2', en: '🎬 AI Drama Studio v2' },
-  'btn.save': { zh: '💾 保存', en: '💾 Save' },
+  'btn.save': { zh: '保存', en: 'Save' },
   'btn.cancel': { zh: '取消', en: 'Cancel' },
   'btn.close': { zh: '关闭', en: 'Close' },
   'btn.delete': { zh: '🗑️', en: '🗑️' },
   'btn.edit': { zh: '✏️', en: '✏️' },
-  'btn.add': { zh: '+ 新建', en: '+ New' },
+  'btn.add': { zh: '新建', en: 'New' },
   'btn.confirm': { zh: '确认', en: 'Confirm' },
 
   // 侧边栏（纯文字，图标由 NAV_ICONS 控制）
@@ -91,7 +91,7 @@ const I18N = {
   'confirm.batch': { zh: '批量执行 {step}？共 {n} 个镜头', en: 'Batch {step}? {n} shots' },
 
   // 角色
-  'char.title': { zh: '👤 角色', en: '👤 Characters' },
+  'char.title': { zh: '角色', en: 'Characters' },
   'char.none': { zh: '暂无', en: 'None' },
   'char.name': { zh: '姓名', en: 'Name' },
   'char.gender': { zh: '性别', en: 'Gender' },
@@ -100,7 +100,7 @@ const I18N = {
   'char.edit_title': { zh: '✏️ 编辑角色', en: '✏️ Edit Character' },
 
   // 场景
-  'scene.title': { zh: '🏔️ 场景', en: '🏔️ Scenes' },
+  'scene.title': { zh: '场景', en: 'Scenes' },
   'scene.none': { zh: '暂无', en: 'None' },
   'scene.name': { zh: '名称', en: 'Name' },
   'scene.desc': { zh: '描述', en: 'Description' },
@@ -109,7 +109,7 @@ const I18N = {
   'scene.edit_title': { zh: '✏️ 编辑场景', en: '✏️ Edit Scene' },
 
   // 分镜表
-  'sb.title': { zh: '📝 分镜表', en: '📝 Storyboard' },
+  'sb.title': { zh: '分镜表', en: 'Storyboard' },
   'sb.shot_id': { zh: '镜号', en: 'Shot#' },
   'sb.none': { zh: '暂无', en: 'None' },
   'sb.added': { zh: '已添加', en: 'Added' },
@@ -117,7 +117,7 @@ const I18N = {
   'sb.empty_desc': { zh: '添加镜头或使用 AI 从大纲生成', en: 'Add shots or generate from outline with AI' },
 
   // 项目
-  'proj.title': { zh: '📂 项目', en: '📂 Projects' },
+  'proj.title': { zh: '项目', en: 'Projects' },
   'proj.current': { zh: '当前', en: 'Current' },
   'proj.name': { zh: '名称', en: 'Name' },
   'proj.path': { zh: '路径', en: 'Path' },
@@ -179,9 +179,9 @@ const I18N = {
   'wb.no_storyboard': { zh: '暂无分镜', en: 'No storyboard' },
   'wb.add_shots_first': { zh: '先在分镜表添加镜头', en: 'Add shots in Storyboard first' },
   'wb.go_edit_btn': { zh: '去编辑', en: 'Go Edit' },
-  'wb.gen_portraits': { zh: '📸 定妆照', en: '📸 Portraits' },
-  'wb.post_process': { zh: '🎞️ 后期合成', en: '🎞️ Post' },
-  'wb.run_all': { zh: '🚀 一键全流程', en: '🚀 Run All' },
+  'wb.gen_portraits': { zh: '定妆照', en: 'Portraits' },
+  'wb.post_process': { zh: '后期合成', en: 'Post' },
+  'wb.run_all': { zh: '一键全流程', en: 'Run All' },
   'wb.tools': { zh: '工具', en: 'Tools' },
   'wb.flow_title': { zh: '生产流程', en: 'Production Flow' },
   'wb.post_short': { zh: '后期', en: 'Post' },
@@ -270,8 +270,8 @@ const I18N = {
   'scene.empty_desc': { zh: '场景用于分镜表中的场景配置，支持 AI 生成', en: 'Scenes are used in storyboard, supports AI generation' },
 
   // 配乐/字幕
-  'wb.gen_music': { zh: '🎵 配乐', en: '🎵 Music' },
-  'wb.gen_subtitle': { zh: '📝 字幕', en: '📝 Subtitle' },
+  'wb.gen_music': { zh: '配乐', en: 'Music' },
+  'wb.gen_subtitle': { zh: '字幕', en: 'Subtitle' },
   'wb.music_duration': { zh: '时长(秒)', en: 'Duration(s)' },
   'wb.music_mood': { zh: '情绪', en: 'Mood' },
 
@@ -305,9 +305,9 @@ const I18N = {
   'sb.reordered': { zh: '✅ 顺序已更新', en: '✅ Order updated' },
 
   // 3.2 导入/导出
-  'sb.import': { zh: '📥 导入', en: '📥 Import' },
-  'sb.export': { zh: '📤 导出', en: '📤 Export' },
-  'sb.import_title': { zh: '📥 导入分镜', en: '📥 Import Storyboard' },
+  'sb.import': { zh: '导入', en: 'Import' },
+  'sb.export': { zh: '导出', en: 'Export' },
+  'sb.import_title': { zh: '导入分镜', en: 'Import Storyboard' },
   'sb.import_mode': { zh: '导入模式', en: 'Import Mode' },
   'sb.import_merge': { zh: '合并（追加）', en: 'Merge (Append)' },
   'sb.import_overwrite': { zh: '覆盖（替换）', en: 'Overwrite (Replace)' },
@@ -346,13 +346,13 @@ const I18N = {
 
   // 4.2 主体库
   'nav.assets': { zh: '主体库', en: 'Assets' },
-  'asset.title': { zh: '📦 主体库', en: '📦 Asset Library' },
+  'asset.title': { zh: '主体库', en: 'Asset Library' },
   'asset.desc': { zh: '全局共享的角色和场景，可跨项目复用', en: 'Global shared characters and scenes, reusable across projects' },
-  'asset.copy_to_proj': { zh: '📋 复制到当前项目', en: '📋 Copy to Project' },
+  'asset.copy_to_proj': { zh: '复制到当前项目', en: 'Copy to Project' },
   'asset.copied': { zh: '✅ 已复制到当前项目', en: '✅ Copied to current project' },
   'asset.empty': { zh: '主体库为空', en: 'Asset library is empty' },
   'asset.empty_hint': { zh: '在角色/场景管理中添加到主体库', en: 'Add assets from Character/Scene management' },
-  'asset.add_to_lib': { zh: '📦 添加到主体库', en: '📦 Add to Library' },
+  'asset.add_to_lib': { zh: '添加到主体库', en: 'Add to Library' },
 
   // 4.3 多剧集管理
   'ep.title': { zh: '📺 集数管理', en: '📺 Episode Manager' },
