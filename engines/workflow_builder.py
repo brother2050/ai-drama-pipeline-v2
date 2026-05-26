@@ -93,7 +93,13 @@ class WorkflowBuilder:
         if os.path.exists(path):
             with open(path, encoding="utf-8") as f:
                 return json.load(f)
-        logger.debug(f"工作流不存在: {path}")
+        # 回退到仓库根目录 workflows/
+        root_wf = os.path.join(os.path.dirname(__file__), "..", "workflows", name)
+        root_wf = os.path.normpath(root_wf)
+        if os.path.exists(root_wf):
+            with open(root_wf, encoding="utf-8") as f:
+                return json.load(f)
+        logger.debug(f"工作流不存在: {path} (也检查了 {root_wf})")
         return {}
 
     def _apply_gpu(self, wf: dict, stage: str, gpu_cfg: dict) -> None:
