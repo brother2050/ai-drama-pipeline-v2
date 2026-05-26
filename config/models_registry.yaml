@@ -86,4 +86,12 @@ video_backends:
       fps: 12
       steps: 20
       denoise: 0.55
+  cosmos-video:
+    workflow: "04_img2video_cosmos.json"
+    sampler_node: "KSampler"
+    default_params:
+      frames: 93
+      fps: 16
+      steps: 35
+      denoise: 1
 
