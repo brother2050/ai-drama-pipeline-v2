@@ -636,20 +636,27 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
         char_dir.mkdir(parents=True, exist_ok=True)
 
         char_descriptions = []
-        for cid in sorted(char_ids):
+        sorted_ids = sorted(char_ids)
+        for cid in sorted_ids:
             char_shots = [s for s in shots if cid in (s.get("characters") or "").split("+")]
             actions = [s.get("action", "") for s in char_shots[:5]]
             dialogues = [s.get("dialogue", "") for s in char_shots[:5] if s.get("dialogue") and s.get("dialogue") != "......"]
-            desc_parts = [f"根据以下信息生成一个角色配置。", f"剧情大纲: {outline}", f"该角色在分镜中的表现:"]
+            desc_parts = [
+                f"根据以下信息生成角色「{cid}」的配置。",
+                f"角色ID: {cid}（必须原样填入 id 字段，不可修改）",
+                f"剧情大纲: {outline}",
+                f"该角色在分镜中的表现:",
+            ]
             if actions:
                 for idx, a in enumerate(actions, 1):
                     desc_parts.append(f"  镜头{idx}: {a}")
             if dialogues:
                 desc_parts.append(f"台词: {' / '.join(dialogues)}")
+            desc_parts.append(f"\n【重要】此角色的 id 必须为「{cid}」，且 name 必须是与其他角色不同的独立中文名，不能与其他角色重名。")
             char_descriptions.append("\n".join(desc_parts))
 
         try:
-            new_chars = generate_characters(llm, char_descriptions)
+            new_chars = generate_characters(llm, char_descriptions, expected_ids=sorted_ids)
             sorted_ids = sorted(char_ids)
             for i, char in enumerate(new_chars):
                 if char is None:
