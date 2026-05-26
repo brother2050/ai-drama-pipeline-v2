@@ -267,7 +267,11 @@ def test_tool(name: str):
         if name == "tts":
             backend = cfg.get("models", {}).get("tts_backend", "mimo-voicedesign")
             if "mimo" in backend:
-                return {"ok": True, "name": name, "message": f"MIMO API Key 已配置", **result}
+                backend_key = backend.replace("-", "_")
+                cfg_key = cfg.get("models", {}).get(backend_key, {}).get("api_key", "")
+                env_key = os.environ.get("MIMO_API_KEY", "")
+                source = "配置文件" if cfg_key else ("环境变量" if env_key else "未配置")
+                return {"ok": True, "name": name, "message": f"MIMO API Key ({source})", **result}
             api_url = cfg.get("models", {}).get(backend.replace("-", "_"), {}).get("api_url", "")
             import httpx
             r = httpx.get(api_url, timeout=5)

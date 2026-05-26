@@ -9,7 +9,9 @@ class AnimateDiff:
     """AnimateDiff 视频后端（通过 ComfyUI API 调用）"""
     def __init__(self, config: dict):
         self._config = config
-        self._comfyui_url = config.get("comfyui_url", "http://127.0.0.1:8188")
+        self._comfyui_url = (config.get("comfyui_url")
+                             or config.get("url")
+                             or "http://127.0.0.1:8188").rstrip("/")
         self._timeout = config.get("timeouts", {}).get("comfyui", 300)
     @property
     def name(self): return "animatediff"
@@ -35,7 +37,9 @@ class CogVideoX:
     """CogVideoX 视频生成 — ComfyUI API"""
     def __init__(self, config: dict):
         self._config = config
-        self._comfyui_url = config.get("comfyui_url", "http://127.0.0.1:8188")
+        self._comfyui_url = (config.get("comfyui_url")
+                             or config.get("url")
+                             or "http://127.0.0.1:8188").rstrip("/")
         self._timeout = config.get("timeouts", {}).get("comfyui", 300)
     @property
     def name(self): return "cogvideox"

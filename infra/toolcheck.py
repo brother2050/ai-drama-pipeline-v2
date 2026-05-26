@@ -45,9 +45,12 @@ def check_tool(name: str, cfg: dict) -> dict:
     if name == "tts":
         backend = cfg.get("models", {}).get("tts_backend", "mimo-voicedesign")
         if "mimo" in backend:
-            ok = bool(os.environ.get("MIMO_API_KEY"))
+            # 检查配置文件或环境变量中的 API Key
+            backend_key = backend.replace("-", "_")
+            cfg_key = cfg.get("models", {}).get(backend_key, {}).get("api_key", "")
+            ok = bool(cfg_key or os.environ.get("MIMO_API_KEY"))
             return {"available": ok, "backend": backend, "type": "cloud",
-                    "reason": "" if ok else "MIMO_API_KEY 未配置"}
+                    "reason": "" if ok else "MIMO_API_KEY 未配置（设置页或环境变量）"}
         else:
             api_url = cfg.get("models", {}).get(backend.replace("-", "_"), {}).get("api_url", "")
             ok = _url_ok(api_url) if api_url else False
