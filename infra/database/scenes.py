@@ -12,18 +12,14 @@ def _row_to_dict(row) -> dict:
 
 
 def get_all(pool) -> list[dict]:
-    conn = pool.connect()
-    try:
+    with pool.connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT * FROM scenes ORDER BY id")
         return [_row_to_dict(r) for r in cur.fetchall()]
-    finally:
-        pool.release(conn)
 
 
 def upsert(pool, scene_id: str, data: dict):
-    conn = pool.connect()
-    try:
+    with pool.connection() as conn:
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO scenes (id, name, description, lighting, reference_image, depth_map)
@@ -36,15 +32,10 @@ def upsert(pool, scene_id: str, data: dict):
               data.get("lighting", ""), data.get("reference_image", ""),
               data.get("depth_map", "")))
         conn.commit()
-    finally:
-        pool.release(conn)
 
 
 def delete(pool, scene_id: str):
-    conn = pool.connect()
-    try:
+    with pool.connection() as conn:
         cur = conn.cursor()
         cur.execute("DELETE FROM scenes WHERE id = %s", (scene_id,))
         conn.commit()
-    finally:
-        pool.release(conn)

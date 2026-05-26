@@ -23,7 +23,9 @@ class TemplateMusic:
         cmd = [ffmpeg, "-y", "-f", "lavfi", "-i",
                f"sine=frequency={freq}:duration={duration}",
                "-af", f"volume=0.15,tremolo=f=4:d=0.3", output]
-        subprocess.run(cmd, capture_output=True, timeout=30)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if r.returncode != 0:
+            raise RuntimeError(f"ffmpeg 模板配乐失败: {r.stderr[-200:]}")
         return output
 
     def health_check(self): return True, "template music (ffmpeg)"

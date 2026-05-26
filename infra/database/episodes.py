@@ -11,18 +11,14 @@ def _row_to_dict(row) -> dict:
 
 
 def get_all(pool) -> list[dict]:
-    conn = pool.connect()
-    try:
+    with pool.connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT * FROM episodes ORDER BY episode")
         return [_row_to_dict(r) for r in cur.fetchall()]
-    finally:
-        pool.release(conn)
 
 
 def upsert(pool, episode: int, data: dict):
-    conn = pool.connect()
-    try:
+    with pool.connection() as conn:
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO episodes (episode, title, status, shot_count)
@@ -32,5 +28,3 @@ def upsert(pool, episode: int, data: dict):
         """, (episode, data.get("title", ""), data.get("status", "pending"),
               data.get("shot_count", 0)))
         conn.commit()
-    finally:
-        pool.release(conn)

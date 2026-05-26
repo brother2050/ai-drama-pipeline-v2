@@ -61,7 +61,7 @@ def save_config(path: str, data: dict[str, Any]) -> None:
         yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
     abspath = str(Path(path).resolve())
     with _lock:
-        _cache[abspath] = (data, os.path.getmtime(abspath))
+        _cache[abspath] = (copy.deepcopy(data), os.path.getmtime(abspath))
 
 
 class Config:

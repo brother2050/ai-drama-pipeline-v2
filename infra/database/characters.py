@@ -10,7 +10,6 @@ def _row_to_dict(row) -> dict:
         return {}
     if hasattr(row, 'keys'):
         d = {k: row[k] for k in row.keys()}
-        # 反序列化 JSON 字段
         for json_field in ("voice_config", "reference_images"):
             if json_field in d and isinstance(d[json_field], str):
                 try:
@@ -22,29 +21,22 @@ def _row_to_dict(row) -> dict:
 
 
 def get_all(pool) -> list[dict]:
-    conn = pool.connect()
-    try:
+    with pool.connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT * FROM characters ORDER BY id")
         return [_row_to_dict(r) for r in cur.fetchall()]
-    finally:
-        pool.release(conn)
 
 
 def get_by_id(pool, char_id: str) -> dict | None:
-    conn = pool.connect()
-    try:
+    with pool.connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT * FROM characters WHERE id = %s", (char_id,))
         row = cur.fetchone()
         return _row_to_dict(row) if row else None
-    finally:
-        pool.release(conn)
 
 
 def upsert(pool, char_id: str, data: dict):
-    conn = pool.connect()
-    try:
+    with pool.connection() as conn:
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO characters (id, name, appearance, voice_config, reference_images)
@@ -56,15 +48,10 @@ def upsert(pool, char_id: str, data: dict):
               json.dumps(data.get("voice", {}), ensure_ascii=False),
               json.dumps(data.get("reference_images", []), ensure_ascii=False)))
         conn.commit()
-    finally:
-        pool.release(conn)
 
 
 def delete(pool, char_id: str):
-    conn = pool.connect()
-    try:
+    with pool.connection() as conn:
         cur = conn.cursor()
         cur.execute("DELETE FROM characters WHERE id = %s", (char_id,))
         conn.commit()
-    finally:
-        pool.release(conn)

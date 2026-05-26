@@ -40,42 +40,48 @@ except ImportError:
             pass
 
 # ── 简易 Rate Limiting ──
+import threading as _threading
 _rate_limit_store: dict[str, list[float]] = {}
+_rate_limit_lock = _threading.Lock()
 _RATE_LIMIT_WINDOW = 60  # 秒
 _RATE_LIMIT_MAX = 120    # 每窗口最大请求数
 
 
 def _check_rate_limit(client_ip: str) -> None:
-    """简易滑动窗口 rate limiting（自动清理过期 IP）"""
+    """简易滑动窗口 rate limiting（线程安全，自动清理过期 IP）"""
     import time
     now = time.time()
     window_start = now - _RATE_LIMIT_WINDOW
 
-    # 每次调用时清理过期 IP（防止低流量环境下内存泄漏）
-    expired_ips = [ip for ip, timestamps in _rate_limit_store.items()
-                   if not timestamps or timestamps[-1] < window_start]
-    for ip in expired_ips:
-        del _rate_limit_store[ip]
+    with _rate_limit_lock:
+        # 每次调用时清理过期 IP（防止低流量环境下内存泄漏）
+        expired_ips = [ip for ip, timestamps in _rate_limit_store.items()
+                       if not timestamps or timestamps[-1] < window_start]
+        for ip in expired_ips:
+            del _rate_limit_store[ip]
 
-    if client_ip not in _rate_limit_store:
-        _rate_limit_store[client_ip] = []
+        if client_ip not in _rate_limit_store:
+            _rate_limit_store[client_ip] = []
 
-    # 清理过期记录
-    _rate_limit_store[client_ip] = [
-        t for t in _rate_limit_store[client_ip] if t > window_start
-    ]
+        # 清理过期记录
+        _rate_limit_store[client_ip] = [
+            t for t in _rate_limit_store[client_ip] if t > window_start
+        ]
 
-    if len(_rate_limit_store[client_ip]) >= _RATE_LIMIT_MAX:
-        raise HTTPException(429, "请求过于频繁，请稍后再试")
+        if len(_rate_limit_store[client_ip]) >= _RATE_LIMIT_MAX:
+            raise HTTPException(429, "请求过于频繁，请稍后再试")
 
-    _rate_limit_store[client_ip].append(now)
+        _rate_limit_store[client_ip].append(now)
 
 
 def _get_client_ip(request: Request) -> str:
-    """获取客户端 IP（支持反向代理）"""
+    """获取客户端 IP（仅在有反向代理时信任 X-Forwarded-For）"""
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        # 仅取最后一个代理 IP（最接近真实客户端）
+        ip = forwarded.split(",")[-1].strip()
+        if ip:
+            return ip
     return request.client.host if request.client else "unknown"
 
 
@@ -537,13 +543,29 @@ def _sys_cfg_path() -> str:
 
 @router.get("/system/config")
 def get_system_config():
-    """读取系统全局配置"""
+    """读取系统全局配置（敏感字段脱敏）"""
     path = _sys_cfg_path()
     if not os.path.isfile(path):
         return {}
     with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
-    return cfg
+    return _redact_sensitive(cfg)
+
+
+_SENSITIVE_KEYS = {"api_key", "api_secret", "password", "token", "dsn", "secret", "api_key", "access_key", "private_key"}
+
+
+def _redact_sensitive(d: dict) -> dict:
+    """递归脱敏敏感字段"""
+    result = {}
+    for k, v in d.items():
+        if isinstance(v, dict):
+            result[k] = _redact_sensitive(v)
+        elif any(s in k.lower() for s in _SENSITIVE_KEYS) and isinstance(v, str) and v:
+            result[k] = "***"
+        else:
+            result[k] = v
+    return result
 
 
 @router.post("/system/config")

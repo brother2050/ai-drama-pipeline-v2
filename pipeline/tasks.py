@@ -86,8 +86,8 @@ def _db_mark_running(config_path: str, episode: int, shot_id: str, step: str) ->
         from infra.database.pool import get_pool
         from infra.database.generation import upsert_status
         upsert_status(get_pool(), episode, shot_id, step, status="running")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"DB mark_running 跳过: {e}")
 
 
 def _try_mark_running_atomic(config_path: str, episode: int, shot_id: str, step: str) -> bool:
@@ -101,7 +101,8 @@ def _try_mark_running_atomic(config_path: str, episode: int, shot_id: str, step:
         pool = get_pool()
         conn = pool.connect()
         cur = conn.cursor()
-        lock_key = hash(f"gen:{episode}:{shot_id}:{step}") & 0x7FFFFFFF
+        import zlib
+        lock_key = zlib.crc32(f"gen:{episode}:{shot_id}:{step}".encode()) & 0x7FFFFFFF
         try:
             cur.execute("SELECT pg_try_advisory_lock(%s)", (lock_key,))
             locked = cur.fetchone()[0]
@@ -413,7 +414,9 @@ def step_lipsync(self, config_path, episode, shot_id): return _step_task(self, "
 
 @app.task(bind=True, name="pipeline.shot", soft_time_limit=1800)
 def shot_task(self, config_path: str, episode: int, shot_data: dict):
-    shot_id = shot_data.get("shot_id", "001")
+    shot_id = shot_data.get("shot_id", "")
+    if not shot_id:
+        return {"shot_id": "", "status": "error", "reason": "镜头数据缺少 shot_id"}
     steps = [("tts", _run_tts), ("first_frame", _run_first_frame), ("video", _run_video), ("lipsync", _run_lipsync)]
     results = {}
     for i, (name, fn) in enumerate(steps):
@@ -544,10 +547,9 @@ def tts_single_task(self, config_path: str, text: str, voice_config: dict | None
     cfg, cont = _init_ctx(config_path)
     self.update_state(state="PROGRESS", meta={"step": "tts", "progress": 20, "message": "TTS..."})
     # 保存到项目目录下，使前端可通过 /api/files 访问
-    from pathlib import Path
     preview_dir = Path(cfg.project_dir) / "output" / "tts_preview"
     preview_dir.mkdir(parents=True, exist_ok=True)
-    import hashlib, time
+    import hashlib
     tag = hashlib.md5(f"{text}{time.time()}".encode()).hexdigest()[:8]
     output = str(preview_dir / f"preview_{tag}.wav")
     try:
@@ -657,7 +659,6 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
 
         try:
             new_chars = generate_characters(llm, char_descriptions, expected_ids=sorted_ids)
-            sorted_ids = sorted(char_ids)
             for i, char in enumerate(new_chars):
                 if char is None:
                     logger.warning(f"  ⚠ 角色 {sorted_ids[i]} 生成失败，跳过")

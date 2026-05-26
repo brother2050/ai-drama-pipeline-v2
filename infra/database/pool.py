@@ -4,6 +4,7 @@ import logging
 import os
 import threading
 from pathlib import Path
+from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
@@ -28,17 +29,37 @@ class PgPool:
 
     def connect(self):
         conn = self._pool.getconn()
-        # 健康检查：如果连接已关闭，丢弃并重新获取
+        # 健康检查：如果连接已关闭或不可用，丢弃并重新获取
         if getattr(conn, 'closed', False):
             try:
                 self._pool.putconn(conn, close=True)
             except Exception:
                 pass
             conn = self._pool.getconn()
+        else:
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT 1")
+                cur.close()
+            except Exception:
+                try:
+                    self._pool.putconn(conn, close=True)
+                except Exception:
+                    pass
+                conn = self._pool.getconn()
         return conn
 
     def release(self, conn):
         self._pool.putconn(conn)
+
+    @contextmanager
+    def connection(self):
+        """安全连接上下文管理器 — connect 失败时不会 NameError"""
+        conn = self.connect()
+        try:
+            yield conn
+        finally:
+            self.release(conn)
 
     def close(self):
         self._pool.closeall()

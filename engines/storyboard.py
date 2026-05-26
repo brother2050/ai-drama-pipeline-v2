@@ -2,6 +2,7 @@
 from __future__ import annotations
 import csv
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -64,10 +65,20 @@ def save_storyboard(path: Path, shots: list[dict], episode: int, append: bool = 
                 if ep != episode:
                     existing.append(row)
 
-    with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=STORYBOARD_FIELDNAMES, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(existing + shots)
+    import tempfile
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".csv.tmp")
+    try:
+        with os.fdopen(tmp_fd, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=STORYBOARD_FIELDNAMES, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(existing + shots)
+        os.replace(tmp_path, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def validate_shot(shot: dict) -> list[str]:

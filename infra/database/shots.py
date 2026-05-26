@@ -12,18 +12,14 @@ def _row_to_dict(row) -> dict:
 
 
 def get_by_episode(pool, episode: int) -> list[dict]:
-    conn = pool.connect()
-    try:
+    with pool.connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT * FROM shots WHERE episode = %s ORDER BY shot_id", (episode,))
         return [_row_to_dict(r) for r in cur.fetchall()]
-    finally:
-        pool.release(conn)
 
 
 def upsert(pool, episode: int, shot_id: str, data: dict):
-    conn = pool.connect()
-    try:
+    with pool.connection() as conn:
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO shots (episode, shot_id, scene_id, characters, action, dialogue,
@@ -41,5 +37,3 @@ def upsert(pool, episode: int, shot_id: str, data: dict):
               data.get("camera", ""), data.get("shot_type", ""),
               data.get("duration", 0), data.get("emotion", ""), data.get("outfit", "")))
         conn.commit()
-    finally:
-        pool.release(conn)
