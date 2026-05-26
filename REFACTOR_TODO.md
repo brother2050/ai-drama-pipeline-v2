@@ -16,30 +16,35 @@
 | 6 | api.py | `_active_project_dir()` → `_proj()` 别名统一 | ✅ |
 | 7 | tasks.py | `_init_ctx()` / `_cfg_dir()` 提取 | ✅ |
 | 8 | tasks.py | `ai_storyboard_task` 用 `_init_ctx` 替代 6 行样板 | ✅ |
+| 9 | tasks.py | `_shot_dir` 用 `_cfg_dir` 替换 (T5) | ✅ |
+| 10 | tasks.py | `_run_subtitle` 用 `_init_ctx` + `_cfg_dir` 替换 (T4) | ✅ |
+| 11 | tasks.py | `tts_single_task` 用 `_init_ctx` 替换 (T3) | ✅ |
+| 12 | tasks.py | `music_task` 用 `_init_ctx` 替换 (T2) | ✅ |
+| 13 | tasks.py | `ai_characters_task` / `ai_scenes_task` 用 `_init_ctx` + `_cfg_dir` 替换 (T1) | ✅ |
 
 ---
 
 ## 📋 待完成 — tasks.py
 
-### T1. `ai_characters_task` / `ai_scenes_task` 用 `_init_ctx` 替换
+### ~~T1. `ai_characters_task` / `ai_scenes_task` 用 `_init_ctx` 替换~~ ✅
 - 当前：每个函数 5 行 `_ensure_path + Config + Container + registered`
 - 目标：`cfg, cont = _init_ctx(config_path)` 一行搞定
 - 位置：line ~635, ~683
 
-### T2. `music_task` 用 `_init_ctx` 替换
+### ~~T2. `music_task` 用 `_init_ctx` 替换~~ ✅
 - 当前：`_ensure_path()` + `from infra.config import Config` + `cfg = Config(...)`
 - 位置：line ~522
 
-### T3. `tts_single_task` 用 `_init_ctx` 替换
+### ~~T3. `tts_single_task` 用 `_init_ctx` 替换~~ ✅
 - 当前：`_ensure_path()` + Config + Container + registered（6行）
 - 位置：line ~498
 
-### T4. `_run_subtitle` 用 `_cfg_dir` 替换路径构建
+### ~~T4. `_run_subtitle` 用 `_cfg_dir` 替换路径构建~~ ✅
 - 当前：`from infra.config import Config; cfg = Config(...); Path(cfg.project_dir) / ...`
 - 目标：`sb = _cfg_dir(config_path, "storyboard", "episodes.csv")`
 - 位置：line ~475
 
-### T5. `_shot_dir` 用 `_cfg_dir` 替换
+### ~~T5. `_shot_dir` 用 `_cfg_dir` 替换~~ ✅
 - 当前：`from infra.config import Config; return Path(Config(config_path).project_dir) / ...`
 - 目标：`return _cfg_dir(config_path, "output", f"e{episode:02d}", f"s{shot_id}")`
 - 位置：line ~49

@@ -47,8 +47,7 @@ def _find_shot(config_path: str, episode: int, shot_id: str) -> dict | None:
 
 
 def _shot_dir(config_path: str, episode: int, shot_id: str) -> Path:
-    from infra.config import Config
-    return Path(Config(config_path).project_dir) / "output" / f"e{episode:02d}" / f"s{shot_id}"
+    return _cfg_dir(config_path, "output", f"e{episode:02d}", f"s{shot_id}")
 
 
 def _check_available(tool_name: str, config_path: str) -> tuple[bool, str]:
@@ -482,18 +481,16 @@ def portraits_task(self, config_path: str):
 # ══════════════════════════════════════════════════════════
 
 def _run_subtitle(config_path: str, episode: int) -> dict:
-    _ensure_path()
+    cfg, _ = _init_ctx(config_path)
     from post.subtitle import generate_srt
-    from infra.config import Config
-    cfg = Config(config_path)
-    sb = Path(cfg.project_dir) / "storyboard" / "episodes.csv"
+    sb = _cfg_dir(config_path, "storyboard", "episodes.csv")
     if not sb.exists():
         return {"error": "分镜表不存在"}
     with open(sb, encoding="utf-8") as f:
         shots = [dict(r) for r in csv.DictReader(f) if _safe_int(r.get("episode", 0)) == episode]
     if not shots:
         return {"error": f"第{episode}集没有镜头"}
-    out_dir = Path(cfg.project_dir) / "output" / f"e{episode:02d}"
+    out_dir = _cfg_dir(config_path, "output", f"e{episode:02d}")
     out_dir.mkdir(parents=True, exist_ok=True)
     srt = str(out_dir / f"episode_{episode:02d}.srt")
     generate_srt(shots, srt, transition_duration=cfg.get("post_production.transition_duration", 0.5))
@@ -509,12 +506,7 @@ def _run_post(config_path: str, episode: int, vertical: bool = False) -> None:
 @app.task(bind=True, name="pipeline.tts_single", soft_time_limit=120)
 def tts_single_task(self, config_path: str, text: str, voice_config: dict | None = None,
                     emotion: str = "neutral", language: str = "zh"):
-    _ensure_path()
-    from infra.config import Config
-    from api.registry import Container
-    from api import _ensure_registered; _ensure_registered()
-    cfg = Config(config_path)
-    cont = Container(cfg.data)
+    cfg, cont = _init_ctx(config_path)
     self.update_state(state="PROGRESS", meta={"step": "tts", "progress": 20, "message": "TTS..."})
     import tempfile
     output = None
@@ -537,10 +529,8 @@ def tts_single_task(self, config_path: str, text: str, voice_config: dict | None
 
 @app.task(bind=True, name="pipeline.music", soft_time_limit=120)
 def music_task(self, config_path: str, duration: float, mood: str, output: str):
-    _ensure_path()
+    cfg, _ = _init_ctx(config_path)
     from post.music import MusicGenerator
-    from infra.config import Config
-    cfg = Config(config_path)
     gen = MusicGenerator(backend=cfg.get("models", {}).get("music_backend", "template"), config=cfg.data)
     try:
         result = gen.generate(duration, output, mood=mood)
@@ -634,18 +624,12 @@ def _load_yaml_entities(directory, key: str) -> list:
 @app.task(bind=True, name="pipeline.ai.characters", soft_time_limit=300)
 def ai_characters_task(self, config_path: str, descriptions: list[str]):
     """AI 生成角色（异步）"""
-    _ensure_path()
-    from infra.config import Config
-    from api import _ensure_registered; _ensure_registered()
-    from api.registry import Container
     from engines.llm_generator import generate_characters
-    from pathlib import Path as P
     import yaml
 
     self.update_state(state="PROGRESS", meta={"step": "ai_characters", "progress": 20, "message": "AI 正在生成角色..."})
 
-    cfg = Config(config_path)
-    cont = Container(cfg.data)
+    cfg, cont = _init_ctx(config_path)
     try:
         llm = cont.get("llm")
     except Exception as e:
@@ -660,7 +644,7 @@ def ai_characters_task(self, config_path: str, descriptions: list[str]):
         return {"status": "error", "reason": "LLM 未能生成有效角色"}
 
     # 保存
-    char_dir = P(cfg.project_dir) / "config" / "characters"
+    char_dir = _cfg_dir(config_path, "config", "characters")
     char_dir.mkdir(parents=True, exist_ok=True)
     saved = []
     for char in chars:
@@ -682,18 +666,12 @@ def ai_characters_task(self, config_path: str, descriptions: list[str]):
 @app.task(bind=True, name="pipeline.ai.scenes", soft_time_limit=300)
 def ai_scenes_task(self, config_path: str, descriptions: list[str]):
     """AI 生成场景（异步）"""
-    _ensure_path()
-    from infra.config import Config
-    from api import _ensure_registered; _ensure_registered()
-    from api.registry import Container
     from engines.llm_generator import generate_scenes
-    from pathlib import Path as P
     import yaml
 
     self.update_state(state="PROGRESS", meta={"step": "ai_scenes", "progress": 20, "message": "AI 正在生成场景..."})
 
-    cfg = Config(config_path)
-    cont = Container(cfg.data)
+    cfg, cont = _init_ctx(config_path)
     try:
         llm = cont.get("llm")
     except Exception as e:
@@ -707,7 +685,7 @@ def ai_scenes_task(self, config_path: str, descriptions: list[str]):
     if not scene_list:
         return {"status": "error", "reason": "LLM 未能生成有效场景"}
 
-    scene_dir = P(cfg.project_dir) / "config" / "scenes"
+    scene_dir = _cfg_dir(config_path, "config", "scenes")
     scene_dir.mkdir(parents=True, exist_ok=True)
     saved = []
     for scene in scene_list:
