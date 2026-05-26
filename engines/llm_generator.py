@@ -80,7 +80,7 @@ def generate_storyboard(llm, outline: str, characters: list[dict] = None,
             cid = c.get("id", "?")
             cname = c.get("name", cid)
             char_map_lines.append(f"  {cid} → {cname}")
-            char_info_lines.append(f"- {cid}（{cname}）: {c.get('appearance', '')[:60]}")
+            char_info_lines.append(f"- {cid}（{cname}，性格：{c.get('personality', '未指定')}）: {c.get('appearance', '')[:60]}")
         context_parts.append(f"\n=== 角色名映射（characters 字段写英文 ID，action/dialogue 中写中文名） ===\n" + "\n".join(char_map_lines))
         context_parts.append(f"\n=== 已有角色详情 ===\n" + "\n".join(char_info_lines))
 
