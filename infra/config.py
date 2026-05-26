@@ -81,6 +81,11 @@ class Config:
                 "model": "Qwen/Qwen2.5-7B-Instruct", "api_key": ""},
         "server": {"port": 8888, "host": "0.0.0.0", "cors_origin": "*"},
         "timeouts": {"comfyui": 900, "tts": 60, "lipsync": 120, "llm": 300, "music": 120},
+        "post_production": {
+            "transition": "crossfade",
+            "transition_duration": 0.5,
+            "bgm_volume": 0.15,
+        },
     }
 
     # 必填字段校验规则

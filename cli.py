@@ -249,7 +249,8 @@ def preview(episode, level, config_path):
     _ensure_deps()
     cfg = _resolve_config(config_path)
     console.print(f"\n[bold cyan]🎬 预览 第{episode}集 ({level})[/bold cyan]\n")
-    _run_via_celery("pipeline.preview", cfg, episode, level)
+    if not _run_via_celery("pipeline.preview", cfg, episode, level):
+        sys.exit(1)
 
 
 @cli.command()
@@ -260,7 +261,8 @@ def produce(episode, config_path):
     _ensure_deps()
     cfg = _resolve_config(config_path)
     console.print(f"\n[bold cyan]🎬 生产 第{episode}集[/bold cyan]\n")
-    _run_via_celery("pipeline.produce", cfg, episode)
+    if not _run_via_celery("pipeline.produce", cfg, episode):
+        sys.exit(1)
 
 
 @cli.command()
@@ -272,7 +274,8 @@ def post(episode, vertical, config_path):
     _ensure_deps()
     cfg = _resolve_config(config_path)
     console.print(f"\n[bold cyan]🎬 后期合成 第{episode}集[/bold cyan]\n")
-    _run_via_celery("pipeline.post", cfg, episode, vertical=vertical)
+    if not _run_via_celery("pipeline.post", cfg, episode, vertical=vertical):
+        sys.exit(1)
 
 
 @cli.command("all")
@@ -291,16 +294,19 @@ def run_all(episode, vertical, config_path):
     ], 1):
         console.print(f"[bold][{i}/3] {label}[/bold]")
         if task_name == "pipeline.post":
-            _run_via_celery(task_name, cfg, episode, vertical=vertical)
+            ok = _run_via_celery(task_name, cfg, episode, vertical=vertical)
         elif task_name == "pipeline.produce":
-            _run_via_celery(task_name, cfg, episode)
+            ok = _run_via_celery(task_name, cfg, episode)
         else:
-            _run_via_celery(task_name, cfg, episode)
+            ok = _run_via_celery(task_name, cfg, episode)
+        if not ok:
+            console.print(f"\n[red]❌ 流程在「{label}」步骤失败，已终止[/red]")
+            sys.exit(1)
     console.print("\n[bold green]✅ 全流程完成！[/bold green]")
 
 
-def _run_via_celery(task_name: str, config_path: str, *args, **kwargs):
-    """通过 Celery 提交任务并等待完成"""
+def _run_via_celery(task_name: str, config_path: str, *args, **kwargs) -> bool:
+    """通过 Celery 提交任务并等待完成。返回 True 表示成功，False 表示失败。"""
     from pipeline.celery_app import app
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
@@ -338,9 +344,11 @@ def _run_via_celery(task_name: str, config_path: str, *args, **kwargs):
             progress.update(ptask, completed=100, description="[green]✅ 完成[/green]")
             if isinstance(result, dict):
                 console.print(f"[dim]结果: {result}[/dim]")
+            return True
         else:
             progress.update(ptask, description="[red]❌ 失败[/red]")
             console.print(f"[red]任务失败: {task.result}[/red]")
+            return False
 
 
 @cli.command()
@@ -350,7 +358,8 @@ def portraits(config_path):
     _ensure_deps()
     cfg = _resolve_config(config_path)
     console.print("\n[bold cyan]🎨 生成定妆照[/bold cyan]\n")
-    _run_via_celery("pipeline.portraits", cfg)
+    if not _run_via_celery("pipeline.portraits", cfg):
+        sys.exit(1)
 
 
 # ── 项目管理 ──
