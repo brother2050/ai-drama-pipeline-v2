@@ -45,6 +45,8 @@ STORYBOARD_SYSTEM = """你是一位专业的短剧分镜师。根据用户提供
 - dialogue 不要包含引号，省略号用 ...
 - 注意镜头语言的节奏感：特写→中景→全景交替，避免连续相同景别
 - 情绪要有起伏，不要全程 neutral
+- 【重要】action 和 dialogue 中描述角色时，必须使用中文名（参考"角色名映射"），严禁中英文混搭（如"林xia"是错误的，应为"林夏"）
+- 如果角色没有中文名，自行起一个合理的中文名并在整个分镜中保持一致
 - 只输出 JSON，不要任何额外文字"""
 
 
@@ -68,11 +70,16 @@ def generate_storyboard(llm, outline: str, characters: list[dict] = None,
     context_parts = [f"=== 第{episode}集 剧情大纲 ===\n{outline}"]
 
     if characters:
-        char_info = "\n".join(
-            f"- {c.get('id', '?')}（{c.get('name', '?')}）: {c.get('appearance', '')[:60]}"
-            for c in characters
-        )
-        context_parts.append(f"\n=== 已有角色 ===\n{char_info}")
+        # 角色名映射 — LLM 在 action/dialogue 中必须用中文名，characters 字段用英文 ID
+        char_map_lines = []
+        char_info_lines = []
+        for c in characters:
+            cid = c.get("id", "?")
+            cname = c.get("name", cid)
+            char_map_lines.append(f"  {cid} → {cname}")
+            char_info_lines.append(f"- {cid}（{cname}）: {c.get('appearance', '')[:60]}")
+        context_parts.append(f"\n=== 角色名映射（characters 字段写英文 ID，action/dialogue 中写中文名） ===\n" + "\n".join(char_map_lines))
+        context_parts.append(f"\n=== 已有角色详情 ===\n" + "\n".join(char_info_lines))
 
     if scenes:
         scene_info = "\n".join(
