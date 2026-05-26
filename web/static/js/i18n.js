@@ -208,6 +208,7 @@ const I18N = {
   // 设置补充
   'set.saved': { zh: '✅ 已保存', en: '✅ Saved' },
   'set.gpu_unavailable': { zh: '不可用', en: 'Unavailable' },
+  'set.optional': { zh: '选填', en: 'Optional' },
   'set.llm': { zh: 'LLM', en: 'LLM' },
   'set.llm_enabled': { zh: '启用', en: 'Enabled' },
   'set.llm_model': { zh: '模型', en: 'Model' },
