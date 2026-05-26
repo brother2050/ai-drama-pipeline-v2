@@ -165,9 +165,8 @@ def list_projects(console):
             try:
                 with open(sb_path, encoding="utf-8") as f:
                     sb_count = sum(1 for _ in csv.DictReader(f))
-            except Exception:
-                pass
-
+            except Exception as e:
+                logger.debug(f"CSV 计数跳过: {e}")
         is_active = d.resolve() == active.resolve()
         t.add_row(
             "→" if is_active else "",
@@ -257,8 +256,8 @@ def show_current(root: Path, console):
         try:
             with open(sb_path, encoding="utf-8") as f:
                 sb_count = sum(1 for _ in csv.DictReader(f))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"CSV 计数跳过: {e}")
     console.print(f"[cyan]角色:[/cyan] {char_count} 个")
     console.print(f"[cyan]场景:[/cyan] {scene_count} 个")
     console.print(f"[cyan]分镜:[/cyan] {sb_count} 个镜头")

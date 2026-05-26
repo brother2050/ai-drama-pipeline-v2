@@ -563,8 +563,7 @@ async def generate_character_portrait(char_id: str):
         from infra.database.pool import get_pool
         db_up(get_pool(), char_id, char)
     except Exception:
-        pass
-
+        logger.warning(f"DB 写入跳过: {e}")
     return {"status": "ok", "url": img_url, "char_id": char_id}
 
 
@@ -984,8 +983,7 @@ async def generate_scene_image(scene_id: str):
         from infra.database.pool import get_pool
         db_up(get_pool(), scene_id, scene)
     except Exception:
-        pass
-
+        logger.warning(f"DB 写入跳过: {e}")
     return {"status": "ok", "url": img_url, "scene_id": scene_id}
 
 
@@ -1345,8 +1343,8 @@ def list_shared_characters():
             data = yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
             data["id"] = yaml_file.stem
             items.append(data)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"跳过损坏的 YAML: {yaml_file.name}: {e}")
     return {"assets": items}
 
 
@@ -1361,8 +1359,8 @@ def list_shared_scenes():
             data = yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
             data["id"] = yaml_file.stem
             items.append(data)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"跳过损坏的 YAML: {yaml_file.name}: {e}")
     return {"assets": items}
 
 

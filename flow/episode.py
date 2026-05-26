@@ -38,9 +38,8 @@ def get_episode_status(project_dir: str, episode: int) -> dict:
         db_rows = get_episode_statuses(pool, episode)
         if db_rows:
             db_details = db_rows
-    except Exception:
-        pass
-
+    except Exception as e:
+        logger.warning(f"DB 查询跳过: {e}")
     return {"episode": episode,
             "status": "done" if has_final else ("in_progress" if has_concat or shot_dirs else "not_started"),
             "shots": len(shots_status),
