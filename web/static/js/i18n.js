@@ -30,6 +30,19 @@ const I18N = {
   'dash.start_hint': { zh: '进入工作台，选择镜头逐步处理', en: 'Enter the workspace, process shots step by step' },
   'dash.enter_wb': { zh: '🎬 进入工作台', en: '🎬 Enter Workspace' },
   'dash.conn_fail': { zh: '❌ 连接失败', en: '❌ Connection Failed' },
+  'dash.welcome_desc': { zh: '从剧本到成片，AI 全流程驱动', en: 'From script to final video, AI-powered全流程' },
+  'dash.ai_gen': { zh: 'AI 生成', en: 'AI Generate' },
+  'dash.stat_projects': { zh: '项目', en: 'Projects' },
+  'dash.stat_shots': { zh: '镜头', en: 'Shots' },
+  'dash.stat_tools': { zh: '工具就绪', en: 'Tools Ready' },
+  'dash.stat_episode': { zh: '当前集', en: 'Episode' },
+  'dash.quick_actions': { zh: '快速入口', en: 'Quick Actions' },
+  'dash.qe_storyboard': { zh: '编辑分镜剧本', en: 'Edit storyboard' },
+  'dash.qe_characters': { zh: '管理角色配置', en: 'Manage characters' },
+  'dash.qe_scenes': { zh: '管理场景配置', en: 'Manage scenes' },
+  'dash.qe_pipeline': { zh: '生产管线执行', en: 'Production pipeline' },
+  'dash.qe_projects': { zh: '切换/新建项目', en: 'Switch/create projects' },
+  'dash.qe_settings': { zh: '系统配置调整', en: 'System settings' },
 
   // 工作台
   'wb.shots_count': { zh: '个镜头', en: 'shots' },
@@ -100,6 +113,8 @@ const I18N = {
   'sb.shot_id': { zh: '镜号', en: 'Shot#' },
   'sb.none': { zh: '暂无', en: 'None' },
   'sb.added': { zh: '已添加', en: 'Added' },
+  'sb.timeline': { zh: '时间轴', en: 'Timeline' },
+  'sb.empty_desc': { zh: '添加镜头或使用 AI 从大纲生成', en: 'Add shots or generate from outline with AI' },
 
   // 项目
   'proj.title': { zh: '📂 项目', en: '📂 Projects' },
@@ -168,6 +183,8 @@ const I18N = {
   'wb.post_process': { zh: '🎞️ 后期合成', en: '🎞️ Post' },
   'wb.run_all': { zh: '🚀 一键全流程', en: '🚀 Run All' },
   'wb.tools': { zh: '工具', en: 'Tools' },
+  'wb.flow_title': { zh: '生产流程', en: 'Production Flow' },
+  'wb.post_short': { zh: '后期', en: 'Post' },
 
   // 角色补充
   'char.not_found': { zh: '角色不存在', en: 'Character not found' },
@@ -247,7 +264,9 @@ const I18N = {
 
   // 空状态引导
   'char.empty_hint': { zh: '点击上方按钮创建第一个角色', en: 'Click the button above to create your first character' },
+  'char.empty_desc': { zh: '角色用于分镜表中的角色配置，支持 AI 生成', en: 'Characters are used in storyboard, supports AI generation' },
   'scene.empty_hint': { zh: '点击上方按钮创建第一个场景', en: 'Click the button above to create your first scene' },
+  'scene.empty_desc': { zh: '场景用于分镜表中的场景配置，支持 AI 生成', en: 'Scenes are used in storyboard, supports AI generation' },
 
   // 配乐/字幕
   'wb.gen_music': { zh: '🎵 配乐', en: '🎵 Music' },

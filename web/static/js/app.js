@@ -232,26 +232,66 @@ const TOOL_META = { redis:{icon:'🔴',label:'Redis'}, celery:{icon:'🔧',label
 async function loadDashboard() {
   const el = document.getElementById('page-dashboard');
   try {
-    const s = await cachedFetch('system/status', () => api('/system/status'), 10000);
+    const [s, projData, sbData] = await Promise.all([
+      cachedFetch('system/status', () => api('/system/status'), 10000),
+      api('/projects').catch(() => ({ projects: [] })),
+      api(`/storyboard/${ep}`).catch(() => ({ shots: [] })),
+    ]);
+    const tools = s.tools || {};
+    const okCount = Object.values(tools).filter(t => t.available).length;
+    const totalCount = Object.keys(tools).length;
+    const shots = sbData.shots || [];
+    const projects = projData.projects || [];
+    const currentProj = projects.find(p => p.active) || projects[0];
+
+    // 工具状态分组
     const groups = [
       { label: t('dash.infra'), keys: ['redis', 'celery', 'ffmpeg'] },
       { label: t('dash.ai_tools'), keys: ['tts', 'music'] },
       { label: t('dash.gpu_tools'), keys: ['comfyui', 'lipsync', 'llm'] },
     ];
-    let html = '';
+    let toolHtml = '';
     for (const g of groups) {
-      html += `<div class="section-label">${g.label}</div><div class="tool-grid">`;
+      toolHtml += `<div class="section-label">${g.label}</div><div class="tool-grid">`;
       for (const k of g.keys) {
-        const info = s.tools[k] || {}, meta = TOOL_META[k] || {};
-        html += `<div class="tool-card ${info.available ? 'tool-ok' : 'tool-off'}"><span>${meta.icon} ${meta.label}</span>
+        const info = tools[k] || {}, meta = TOOL_META[k] || {};
+        toolHtml += `<div class="tool-card ${info.available ? 'tool-ok' : 'tool-off'}"><span>${meta.icon} ${meta.label}</span>
           <span class="status-dot ${info.available ? 'ok' : 'err'}"></span>
           <span class="dim" style="font-size:0.75rem">${info.available ? t('dash.available') : info.reason || t('dash.unavailable')}</span></div>`;
       }
-      html += '</div>';
+      toolHtml += '</div>';
     }
-    el.innerHTML = `<div class="card"><h2>${t('dash.title')}</h2>${html}</div>
-      <div class="card"><h2>${t('dash.start')}</h2><p class="dim" style="margin-bottom:0.5rem">${t('dash.start_hint')}</p>
-      <button class="btn btn-primary" onclick="navTo('pipeline')">${t('dash.enter_wb')}</button></div>`;
+
+    el.innerHTML = `
+      <div class="dash-hero">
+        <h1>🎬 ${currentProj?.name || t('app.title')}</h1>
+        <p>${t('dash.welcome_desc')}</p>
+        <div class="dash-hero-actions">
+          <button class="btn btn-primary" onclick="navTo('storyboard')">📝 ${t('nav.storyboard')}</button>
+          <button class="btn btn-outline" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline')}</button>
+          <button class="btn btn-outline btn-ai" onclick="navTo('storyboard');setTimeout(()=>showAIGenStoryboard(),300)">🤖 ${t('dash.ai_gen')}</button>
+        </div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-icon">📂</div><div class="stat-value">${projects.length}</div><div class="stat-label">${t('dash.stat_projects')}</div></div>
+        <div class="stat-card"><div class="stat-icon">🎬</div><div class="stat-value">${shots.length}</div><div class="stat-label">${t('dash.stat_shots')}</div></div>
+        <div class="stat-card"><div class="stat-icon">🔧</div><div class="stat-value">${okCount}/${totalCount}</div><div class="stat-label">${t('dash.stat_tools')}</div></div>
+        <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-value">${ep}</div><div class="stat-label">${t('dash.stat_episode')}</div></div>
+      </div>
+
+      <div class="card"><h2>⚡ ${t('dash.quick_actions')}</h2>
+        <div class="quick-entry-grid">
+          <div class="quick-entry" onclick="navTo('storyboard')"><span class="quick-entry-icon">📝</span><div><div class="quick-entry-text">${t('nav.storyboard')}</div><div class="quick-entry-desc">${t('dash.qe_storyboard')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('characters')"><span class="quick-entry-icon">👤</span><div><div class="quick-entry-text">${t('nav.characters')}</div><div class="quick-entry-desc">${t('dash.qe_characters')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('scenes')"><span class="quick-entry-icon">🏔️</span><div><div class="quick-entry-text">${t('nav.scenes')}</div><div class="quick-entry-desc">${t('dash.qe_scenes')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('pipeline')"><span class="quick-entry-icon">🎬</span><div><div class="quick-entry-text">${t('nav.pipeline')}</div><div class="quick-entry-desc">${t('dash.qe_pipeline')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('projects')"><span class="quick-entry-icon">📂</span><div><div class="quick-entry-text">${t('nav.projects')}</div><div class="quick-entry-desc">${t('dash.qe_projects')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('settings')"><span class="quick-entry-icon">⚙️</span><div><div class="quick-entry-text">${t('nav.settings')}</div><div class="quick-entry-desc">${t('dash.qe_settings')}</div></div></div>
+        </div>
+      </div>
+
+      <div class="card"><h2>${t('dash.title')}</h2>${toolHtml}</div>`;
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('dash.conn_fail')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 
@@ -288,6 +328,20 @@ async function loadPipeline() {
 function renderWB(episodes) {
   const el = document.getElementById('page-pipeline');
   const epSelector = _episodeSelectHtml(episodes || [ep], 'switchEpisode');
+
+  // 流程图
+  const flowSteps = [
+    { icon: '🎤', label: t('step.tts'), step: 'tts' },
+    { icon: '🎨', label: t('step.first_frame'), step: 'first-frame' },
+    { icon: '🎬', label: t('step.video'), step: 'video' },
+    { icon: '👄', label: t('step.lipsync'), step: 'lipsync' },
+    { icon: '🎞️', label: t('wb.post_short'), step: 'post' },
+  ];
+  const flowHtml = `<div class="pipeline-flow">${flowSteps.map((s, i) => {
+    const arrow = i < flowSteps.length - 1 ? '<div class="pipeline-arrow"></div>' : '';
+    return `<div class="pipeline-step" id="pf-${s.step}"><div class="pipeline-step-icon">${s.icon}</div><div class="pipeline-step-label">${s.label}</div></div>${arrow}`;
+  }).join('')}</div>`;
+
   el.innerHTML = `<div class="wb-top-bar"><div style="display:flex;align-items:center;gap:0.5rem"><h2>🎬 ${t('nav.pipeline').replace('🎬 ', '')}</h2>${epSelector}<span class="dim" style="font-size:.85rem">${shots.length} ${t('wb.shots_count')}</span></div>
     <div class="wb-batch-btns">
       <button class="btn btn-outline" onclick="undo()" title="Ctrl+Z">↩ ${t('undo.undo')}</button>
@@ -300,6 +354,7 @@ function renderWB(episodes) {
       <button class="btn btn-outline" onclick="runSubtitle()">📝 ${t('wb.gen_subtitle').replace('📝 ', '')}</button>
       <button class="btn btn-primary" onclick="runAll()">🚀 ${t('wb.run_all').replace('🚀 ', '')}</button>
     </div></div>
+    <div class="card" style="margin-bottom:.7rem"><h2>${t('wb.flow_title')}</h2>${flowHtml}</div>
     <div id="wb-shots-grid" class="wb-shots-grid"></div>
     <div id="wb-batch-status" class="wb-batch-status" style="display:none"></div>`;
   renderShotsGrid();
@@ -612,12 +667,17 @@ async function loadCharacters() {
   const el = document.getElementById('page-characters');
   try {
     const d = await cachedFetch('characters', () => api('/characters'));
-    const cols = CHAR_COLS;
     const items = d.characters || [];
-    const table = _crudTable(cols, items, 'editChar', 'deleteChar');
-    const hint = !items.length && t('char.empty_hint') ? `<p class="dim" style="margin-top:0.5rem;font-size:0.85rem">${t('char.empty_hint')}</p>` : '';
-    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem">
-      <h2>${t('char.title')}</h2><div style="display:flex;gap:0.5rem"><button class="btn btn-outline btn-ai" onclick="showAIGenCharacter()">🤖 AI 生成</button><button class="btn btn-success" onclick="newChar()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>${table}${hint}</div>`;
+    const grid = items.length ? `<div class="entity-grid">${items.map(c => {
+      const avatar = c.appearance ? esc(c.appearance.substring(0, 2)) : '👤';
+      return `<div class="entity-card" onclick="editChar('${esc(c.id)}')">
+        <div class="entity-card-thumb">${avatar}</div>
+        <div class="entity-card-body"><h3>${esc(c.name || c.id)}</h3><p>${esc(c.appearance || '')}</p></div>
+        <div class="entity-card-footer"><span class="entity-card-id">${esc(c.id)}</span>
+          <span>${c.gender === 'male' ? '♂' : c.gender === 'female' ? '♀' : ''}</span></div></div>`;
+    }).join('')}</div>` : `<div class="empty-state"><div class="empty-state-icon">👤</div><h3>${t('char.empty_hint')}</h3><p>${t('char.empty_desc')}</p><button class="btn btn-success" onclick="newChar()">+ ${t('btn.add').replace('+ ', '')}</button></div>`;
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <h2>${t('char.title')}</h2><div style="display:flex;gap:0.5rem"><button class="btn btn-outline btn-ai" onclick="showAIGenCharacter()">🤖 AI 生成</button><button class="btn btn-success" onclick="newChar()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>${grid}</div>`;
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 function newChar() {
@@ -681,12 +741,16 @@ async function loadScenes() {
   const el = document.getElementById('page-scenes');
   try {
     const d = await cachedFetch('scenes', () => api('/scenes'));
-    const cols = SCENE_COLS;
     const items = d.scenes || [];
-    const table = _crudTable(cols, items, 'editScene', 'deleteScene');
-    const hint = !items.length && t('scene.empty_hint') ? `<p class="dim" style="margin-top:0.5rem;font-size:0.85rem">${t('scene.empty_hint')}</p>` : '';
-    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem">
-      <h2>${t('scene.title')}</h2><div style="display:flex;gap:0.5rem"><button class="btn btn-outline btn-ai" onclick="showAIGenScene()">🤖 AI 生成</button><button class="btn btn-success" onclick="newScene()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>${table}${hint}</div>`;
+    const grid = items.length ? `<div class="entity-grid">${items.map(s => {
+      return `<div class="entity-card" onclick="editScene('${esc(s.id)}')">
+        <div class="entity-card-thumb">🏔️</div>
+        <div class="entity-card-body"><h3>${esc(s.name || s.id)}</h3><p>${esc(s.description || '')}</p></div>
+        <div class="entity-card-footer"><span class="entity-card-id">${esc(s.id)}</span>
+          <span class="dim" style="font-size:.7rem">${esc(s.lighting || '')}</span></div></div>`;
+    }).join('')}</div>` : `<div class="empty-state"><div class="empty-state-icon">🏔️</div><h3>${t('scene.empty_hint')}</h3><p>${t('scene.empty_desc')}</p><button class="btn btn-success" onclick="newScene()">+ ${t('btn.add').replace('+ ', '')}</button></div>`;
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <h2>${t('scene.title')}</h2><div style="display:flex;gap:0.5rem"><button class="btn btn-outline btn-ai" onclick="showAIGenScene()">🤖 AI 生成</button><button class="btn btn-success" onclick="newScene()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>${grid}</div>`;
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 function newScene() {
@@ -728,6 +792,20 @@ function val(id) { return document.getElementById(id)?.value || ''; }
 // ══════════════════════════════════════════════════════════
 
 const SB_FIELDS = ['scene', 'characters', 'action', 'dialogue', 'camera', 'shot_type', 'duration', 'emotion'];
+let _sbViewMode = localStorage.getItem('sb_view') || 'table'; // 'table' | 'timeline'
+
+function _sbViewToggle() {
+  return `<div class="view-toggle">
+    <button class="btn btn-xs ${_sbViewMode==='table'?'active':''}" onclick="setSBView('table')">📋 表格</button>
+    <button class="btn btn-xs ${_sbViewMode==='timeline'?'active':''}" onclick="setSBView('timeline')">📐 ${t('sb.timeline')}</button>
+  </div>`;
+}
+
+function setSBView(mode) {
+  _sbViewMode = mode;
+  localStorage.setItem('sb_view', mode);
+  loadStoryboard();
+}
 
 // ══════════════════════════════════════════════════════════
 // AI 生成
@@ -855,20 +933,64 @@ async function loadStoryboard() {
     const episodes = await loadEpisodeSelector();
     const d = await cachedFetch(`storyboard/${ep}`, () => api(`/storyboard/${ep}`));
     const ss = d.shots || [];
-    const rows = ss.map((s, i) => `<tr>
-      <td>${_shotId(s, i)}</td>
-      ${SB_FIELDS.slice(0, 4).map(f => `<td><input class="sb-inline-input" value="${esc(s[f] || '')}" data-idx="${i}" data-field="${f}" onchange="updateShotField(this)"></td>`).join('')}
-      <td><select class="sb-inline-input" data-idx="${i}" data-field="camera" onchange="updateShotField(this)">${_selectOpts(CAMERAS, s.camera)}</select></td>
-      <td><select class="sb-inline-input" data-idx="${i}" data-field="shot_type" onchange="updateShotField(this)">${_selectOpts(SHOT_TYPES, s.shot_type)}</select></td>
-      <td><input class="sb-inline-input" type="number" value="${s.duration || 4}" min="1" max="30" data-idx="${i}" data-field="duration" onchange="updateShotField(this)"></td>
-      <td><select class="sb-inline-input" data-idx="${i}" data-field="emotion" onchange="updateShotField(this)">${_selectOpts(EMOTIONS, s.emotion)}</select></td>
-      <td><button class="btn btn-xs btn-danger" onclick="deleteShotFromSB(${i})">🗑️</button></td></tr>`).join('');
     const epSelector = _episodeSelectHtml(episodes, 'switchEpisode');
-    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${t('sb.title')}</h2>
-      <div style="display:flex;gap:0.5rem;align-items:center">${epSelector}<button class="btn btn-outline btn-ai" onclick="showAIGenStoryboard()">🤖 AI 生成分镜</button><button class="btn btn-primary" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline').replace('🎬 ', '')}</button><button class="btn btn-success" onclick="addShot()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>
-      <div style="overflow-x:auto"><table><thead><tr><th>${t('sb.shot_id')}</th><th>${t('edit.scene')}</th><th>${t('edit.characters')}</th><th>${t('edit.action')}</th><th>${t('edit.dialogue')}</th><th>${t('edit.camera')}</th><th>${t('edit.shot_type')}</th><th>${t('edit.duration')}</th><th>${t('sb.emotion')}</th><th></th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="10" class="dim" style="text-align:center">${t('sb.none')}</td></tr>`}</tbody></table></div></div>`;
+    const header = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${t('sb.title')}</h2>
+      <div style="display:flex;gap:0.5rem;align-items:center">${epSelector}${_sbViewToggle()}<button class="btn btn-outline btn-ai" onclick="showAIGenStoryboard()">🤖 AI 生成分镜</button><button class="btn btn-primary" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline').replace('🎬 ', '')}</button><button class="btn btn-success" onclick="addShot()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>`;
+
+    if (!ss.length) {
+      el.innerHTML = header + `<div class="empty-state"><div class="empty-state-icon">📝</div><h3>${t('sb.none')}</h3><p>${t('sb.empty_desc')}</p><button class="btn btn-ai" onclick="showAIGenStoryboard()">🤖 AI 生成分镜</button></div></div>`;
+      return;
+    }
+
+    if (_sbViewMode === 'timeline') {
+      // 时间轴视图
+      const timeline = `<div class="timeline-container">${ss.map((s, i) => {
+        const sid = _shotId(s, i);
+        return `<div class="timeline-item" id="tl-${esc(sid)}"><div class="timeline-dot"></div>
+          <div class="timeline-card">
+            <div class="timeline-thumb" id="tl-thumb-${esc(sid)}">🎬</div>
+            <div class="timeline-info">
+              <div class="timeline-info-head"><span class="timeline-sid">${esc(sid)}</span><span class="timeline-meta">${esc(s.scene || '')} · ${esc(s.characters || '')}</span></div>
+              <div class="timeline-info-body">${esc((s.action || '').substring(0, 60))}${(s.action||'').length > 60 ? '...' : ''}</div>
+              ${s.dialogue && s.dialogue !== '......' ? `<div class="timeline-info-dialogue">"${esc((s.dialogue || '').substring(0, 50))}"</div>` : ''}
+              <div class="timeline-meta" style="margin-top:.25rem">${esc(s.camera || '')} · ${esc(s.shot_type || '')} · ${s.duration || 4}s · ${esc(s.emotion || 'neutral')}</div>
+              <div class="timeline-actions">${_actionBtns(i)}</div>
+            </div>
+          </div></div>`;
+      }).join('')}</div>`;
+      el.innerHTML = header + timeline + '</div>';
+      // 加载缩略图
+      ss.forEach((_, i) => _loadTimelineThumb(i));
+    } else {
+      // 表格视图
+      const rows = ss.map((s, i) => `<tr>
+        <td>${_shotId(s, i)}</td>
+        ${SB_FIELDS.slice(0, 4).map(f => `<td><input class="sb-inline-input" value="${esc(s[f] || '')}" data-idx="${i}" data-field="${f}" onchange="updateShotField(this)"></td>`).join('')}
+        <td><select class="sb-inline-input" data-idx="${i}" data-field="camera" onchange="updateShotField(this)">${_selectOpts(CAMERAS, s.camera)}</select></td>
+        <td><select class="sb-inline-input" data-idx="${i}" data-field="shot_type" onchange="updateShotField(this)">${_selectOpts(SHOT_TYPES, s.shot_type)}</select></td>
+        <td><input class="sb-inline-input" type="number" value="${s.duration || 4}" min="1" max="30" data-idx="${i}" data-field="duration" onchange="updateShotField(this)"></td>
+        <td><select class="sb-inline-input" data-idx="${i}" data-field="emotion" onchange="updateShotField(this)">${_selectOpts(EMOTIONS, s.emotion)}</select></td>
+        <td><button class="btn btn-xs btn-danger" onclick="deleteShotFromSB(${i})">🗑️</button></td></tr>`).join('');
+      el.innerHTML = header + `<div style="overflow-x:auto"><table><thead><tr><th>${t('sb.shot_id')}</th><th>${t('edit.scene')}</th><th>${t('edit.characters')}</th><th>${t('edit.action')}</th><th>${t('edit.dialogue')}</th><th>${t('edit.camera')}</th><th>${t('edit.shot_type')}</th><th>${t('edit.duration')}</th><th>${t('sb.emotion')}</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table></div></div>`;
+    }
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
+}
+
+async function _loadTimelineThumb(idx) {
+  const sid = _shotId(shots[idx], idx);
+  const el = document.getElementById(`tl-thumb-${sid}`);
+  if (!el) return;
+  try {
+    const r = (await cachedFetch(`res/${ep}/${sid}`, () => api(`/shots/${ep}/${sid}/resources`))).resources || {};
+    const item = document.getElementById(`tl-${sid}`);
+    if (r.frame) {
+      el.innerHTML = `<img src="/api/files/${ep}/${sid}/frame.png" loading="lazy">`;
+      if (item) item.classList.add('has-frame');
+    }
+    if (r.video && item) item.classList.add('has-video');
+    if (r.synced && item) item.classList.add('has-synced');
+  } catch {}
 }
 
 let _sbDirty = false, _sbSaving = false;
