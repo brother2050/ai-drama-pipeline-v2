@@ -1,7 +1,7 @@
 comfyui:
   url: https://a46bb1342ea34588aa82cb64c1ea2bdb--8188.ap-shanghai2.cloudstudio.club
   timeout: 900
-  api_key: QIIu5i9IRbBXkUSfiJuEbS4dLnvxEREwdrEnX30nIO0
+  api_key: m8g1Vr-ND2_vQxzs3lDQ49DfLR9feOSl8fPXsjIWmEw
 models:
   image_backend: sd15
   video_backend: animatediff
