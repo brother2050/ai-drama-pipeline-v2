@@ -641,20 +641,42 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
         for cid in missing_chars:
             # 从分镜中收集该角色的动作/台词作为描述线索
             char_shots = [s for s in shots if cid in (s.get("characters") or "").split("+")]
-            actions = [s.get("action", "") for s in char_shots[:3]]
-            dialogues = [s.get("dialogue", "") for s in char_shots[:3] if s.get("dialogue") and s.get("dialogue") != "......"]
-            desc_parts = [f"角色ID: {cid}"]
+            actions = [s.get("action", "") for s in char_shots[:5]]
+            dialogues = [s.get("dialogue", "") for s in char_shots[:5] if s.get("dialogue") and s.get("dialogue") != "......"]
+            desc_parts = [
+                f"你需要为以下角色生成配置。",
+                f"【重要】角色 id 必须设为 \"{cid}\"，不可修改。",
+                f"剧情大纲: {outline}",
+                f"该角色在分镜中的表现:",
+            ]
             if actions:
-                desc_parts.append(f"涉及动作: {'; '.join(actions)}")
+                for i, a in enumerate(actions, 1):
+                    desc_parts.append(f"  镜头{i}: {a}")
             if dialogues:
-                desc_parts.append(f"台词片段: {'; '.join(dialogues)}")
-            desc_parts.append(f"来自大纲: {outline[:200]}")
-            char_descriptions.append("。".join(desc_parts))
+                desc_parts.append(f"台词: {' / '.join(dialogues)}")
+            char_descriptions.append("\n".join(desc_parts))
 
         try:
             new_chars = generate_characters(llm, char_descriptions)
+            # generate_characters 逐条生成，失败的会跳过，需要按返回的 name/id 匹配
             for char in new_chars:
-                cid = char.get("id", "unknown")
+                # 尝试从返回的 id 或 name 匹配到 missing_chars 中的 ID
+                gen_id = char.get("id", "")
+                matched_id = None
+                for cid in missing_chars:
+                    if cid == gen_id or cid in gen_id or gen_id in cid:
+                        matched_id = cid
+                        break
+                if not matched_id:
+                    # 回退：按顺序取还没生成的
+                    for cid in missing_chars:
+                        if cid not in generated_chars:
+                            matched_id = cid
+                            break
+                if not matched_id:
+                    matched_id = gen_id or "unknown"
+                char["id"] = matched_id
+                cid = expected_id
                 path = char_dir / f"{cid}.yaml"
                 with open(path, "w", encoding="utf-8") as f:
                     _yaml.dump({"character": char}, f, allow_unicode=True, default_flow_style=False)
@@ -679,17 +701,36 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
         scene_descriptions = []
         for sid in missing_scenes:
             scene_shots = [s for s in shots if (s.get("scene") or "").strip() == sid]
-            actions = [s.get("action", "") for s in scene_shots[:3]]
-            desc_parts = [f"场景ID: {sid}"]
+            actions = [s.get("action", "") for s in scene_shots[:5]]
+            desc_parts = [
+                f"你需要为以下场景生成配置。",
+                f"【重要】场景 id 必须设为 \"{sid}\"，不可修改。",
+                f"剧情大纲: {outline}",
+                f"该场景在分镜中的画面:",
+            ]
             if actions:
-                desc_parts.append(f"出现画面: {'; '.join(actions)}")
-            desc_parts.append(f"来自大纲: {outline[:200]}")
-            scene_descriptions.append("。".join(desc_parts))
+                for i, a in enumerate(actions, 1):
+                    desc_parts.append(f"  镜头{i}: {a}")
+            scene_descriptions.append("\n".join(desc_parts))
 
         try:
             new_scenes = generate_scenes(llm, scene_descriptions)
             for scene in new_scenes:
-                sid = scene.get("id", "unknown")
+                gen_id = scene.get("id", "")
+                matched_id = None
+                for sid in missing_scenes:
+                    if sid == gen_id or sid in gen_id or gen_id in sid:
+                        matched_id = sid
+                        break
+                if not matched_id:
+                    for sid in missing_scenes:
+                        if sid not in generated_scenes:
+                            matched_id = sid
+                            break
+                if not matched_id:
+                    matched_id = gen_id or "unknown"
+                scene["id"] = matched_id
+                sid = expected_id
                 path = scene_dir / f"{sid}.yaml"
                 with open(path, "w", encoding="utf-8") as f:
                     _yaml.dump({"scene": scene}, f, allow_unicode=True, default_flow_style=False)
