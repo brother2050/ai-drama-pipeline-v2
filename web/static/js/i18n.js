@@ -55,6 +55,8 @@ const I18N = {
   'edit.shot_type': { zh: '景别', en: 'Shot Type' },
   'edit.duration': { zh: '时长', en: 'Duration' },
   'edit.emotion': { zh: '情绪', en: 'Emotion' },
+  'edit.outfit': { zh: '服装', en: 'Outfit' },
+  'edit.outfit_ph': { zh: '对应角色配置中的 outfits key', en: 'Outfit key from character config' },
 
   // 批量
   'batch.confirm': { zh: '批量执行 {step}？共 {n} 个镜头', en: 'Batch {step}? {n} shots total' },
@@ -219,6 +221,7 @@ const I18N = {
   'sb.emotion': { zh: '情绪', en: 'Emotion' },
   'sb.action_en': { zh: '动作(英)', en: 'Action(EN)' },
   'sb.dialogue_en': { zh: '台词(英)', en: 'Dialogue(EN)' },
+  'sb.unsaved_confirm': { zh: '分镜表有未保存的修改，确定离开？', en: 'Unsaved changes in storyboard. Leave anyway?' },
 
   // 集数
   'ep.input': { zh: '集数:', en: 'Episode #:' },

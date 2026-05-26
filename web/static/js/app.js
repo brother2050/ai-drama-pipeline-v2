@@ -36,8 +36,8 @@ function switchEpisode(val) {
   else if (p?.id === 'page-pipeline') loadPipeline();
 }
 
-function addEpisode() {
-  const input = prompt(t('ep.input'), '');
+async function addEpisode() {
+  const input = await modalPrompt(t('ep.input'), '', { inputType: 'number', placeholder: '1' });
   if (!input) return;
   const newEp = parseInt(input);
   if (!newEp || newEp < 1) { toast(t('ep.invalid'), 'error'); return; }
@@ -53,6 +53,55 @@ function addEpisode() {
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function debounce(fn, ms = 300) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 function toast(msg, type = 'success') { const el = document.createElement('div'); el.className = `toast toast-${type}`; el.textContent = msg; document.body.appendChild(el); setTimeout(() => el.remove(), 3500); }
+
+// ── 自定义模态框（替代原生 prompt/confirm）──
+
+function _btnLoading(btn, loadingText = '⏳ ...') {
+  if (!btn) return () => {};
+  const orig = btn.innerHTML;
+  const origDisabled = btn.disabled;
+  btn.disabled = true;
+  btn.innerHTML = loadingText;
+  btn.style.opacity = '0.7';
+  return () => { btn.disabled = origDisabled; btn.innerHTML = orig; btn.style.opacity = ''; };
+}
+
+function modalConfirm(message) {
+  return new Promise(resolve => {
+    const o = document.createElement('div'); o.className = 'edit-overlay';
+    o.innerHTML = `<div class="edit-panel" style="width:400px"><div class="edit-header"><h3>${t('btn.confirm')}</h3></div>
+      <div class="edit-body"><p style="font-size:.88rem;line-height:1.6">${esc(message)}</p></div>
+      <div class="edit-footer"><button class="btn btn-primary" id="_mc-ok">${t('btn.confirm')}</button>
+      <button class="btn btn-outline" id="_mc-cancel">${t('btn.cancel')}</button></div></div>`;
+    document.body.appendChild(o);
+    const cleanup = (val) => { o.remove(); resolve(val); };
+    o.querySelector('#_mc-ok').onclick = () => cleanup(true);
+    o.querySelector('#_mc-cancel').onclick = () => cleanup(false);
+    o.onclick = (e) => { if (e.target === o) cleanup(false); };
+    o.querySelector('#_mc-ok').focus();
+  });
+}
+
+function modalPrompt(message, defaultValue = '', opts = {}) {
+  return new Promise(resolve => {
+    const o = document.createElement('div'); o.className = 'edit-overlay';
+    const inputTag = opts.type === 'select'
+      ? `<select id="_mp-input">${(opts.options||[]).map(v => `<option ${v===defaultValue?'selected':''}>${v}</option>`).join('')}</select>`
+      : `<input id="_mp-input" type="${opts.inputType||'text'}" value="${esc(defaultValue)}" ${opts.placeholder?`placeholder="${esc(opts.placeholder)}"`:''}>`;
+    o.innerHTML = `<div class="edit-panel" style="width:400px"><div class="edit-header"><h3>${esc(message)}</h3></div>
+      <div class="edit-body"><div class="edit-field">${inputTag}</div></div>
+      <div class="edit-footer"><button class="btn btn-primary" id="_mp-ok">${t('btn.confirm')}</button>
+      <button class="btn btn-outline" id="_mp-cancel">${t('btn.cancel')}</button></div></div>`;
+    document.body.appendChild(o);
+    const inp = o.querySelector('#_mp-input');
+    const cleanup = (val) => { o.remove(); resolve(val); };
+    o.querySelector('#_mp-ok').onclick = () => cleanup(inp.value);
+    o.querySelector('#_mp-cancel').onclick = () => cleanup(null);
+    o.onclick = (e) => { if (e.target === o) cleanup(null); };
+    inp.focus(); inp.select();
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') cleanup(inp.value); if (e.key === 'Escape') cleanup(null); });
+  });
+}
 
 function cachedFetch(key, fetcher, ttl = CACHE_TTL) {
   const e = _cache.get(key);
@@ -107,7 +156,13 @@ function redo() { _applyHistory(_redoStack, _undoStack, t('undo.redo')); }
 // ── 路由 ──
 
 document.querySelectorAll('.nav-item').forEach(item => {
-  item.onclick = () => {
+  item.onclick = async () => {
+    // 检查分镜表是否有未保存的修改
+    if (_sbDirty) {
+      const ok = await modalConfirm(t('sb.unsaved_confirm'));
+      if (!ok) return;
+      _sbDirty = false;
+    }
     document.querySelectorAll('.nav-item,.page').forEach(el => el.classList.remove('active'));
     item.classList.add('active');
     document.getElementById(`page-${item.dataset.page}`).classList.add('active');
@@ -150,7 +205,7 @@ function _crudPage(title, cols, items, editFn, delFn, newFn, emptyHint) {
 }
 
 async function _crudDelete(endpoint, id, label, reload) {
-  if (!confirm(`${label} ${id}？`)) return;
+  if (!await modalConfirm(`${label} ${id}？`)) return;
   try { await api(`/${endpoint}/${id}`, { method: 'DELETE' }); invalidateCache(endpoint); toast(t('toast.deleted')); reload(); } catch (e) { toast(e.message, 'error'); }
 }
 async function _crudSave(endpoint, id, fieldsFn, overlayId, reload) {
@@ -256,9 +311,9 @@ function renderShotsGrid() {
   grid.innerHTML = shots.map((s, i) => {
     const sid = _shotId(s, i);
     return `<div class="wb-shot-card" id="shot-${esc(sid)}">
-      <div class="wb-shot-head"><span class="wb-shot-num">${esc(sid)}</span><span class="wb-shot-char">${esc(s.characters || '')}</span><span class="wb-shot-scene">${esc(s.scene || '')}</span></div>
-      <div class="wb-shot-body"><div class="wb-shot-text"><div class="wb-shot-action">${esc((s.action || '').substring(0, 20)) || '...'}</div>
-        <div class="wb-shot-dialogue">"${esc((s.dialogue || '').substring(0, 20)) || '...'}"</div></div>
+      <div class="wb-shot-head" id="shot-head-${esc(sid)}"><span class="wb-shot-num">${esc(sid)}</span><span class="wb-shot-char">${esc(s.characters || '')}</span><span class="wb-shot-scene">${esc(s.scene || '')}</span><span class="wb-shot-status"></span></div>
+      <div class="wb-shot-body"><div class="wb-shot-text"><div class="wb-shot-action" title="${esc(s.action || '')}">${esc((s.action || '').substring(0, 30)) || '...'}</div>
+        <div class="wb-shot-dialogue" title="${esc(s.dialogue || '')}">"${esc((s.dialogue || '').substring(0, 30)) || '...'}"</div></div>
         <div class="wb-shot-resources" id="res-${esc(sid)}"></div></div>
       <div class="wb-shot-actions">${_actionBtns(i)}</div></div>`;
   }).join('');
@@ -277,19 +332,58 @@ async function loadResources(idx) {
       r.synced && `<div class="res-chip res-video" onclick="previewRes('${sid}','synced')">👄</div>`,
     ].filter(Boolean).join('');
     el.innerHTML = chips || `<span class="dim" style="font-size:0.7rem">${t('wb.no_resource')}</span>`;
+    // 更新卡片头部状态徽章
+    const headEl = document.getElementById(`shot-head-${sid}`);
+    if (headEl) {
+      const st = (k, ok) => `<span class="st ${ok?'st-done':'st-miss'}">${k}</span>`;
+      const badgeEl = headEl.querySelector('.wb-shot-status');
+      if (badgeEl) badgeEl.innerHTML = st('🎤',r.audio) + st('🎨',r.frame) + st('🎬',r.video) + st('👄',r.synced);
+    }
   } catch {}
 }
 
 function previewRes(sid, type) {
-  const o = document.createElement('div'); o.className = 'res-overlay'; o.onclick = () => o.remove();
-  const src = type === 'audio' ? `/api/files/${ep}/${sid}/audio.wav`
-    : type === 'frame' ? `/api/files/${ep}/${sid}/frame.png`
-    : `/api/files/${ep}/${sid}/${type === 'synced' ? 'synced.mp4' : 'video.mp4'}`;
-  const tag = type === 'audio' ? `audio controls src="${src}" style="width:400px"`
-    : type === 'frame' ? `img src="${src}" style="max-width:90vw;max-height:80vh;border-radius:8px"`
-    : `video controls src="${src}" style="max-width:90vw;max-height:80vh;border-radius:8px"`;
-  o.innerHTML = `<div class="res-overlay-inner"><${tag}><div class="dim" style="margin-top:0.5rem">${t('wb.esc_hint')}</div></div>`;
+  const types = ['audio', 'frame', 'video', 'synced'].filter(t => {
+    const el = document.querySelector(`#res-${sid} .res-${t === 'frame' ? 'img' : t === 'audio' ? 'audio' : 'video'}`);
+    return !!el;
+  });
+  let currentType = type;
+
+  function renderOverlay(t) {
+    const src = t === 'audio' ? `/api/files/${ep}/${sid}/audio.wav`
+      : t === 'frame' ? `/api/files/${ep}/${sid}/frame.png`
+      : `/api/files/${ep}/${sid}/${t === 'synced' ? 'synced.mp4' : 'video.mp4'}`;
+    const tag = t === 'audio' ? `audio controls src="${src}" style="width:400px"`
+      : t === 'frame' ? `img src="${src}" style="max-width:90vw;max-height:80vh;border-radius:8px"`
+      : `video controls src="${src}" style="max-width:90vw;max-height:80vh;border-radius:8px"`;
+    const idx = types.indexOf(t);
+    const nav = types.length > 1 ? `<div style="display:flex;gap:1rem;justify-content:center;margin-top:.6rem">
+      ${idx > 0 ? `<button class="btn btn-outline" id="_pr-prev">◀ ${types[idx-1]}</button>` : ''}
+      <span class="dim">${idx+1}/${types.length}</span>
+      ${idx < types.length-1 ? `<button class="btn btn-outline" id="_pr-next">${types[idx+1]} ▶</button>` : ''}
+    </div>` : '';
+    return `<div class="res-overlay-inner"><${tag}>${nav}<div class="dim" style="margin-top:0.5rem">${t('wb.esc_hint')}</div></div>`;
+  }
+
+  const o = document.createElement('div'); o.className = 'res-overlay';
+  o.innerHTML = renderOverlay(currentType);
+  o.onclick = (e) => { if (e.target === o) o.remove(); };
   document.body.appendChild(o);
+
+  function switchTo(t) { currentType = t; o.innerHTML = renderOverlay(t); bindNav(); }
+  function bindNav() {
+    o.querySelector('#_pr-prev')?.addEventListener('click', (e) => { e.stopPropagation(); switchTo(types[types.indexOf(currentType)-1]); });
+    o.querySelector('#_pr-next')?.addEventListener('click', (e) => { e.stopPropagation(); switchTo(types[types.indexOf(currentType)+1]); });
+  }
+  bindNav();
+
+  o._keyHandler = (e) => {
+    if (e.key === 'ArrowLeft' && types.indexOf(currentType) > 0) switchTo(types[types.indexOf(currentType)-1]);
+    if (e.key === 'ArrowRight' && types.indexOf(currentType) < types.length-1) switchTo(types[types.indexOf(currentType)+1]);
+  };
+  document.addEventListener('keydown', o._keyHandler);
+  const origRemove = o.remove.bind(o);
+  o.remove = () => { document.removeEventListener('keydown', o._keyHandler); origRemove(); };
 }
 
 // ── 镜头编辑 ──
@@ -310,6 +404,7 @@ function editShot(idx) {
     <div class="edit-field"><label>${t('sb.action_en')}</label><textarea id="ed-action-en" rows="2">${esc(s.action_en || '')}</textarea></div>
     <div class="edit-field"><label>${t('edit.dialogue')}</label><textarea id="ed-dialogue" rows="2">${esc(s.dialogue || '')}</textarea></div>
     <div class="edit-field"><label>${t('sb.dialogue_en')}</label><textarea id="ed-dialogue-en" rows="2">${esc(s.dialogue_en || '')}</textarea></div>
+    <div class="edit-field"><label>${t('edit.outfit')}</label><input id="ed-outfit" value="${esc(s.outfit || '')}" placeholder="${t('edit.outfit_ph')}"></div>
     <div class="edit-field-row">
       <div class="edit-field"><label>${t('edit.camera')}</label><select id="ed-camera">${_selectOpts(CAMERAS, s.camera)}</select></div>
       <div class="edit-field"><label>${t('edit.shot_type')}</label><select id="ed-shottype">${_selectOpts(SHOT_TYPES, s.shot_type)}</select></div>
@@ -320,7 +415,7 @@ function editShot(idx) {
 
 async function saveShot(idx) {
   const s = shots[idx];
-  for (const [k, id] of [['scene', 'ed-scene'], ['characters', 'ed-chars'], ['action', 'ed-action'], ['action_en', 'ed-action-en'], ['dialogue', 'ed-dialogue'], ['dialogue_en', 'ed-dialogue-en'], ['camera', 'ed-camera'], ['shot_type', 'ed-shottype'], ['duration', 'ed-dur'], ['emotion', 'ed-emo']])
+  for (const [k, id] of [['scene', 'ed-scene'], ['characters', 'ed-chars'], ['action', 'ed-action'], ['action_en', 'ed-action-en'], ['dialogue', 'ed-dialogue'], ['dialogue_en', 'ed-dialogue-en'], ['outfit', 'ed-outfit'], ['camera', 'ed-camera'], ['shot_type', 'ed-shottype'], ['duration', 'ed-dur'], ['emotion', 'ed-emo']])
     s[k] = document.getElementById(id)?.value || (k === 'duration' ? 4 : k === 'emotion' ? 'neutral' : '');
   pushUndo(`${t('edit.shot_title')} ${s.shot_id || idx + 1}`);
   try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } }); invalidateCache(`storyboard/${ep}`); invalidateCache(`res/${ep}`); toast(t('toast.saved')); document.getElementById('edit-overlay')?.remove(); renderShotsGrid(); } catch (e) { toast(e.message, 'error'); }
@@ -328,7 +423,7 @@ async function saveShot(idx) {
 
 async function deleteShot(idx) {
   const sid = _shotId(shots[idx], idx);
-  if (!confirm(t('confirm.delete_shot', { id: sid }))) return;
+  if (!await modalConfirm(t('confirm.delete_shot', { id: sid }))) return;
   pushUndo(`${t('btn.delete')} ${sid}`); shots.splice(idx, 1);
   try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.deleted')); renderShotsGrid(); } catch (e) { toast(e.message, 'error'); }
 }
@@ -369,12 +464,19 @@ function _batchSummary(done, skip, fail, cancelled) {
 
 async function batchRun(step) {
   const names = { tts: t('step.tts'), 'first-frame': t('step.first_frame'), video: t('step.video'), lipsync: t('step.lipsync') };
-  if (!confirm(t('batch.confirm', { step: names[step], n: shots.length }))) return;
+  if (!await modalConfirm(t('batch.confirm', { step: names[step], n: shots.length }))) return;
   batchCancelled = false;
   const statusEl = document.getElementById('wb-batch-status');
   statusEl.style.display = 'block';
   const concurrency = parseInt(localStorage.getItem('drama_concurrency') || '1');
   let done = 0, fail = 0, skip = 0, idx = 0;
+
+  function _batchProgressHTML(i, sid) {
+    return `<div class="batch-progress"><div class="batch-bar"><div class="batch-fill" style="width:${(i / shots.length) * 100}%"></div></div>
+      <div class="batch-text">[${i + 1}/${shots.length}] ${sid} — ${t('batch.progress', { step: names[step] })}</div>
+      <div style="font-size:.82rem;margin-top:.25rem;color:var(--fg2)">${t('wb.batch_ok')} <b>${done}</b> · ${t('wb.batch_skip')} <b>${skip}</b> · ${t('wb.batch_fail')} <b style="color:${fail?'var(--red)':'inherit'}">${fail}</b></div>
+      <button class="btn btn-sm btn-danger" onclick="batchCancelled=true;cancelCurrentTask()" style="margin-top:0.3rem">${t('batch.cancel_btn')}</button></div>`;
+  }
 
   async function processShot(i) {
     if (batchCancelled) return;
@@ -398,10 +500,9 @@ async function batchRun(step) {
     for (let i = 0; i < shots.length; i++) {
       if (batchCancelled) break;
       const sid = _shotId(shots[i], i);
-      statusEl.innerHTML = `<div class="batch-progress"><div class="batch-bar"><div class="batch-fill" style="width:${(i / shots.length) * 100}%"></div></div>
-        <div class="batch-text">[${i + 1}/${shots.length}] ${sid} — ${t('batch.progress', { step: names[step] })}</div>
-        <button class="btn btn-sm btn-danger" onclick="batchCancelled=true;cancelCurrentTask()" style="margin-top:0.3rem">${t('batch.cancel_btn')}</button></div>`;
+      statusEl.innerHTML = _batchProgressHTML(i, sid);
       await processShot(i);
+      statusEl.innerHTML = _batchProgressHTML(i, sid); // 更新计数
     }
   } else {
     // 并发
@@ -409,10 +510,8 @@ async function batchRun(step) {
     for (let i = 0; i < shots.length; i++) {
       if (batchCancelled) break;
       const sid = _shotId(shots[i], i);
-      statusEl.innerHTML = `<div class="batch-progress"><div class="batch-bar"><div class="batch-fill" style="width:${(i / shots.length) * 100}%"></div></div>
-        <div class="batch-text">[${i + 1}/${shots.length}] ${sid} — ${names[step]} (${t('batch.concurrent')}: ${concurrency})</div>
-        <button class="btn btn-sm btn-danger" onclick="batchCancelled=true;cancelCurrentTask()" style="margin-top:0.3rem">${t('batch.cancel_btn')}</button></div>`;
-      const p = processShot(i).then(() => pool.delete(p));
+      statusEl.innerHTML = _batchProgressHTML(i, sid);
+      const p = processShot(i).then(() => { pool.delete(p); statusEl.innerHTML = _batchProgressHTML(i, sid); });
       pool.add(p);
       if (pool.size >= concurrency) await Promise.race(pool);
     }
@@ -427,7 +526,7 @@ async function batchRun(step) {
 // ── 管线工具 ──
 
 async function runPortraits() {
-  if (!confirm(t('wb.gen_portraits') + '?')) return;
+  if (!await modalConfirm(t('wb.gen_portraits') + '?')) return;
   try {
     const { task_id } = await api('/tools/portraits', { method: 'POST' });
     toast('⏳ ' + t('wb.gen_portraits'));
@@ -438,7 +537,7 @@ async function runPortraits() {
 }
 
 async function runPost() {
-  if (!confirm(t('wb.post_process') + '?')) return;
+  if (!await modalConfirm(t('wb.post_process') + '?')) return;
   try {
     const { task_id } = await api('/tools/post', { method: 'POST', body: { episode: ep } });
     toast('⏳ ' + t('wb.post_process'));
@@ -449,7 +548,7 @@ async function runPost() {
 }
 
 async function runAll() {
-  if (!confirm(t('wb.run_all') + '?')) return;
+  if (!await modalConfirm(t('wb.run_all') + '?')) return;
   const statusEl = document.getElementById('wb-batch-status');
   statusEl.style.display = 'block';
   const stages = ['preview', 'produce', 'post'];
@@ -477,9 +576,9 @@ async function runAll() {
 }
 
 async function runMusic() {
-  const duration = prompt(t('wb.music_duration') + ':', '60');
+  const duration = await modalPrompt(t('wb.music_duration') + ':', '60', { inputType: 'number' });
   if (!duration) return;
-  const mood = prompt(t('wb.music_mood') + ':', 'neutral');
+  const mood = await modalPrompt(t('wb.music_mood') + ':', 'neutral');
   try {
     const { task_id } = await api('/tools/music', { method: 'POST', body: { duration: parseFloat(duration), mood: mood || 'neutral' } });
     toast('⏳ ' + t('wb.gen_music'));
@@ -490,7 +589,7 @@ async function runMusic() {
 }
 
 async function runSubtitle() {
-  if (!confirm(t('wb.gen_subtitle') + '?')) return;
+  if (!await modalConfirm(t('wb.gen_subtitle') + '?')) return;
   try {
     const { task_id } = await api('/tools/subtitle', { method: 'POST', body: { episode: ep } });
     toast('⏳ ' + t('wb.gen_subtitle'));
@@ -787,7 +886,7 @@ function updateShotField() { _sbDirty = true; _debouncedSaveSB(); }
 
 async function deleteShotFromSB(idx) {
   const current = (await api(`/storyboard/${ep}`)).shots || [];
-  if (!confirm(t('confirm.delete_shot', { id: current[idx]?.shot_id || idx + 1 }))) return;
+  if (!await modalConfirm(t('confirm.delete_shot', { id: current[idx]?.shot_id || idx + 1 }))) return;
   pushUndo(`${t('btn.delete')} ${current[idx]?.shot_id || idx + 1}`); current.splice(idx, 1);
   try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: current } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.deleted')); loadStoryboard(); } catch (e) { toast(e.message, 'error'); }
 }
@@ -818,7 +917,7 @@ async function loadProjects() {
       <table><thead><tr><th></th><th>${t('common.name')}</th><th>${t('common.path')}</th><th>${t('common.status')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
-function newProj() { const n = prompt(t('proj.input_name')); if (!n) return; api('/projects/new', { method: 'POST', body: { name: n } }).then(() => { toast(t('toast.created')); loadProjects(); }).catch(e => toast(e.message, 'error')); }
+async function newProj() { const n = await modalPrompt(t('proj.input_name')); if (!n) return; api('/projects/new', { method: 'POST', body: { name: n } }).then(() => { toast(t('toast.created')); loadProjects(); }).catch(e => toast(e.message, 'error')); }
 function switchProj(name) {
   api('/projects/switch', { method: 'POST', body: { name } }).then(() => {
     _cache.clear();
@@ -831,8 +930,8 @@ function switchProj(name) {
     if (p) { const pageName = p.id.replace('page-', ''); if (PAGES[pageName]) PAGES[pageName](); }
   }).catch(e => toast(e.message, 'error'));
 }
-function deleteProj(n) {
-  if (!confirm(t('proj.confirm_delete', { name: n }))) return;
+async function deleteProj(n) {
+  if (!await modalConfirm(t('proj.confirm_delete', { name: n }))) return;
   api(`/projects/${encodeURIComponent(n)}`, { method: 'DELETE' }).then(() => {
     _cache.clear();
     toast(t('proj.deleted'));
@@ -891,7 +990,7 @@ async function loadSettings() {
           <div class="form-row"><label>${t('set.backend')}</label><select id="cfg-llm-backend"><option value="openai" ${llm.backend==='openai'?'selected':''}>OpenAI 兼容 (SiliconFlow / Zhipu / ...)</option><option value="ollama" ${llm.backend==='ollama'?'selected':''}>Ollama</option></select></div>
           <div class="form-row"><label>API URL</label><input id="cfg-llm-url" value="${esc(llm.base_url || '')}"></div>
           <div class="form-row"><label>${t('set.llm_model')}</label><input id="cfg-llm-model" value="${esc(llm.model || '')}"></div>
-          <div class="form-row"><label>API Key</label><input id="cfg-llm-key" value="${esc(llm.api_key || '')}"></div>
+          <div class="form-row"><label>API Key</label><div style="display:flex;gap:.3rem;flex:1"><input id="cfg-llm-key" type="password" value="${esc(llm.api_key || '')}" style="flex:1"><button class="btn btn-xs btn-outline" onclick="_toggleKeyVis()" id="cfg-llm-key-toggle">👁</button></div></div>
           <div class="tool-status-inline"><span class="status-dot ${tools.llm?.available ? 'ok' : 'err'}"></span>${tools.llm?.available ? t('dash.available') : tools.llm?.reason || t('dash.unavailable')}
             <button class="btn btn-xs btn-outline" onclick="testTool('llm')" id="test-btn-llm">🔌 ${t('set.test')}</button>
             <span id="test-result-llm" class="dim" style="font-size:0.8rem;margin-left:0.3rem"></span></div></div>
@@ -933,6 +1032,14 @@ async function saveCfg() {
 }
 
 // ── 工具测试 ──
+
+function _toggleKeyVis() {
+  const inp = document.getElementById('cfg-llm-key');
+  const btn = document.getElementById('cfg-llm-key-toggle');
+  if (!inp) return;
+  if (inp.type === 'password') { inp.type = 'text'; btn.textContent = '🙈'; }
+  else { inp.type = 'password'; btn.textContent = '👁'; }
+}
 
 async function testTool(name) {
   const btn = document.getElementById(`test-btn-${name}`);

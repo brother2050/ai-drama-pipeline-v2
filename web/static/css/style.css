@@ -371,8 +371,9 @@ tbody tr:hover { background: rgba(108,140,255,.04); }
 
 .wb-shot-body { padding: .6rem .75rem; min-height: 56px; }
 .wb-shot-text { margin-bottom: .4rem; }
-.wb-shot-action  { font-size: .8rem; color: var(--fg2); line-height: 1.5; }
-.wb-shot-dialogue { font-size: .8rem; color: var(--yellow); font-style: italic; opacity: .85; margin-top: .15rem; }
+.wb-shot-action  { font-size: .8rem; color: var(--fg2); line-height: 1.5; cursor: default; }
+.wb-shot-dialogue { font-size: .8rem; color: var(--yellow); font-style: italic; opacity: .85; margin-top: .15rem; cursor: default; }
+.wb-shot-action:hover, .wb-shot-dialogue:hover { opacity: 1; }
 
 .wb-shot-resources { display: flex; gap: .35rem; flex-wrap: wrap; margin-top: .4rem; }
 
@@ -401,6 +402,12 @@ tbody tr:hover { background: rgba(108,140,255,.04); }
 }
 
 .run-indicator { font-size: .8rem; color: var(--yellow); padding: .2rem .4rem; }
+
+/* ─── 镜头状态徽章 ─── */
+.wb-shot-status { display: flex; gap: .2rem; margin-left: auto; }
+.wb-shot-status .st { font-size: .65rem; padding: .1rem .3rem; border-radius: 3px; font-weight: 600; }
+.wb-shot-status .st-done { background: var(--green-soft); color: var(--green); }
+.wb-shot-status .st-miss { background: var(--bg4); color: var(--dim); }
 
 /* ─── 浮层 ─── */
 .res-overlay {
