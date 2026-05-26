@@ -205,6 +205,29 @@ def _cfg_dir(config_path: str, *parts) -> Path:
     return p.joinpath(*parts) if parts else p
 
 
+def _unique_hash_id(prefix: str, name: str, existing: dict) -> str:
+    """基于中文名生成确定性短 hash ID，碰撞时自动追加后缀
+
+    Args:
+        prefix: ID 前缀（如 "ch"、"sc"）
+        name: 中文名
+        existing: 已有的 id_remap，用于检测碰撞
+
+    Returns:
+        唯一的 hash ID，如 ch_8a3f2b1c 或 ch_8a3f2b1c_2
+    """
+    import hashlib
+    h = hashlib.md5(name.encode("utf-8")).hexdigest()[:8]
+    base = f"{prefix}_{h}"
+    candidate = base
+    counter = 2
+    # 检查碰撞：id_remap 中值已存在 且 不是自己
+    while candidate in existing.values():
+        candidate = f"{base}_{counter}"
+        counter += 1
+    return candidate
+
+
 # ══════════════════════════════════════════════════════════
 #  核心逻辑函数
 # ══════════════════════════════════════════════════════════
@@ -590,19 +613,6 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
     self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 70, "message": "正在保存分镜..."})
 
     sb_path = project_dir / "storyboard" / "episodes.csv"
-    save_storyboard(sb_path, shots, episode, append)
-
-    # 同步数据库
-    try:
-        from infra.database.pool import get_pool
-        from infra.database.shots import upsert as db_upsert_shot
-        pool = get_pool()
-        for shot in shots:
-            sid = shot.get("shot_id", "")
-            if sid:
-                db_upsert_shot(pool, episode, sid, shot)
-    except Exception:
-        pass
 
     # ── 自动补全缺失的角色和场景 ──
     existing_char_ids = {c.get("id") for c in characters}
@@ -631,12 +641,6 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
             "step": "ai_storyboard", "progress": 80,
             "message": f"正在生成 {len(missing_chars)} 个角色、{len(missing_scenes)} 个场景..."})
 
-    def _make_hash_id(prefix: str, name: str) -> str:
-        """基于中文名生成确定性短 hash ID"""
-        import hashlib
-        h = hashlib.md5(name.encode("utf-8")).hexdigest()[:8]
-        return f"{prefix}_{h}"
-
     # 生成缺失角色
     if missing_chars:
         from engines.llm_generator import generate_characters
@@ -655,23 +659,26 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                 f"该角色在分镜中的表现:",
             ]
             if actions:
-                for i, a in enumerate(actions, 1):
-                    desc_parts.append(f"  镜头{i}: {a}")
+                for idx, a in enumerate(actions, 1):
+                    desc_parts.append(f"  镜头{idx}: {a}")
             if dialogues:
                 desc_parts.append(f"台词: {' / '.join(dialogues)}")
             char_descriptions.append("\n".join(desc_parts))
 
         try:
-            # 不传 expected_ids，让 LLM 自由生成 id，我们再用 hash 替换
             new_chars = generate_characters(llm, char_descriptions)
             for i, char in enumerate(new_chars):
                 if char is None:
                     logger.warning(f"  ⚠ 角色 {missing_chars[i]} 生成失败，跳过")
                     continue
                 old_id = missing_chars[i] if i < len(missing_chars) else char.get("id", "")
-                chinese_name = char.get("name", old_id)
-                new_id = _make_hash_id("ch", chinese_name)
+                chinese_name = char.get("name", "").strip()
+                if not chinese_name:
+                    chinese_name = old_id
+                    logger.warning(f"  ⚠ 角色 {old_id} 未生成中文名，使用旧 ID 作为名称")
+                new_id = _unique_hash_id("ch", chinese_name, id_remap)
                 char["id"] = new_id
+                char["name"] = chinese_name
                 id_remap[old_id] = new_id
 
                 path = char_dir / f"{new_id}.yaml"
@@ -705,8 +712,8 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                 f"该场景在分镜中的画面:",
             ]
             if actions:
-                for i, a in enumerate(actions, 1):
-                    desc_parts.append(f"  镜头{i}: {a}")
+                for idx, a in enumerate(actions, 1):
+                    desc_parts.append(f"  镜头{idx}: {a}")
             scene_descriptions.append("\n".join(desc_parts))
 
         try:
@@ -716,9 +723,13 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                     logger.warning(f"  ⚠ 场景 {missing_scenes[i]} 生成失败，跳过")
                     continue
                 old_id = missing_scenes[i] if i < len(missing_scenes) else scene.get("id", "")
-                scene_name = scene.get("name", old_id)
-                new_id = _make_hash_id("sc", scene_name)
+                scene_name = scene.get("name", "").strip()
+                if not scene_name:
+                    scene_name = old_id
+                    logger.warning(f"  ⚠ 场景 {old_id} 未生成名称，使用旧 ID 作为名称")
+                new_id = _unique_hash_id("sc", scene_name, id_remap)
                 scene["id"] = new_id
+                scene["name"] = scene_name
                 id_remap[old_id] = new_id
 
                 path = scene_dir / f"{new_id}.yaml"
@@ -738,31 +749,30 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
     # ── 回写分镜表：替换旧 ID 为 hash ID ──
     if id_remap:
         for shot in shots:
-            # 替换 characters 字段
             chars = shot.get("characters", "")
             if chars:
                 parts = [c.strip() for c in chars.split("+")]
                 parts = [id_remap.get(c, c) for c in parts]
                 shot["characters"] = "+".join(parts)
-            # 替换 scene 字段
             scene = shot.get("scene", "")
             if scene in id_remap:
                 shot["scene"] = id_remap[scene]
-
-        # 重新保存分镜
-        save_storyboard(sb_path, shots, episode, append)
-        # 同步数据库
-        try:
-            from infra.database.pool import get_pool
-            from infra.database.shots import upsert as db_upsert_shot
-            pool = get_pool()
-            for shot in shots:
-                sid = shot.get("shot_id", "")
-                if sid:
-                    db_upsert_shot(pool, episode, sid, shot)
-        except Exception:
-            pass
         logger.info(f"  ✅ 分镜表已回写 {len(id_remap)} 个 ID 映射")
+
+    # 保存分镜（回写后再保存，只写一次）
+    save_storyboard(sb_path, shots, episode, append)
+
+    # 同步数据库（回写后再同步，只写一次）
+    try:
+        from infra.database.pool import get_pool
+        from infra.database.shots import upsert as db_upsert_shot
+        pool = get_pool()
+        for shot in shots:
+            sid = shot.get("shot_id", "")
+            if sid:
+                db_upsert_shot(pool, episode, sid, shot)
+    except Exception:
+        pass
 
     total_sec = sum(int(s.get("duration", 4)) for s in shots)
     return {"status": "done", "episode": episode, "count": len(shots),
