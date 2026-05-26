@@ -535,3 +535,184 @@ def music_task(self, config_path: str, duration: float, mood: str, output: str):
 @app.task(bind=True, name="pipeline.subtitle", soft_time_limit=60)
 def subtitle_task(self, config_path: str, episode: int):
     return _run_subtitle(config_path, episode)
+
+
+# ══════════════════════════════════════════════════════════
+#  AI 生成任务（异步，避免网关超时）
+# ══════════════════════════════════════════════════════════
+
+@app.task(bind=True, name="pipeline.ai.storyboard", soft_time_limit=600)
+def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
+                       duration: int = 90, append: bool = False):
+    """AI 生成分镜表（异步）"""
+    _ensure_path()
+    from infra.config import Config
+    from api import _ensure_registered; _ensure_registered()
+    from api.registry import Container
+    from engines.llm_generator import generate_storyboard
+    from engines.storyboard import save_storyboard
+    from pathlib import Path as P
+
+    self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 10, "message": "正在初始化 LLM..."})
+
+    cfg = Config(config_path)
+    cont = Container(cfg.data)
+    try:
+        llm = cont.get("llm")
+    except Exception as e:
+        return {"status": "error", "reason": f"LLM 初始化失败: {e}"}
+
+    self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 30, "message": "AI 正在生成分镜..."})
+
+    # 加载已有角色和场景
+    project_dir = P(cfg.project_dir)
+    char_dir = project_dir / "config" / "characters"
+    scene_dir = project_dir / "config" / "scenes"
+    characters = _load_yaml_entities(char_dir, "character")
+    scenes = _load_yaml_entities(scene_dir, "scene")
+
+    try:
+        shots = generate_storyboard(llm, outline, characters, scenes, episode, duration)
+    except Exception as e:
+        return {"status": "error", "reason": f"LLM 生成失败: {e}"}
+
+    if not shots:
+        return {"status": "error", "reason": "LLM 未能生成有效分镜"}
+
+    self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 80, "message": "正在保存..."})
+
+    sb_path = project_dir / "storyboard" / "episodes.csv"
+    save_storyboard(sb_path, shots, episode, append)
+
+    # 同步数据库
+    try:
+        from infra.database.pool import get_pool
+        from infra.database.shots import upsert as db_upsert_shot
+        pool = get_pool()
+        for shot in shots:
+            sid = shot.get("shot_id", "")
+            if sid:
+                db_upsert_shot(pool, episode, sid, shot)
+    except Exception:
+        pass
+
+    total_sec = sum(int(s.get("duration", 4)) for s in shots)
+    return {"status": "done", "episode": episode, "count": len(shots),
+            "total_duration": total_sec, "shots": shots}
+
+
+def _load_yaml_entities(directory, key: str) -> list:
+    """加载目录下所有 YAML 实体"""
+    import yaml
+    from pathlib import Path as P
+    d = P(directory)
+    if not d.exists():
+        return []
+    result = []
+    for f in d.glob("*.yaml"):
+        if f.stem.endswith(".example"):
+            continue
+        try:
+            with open(f, encoding="utf-8") as fh:
+                data = yaml.safe_load(fh) or {}
+            entity = data.get(key, {})
+            if entity.get("id"):
+                result.append(entity)
+        except Exception:
+            continue
+    return result
+
+
+@app.task(bind=True, name="pipeline.ai.characters", soft_time_limit=300)
+def ai_characters_task(self, config_path: str, descriptions: list[str]):
+    """AI 生成角色（异步）"""
+    _ensure_path()
+    from infra.config import Config
+    from api import _ensure_registered; _ensure_registered()
+    from api.registry import Container
+    from engines.llm_generator import generate_characters
+    from pathlib import Path as P
+    import yaml
+
+    self.update_state(state="PROGRESS", meta={"step": "ai_characters", "progress": 20, "message": "AI 正在生成角色..."})
+
+    cfg = Config(config_path)
+    cont = Container(cfg.data)
+    try:
+        llm = cont.get("llm")
+    except Exception as e:
+        return {"status": "error", "reason": f"LLM 初始化失败: {e}"}
+
+    try:
+        chars = generate_characters(llm, descriptions)
+    except Exception as e:
+        return {"status": "error", "reason": f"生成失败: {e}"}
+
+    if not chars:
+        return {"status": "error", "reason": "LLM 未能生成有效角色"}
+
+    # 保存
+    char_dir = P(cfg.project_dir) / "config" / "characters"
+    char_dir.mkdir(parents=True, exist_ok=True)
+    saved = []
+    for char in chars:
+        cid = char.get("id", "unknown")
+        path = char_dir / f"{cid}.yaml"
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.dump({"character": char}, f, allow_unicode=True, default_flow_style=False)
+        try:
+            from infra.database.characters import upsert as db_up
+            from infra.database.pool import get_pool
+            db_up(get_pool(), cid, char)
+        except Exception:
+            pass
+        saved.append(char)
+
+    return {"status": "done", "count": len(saved), "characters": saved}
+
+
+@app.task(bind=True, name="pipeline.ai.scenes", soft_time_limit=300)
+def ai_scenes_task(self, config_path: str, descriptions: list[str]):
+    """AI 生成场景（异步）"""
+    _ensure_path()
+    from infra.config import Config
+    from api import _ensure_registered; _ensure_registered()
+    from api.registry import Container
+    from engines.llm_generator import generate_scenes
+    from pathlib import Path as P
+    import yaml
+
+    self.update_state(state="PROGRESS", meta={"step": "ai_scenes", "progress": 20, "message": "AI 正在生成场景..."})
+
+    cfg = Config(config_path)
+    cont = Container(cfg.data)
+    try:
+        llm = cont.get("llm")
+    except Exception as e:
+        return {"status": "error", "reason": f"LLM 初始化失败: {e}"}
+
+    try:
+        scene_list = generate_scenes(llm, descriptions)
+    except Exception as e:
+        return {"status": "error", "reason": f"生成失败: {e}"}
+
+    if not scene_list:
+        return {"status": "error", "reason": "LLM 未能生成有效场景"}
+
+    scene_dir = P(cfg.project_dir) / "config" / "scenes"
+    scene_dir.mkdir(parents=True, exist_ok=True)
+    saved = []
+    for scene in scene_list:
+        sid = scene.get("id", "unknown")
+        path = scene_dir / f"{sid}.yaml"
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.dump({"scene": scene}, f, allow_unicode=True, default_flow_style=False)
+        try:
+            from infra.database.scenes import upsert as db_up
+            from infra.database.pool import get_pool
+            db_up(get_pool(), sid, scene)
+        except Exception:
+            pass
+        saved.append(scene)
+
+    return {"status": "done", "count": len(saved), "scenes": saved}

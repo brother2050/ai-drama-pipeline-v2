@@ -830,22 +830,28 @@ async function doAIGenStoryboard() {
   const duration = parseInt(document.getElementById('ai-sb-dur')?.value) || 90;
   const append = document.getElementById('ai-sb-append')?.checked || false;
   const statusEl = document.getElementById('ai-sb-status');
+  const okBtn = document.querySelector('#ai-gen-sb-overlay .btn-primary');
 
   if (statusEl) statusEl.innerHTML = '⏳ AI 正在生成分镜，请稍候...';
+  if (okBtn) { okBtn.disabled = true; okBtn.textContent = '⏳ 生成中...'; }
 
   try {
-    const result = await api('/llm/storyboard', {
+    const { task_id } = await api('/llm/storyboard', {
       method: 'POST',
       body: { episode, outline, duration, append },
     });
 
-    if (result.status === 'ok' && result.shots?.length) {
-      const totalSec = result.total_duration || 0;
-      if (statusEl) statusEl.innerHTML = `✅ 生成 ${result.count} 个镜头，共 ${totalSec} 秒`;
-      toast(`✅ 已生成 ${result.count} 个镜头`);
+    // 轮询任务状态
+    const result = await pollTask(task_id, info => {
+      if (statusEl) statusEl.innerHTML = `⏳ ${info.message || 'AI 生成中...'} (${info.progress || 0}%)`;
+    });
+
+    if (result.status === 'success' && result.result?.status === 'done') {
+      const r = result.result;
+      if (statusEl) statusEl.innerHTML = `✅ 生成 ${r.count} 个镜头，共 ${r.total_duration} 秒`;
+      toast(`✅ 已生成 ${r.count} 个镜头`);
       invalidateCache(`storyboard/${episode}`);
       invalidateCache('episodes');
-      // 刷新分镜表页面
       setTimeout(() => {
         document.getElementById('ai-gen-sb-overlay')?.remove();
         ep = episode;
@@ -854,13 +860,15 @@ async function doAIGenStoryboard() {
         else if (p?.id === 'page-pipeline') loadPipeline();
       }, 1500);
     } else {
-      if (statusEl) statusEl.innerHTML = '❌ 生成失败，未获得有效分镜';
-      toast('❌ 生成失败', 'error');
+      const err = result.result?.reason || result.error || '生成失败';
+      if (statusEl) statusEl.innerHTML = `❌ ${err}`;
+      toast(`❌ ${err}`, 'error');
     }
   } catch (e) {
     if (statusEl) statusEl.innerHTML = `❌ ${e.message}`;
     toast(`❌ ${e.message}`, 'error');
   }
+  if (okBtn) { okBtn.disabled = false; okBtn.textContent = '🚀 生成'; }
 }
 
 function showAIGenCharacter() {
@@ -876,23 +884,32 @@ async function doAIGenCharacter() {
   const descriptions = descText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
   if (!descriptions.length) { toast('请输入至少一个角色描述', 'error'); return; }
   const statusEl = document.getElementById('ai-char-status');
+  const okBtn = document.querySelector('#ai-gen-char-overlay .btn-primary');
   if (statusEl) statusEl.innerHTML = `⏳ 正在生成 ${descriptions.length} 个角色...`;
+  if (okBtn) { okBtn.disabled = true; okBtn.textContent = '⏳ 生成中...'; }
 
   try {
-    const result = await api('/llm/characters', { method: 'POST', body: { descriptions } });
-    if (result.status === 'ok' && result.characters?.length) {
-      if (statusEl) statusEl.innerHTML = `✅ 生成 ${result.count} 个角色`;
-      toast(`✅ 已生成 ${result.count} 个角色`);
+    const { task_id } = await api('/llm/characters', { method: 'POST', body: { descriptions } });
+    const result = await pollTask(task_id, info => {
+      if (statusEl) statusEl.innerHTML = `⏳ ${info.message || 'AI 生成中...'} (${info.progress || 0}%)`;
+    });
+
+    if (result.status === 'success' && result.result?.status === 'done') {
+      const r = result.result;
+      if (statusEl) statusEl.innerHTML = `✅ 生成 ${r.count} 个角色`;
+      toast(`✅ 已生成 ${r.count} 个角色`);
       invalidateCache('characters');
       setTimeout(() => { document.getElementById('ai-gen-char-overlay')?.remove(); loadCharacters(); }, 1500);
     } else {
-      if (statusEl) statusEl.innerHTML = '❌ 生成失败';
-      toast('❌ 生成失败', 'error');
+      const err = result.result?.reason || result.error || '生成失败';
+      if (statusEl) statusEl.innerHTML = `❌ ${err}`;
+      toast(`❌ ${err}`, 'error');
     }
   } catch (e) {
     if (statusEl) statusEl.innerHTML = `❌ ${e.message}`;
     toast(`❌ ${e.message}`, 'error');
   }
+  if (okBtn) { okBtn.disabled = false; okBtn.textContent = '🚀 生成'; }
 }
 
 function showAIGenScene() {
@@ -908,23 +925,32 @@ async function doAIGenScene() {
   const descriptions = descText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
   if (!descriptions.length) { toast('请输入至少一个场景描述', 'error'); return; }
   const statusEl = document.getElementById('ai-scene-status');
+  const okBtn = document.querySelector('#ai-gen-scene-overlay .btn-primary');
   if (statusEl) statusEl.innerHTML = `⏳ 正在生成 ${descriptions.length} 个场景...`;
+  if (okBtn) { okBtn.disabled = true; okBtn.textContent = '⏳ 生成中...'; }
 
   try {
-    const result = await api('/llm/scenes', { method: 'POST', body: { descriptions } });
-    if (result.status === 'ok' && result.scenes?.length) {
-      if (statusEl) statusEl.innerHTML = `✅ 生成 ${result.count} 个场景`;
-      toast(`✅ 已生成 ${result.count} 个场景`);
+    const { task_id } = await api('/llm/scenes', { method: 'POST', body: { descriptions } });
+    const result = await pollTask(task_id, info => {
+      if (statusEl) statusEl.innerHTML = `⏳ ${info.message || 'AI 生成中...'} (${info.progress || 0}%)`;
+    });
+
+    if (result.status === 'success' && result.result?.status === 'done') {
+      const r = result.result;
+      if (statusEl) statusEl.innerHTML = `✅ 生成 ${r.count} 个场景`;
+      toast(`✅ 已生成 ${r.count} 个场景`);
       invalidateCache('scenes');
       setTimeout(() => { document.getElementById('ai-gen-scene-overlay')?.remove(); loadScenes(); }, 1500);
     } else {
-      if (statusEl) statusEl.innerHTML = '❌ 生成失败';
-      toast('❌ 生成失败', 'error');
+      const err = result.result?.reason || result.error || '生成失败';
+      if (statusEl) statusEl.innerHTML = `❌ ${err}`;
+      toast(`❌ ${err}`, 'error');
     }
   } catch (e) {
     if (statusEl) statusEl.innerHTML = `❌ ${e.message}`;
     toast(`❌ ${e.message}`, 'error');
   }
+  if (okBtn) { okBtn.disabled = false; okBtn.textContent = '🚀 生成'; }
 }
 
 async function loadStoryboard() {

@@ -42,6 +42,9 @@ app.conf.update(
         "pipeline.tts_single": {"queue": "drama"},
         "pipeline.music": {"queue": "drama"},
         "pipeline.subtitle": {"queue": "drama"},
+        "pipeline.ai.storyboard": {"queue": "drama"},
+        "pipeline.ai.characters": {"queue": "drama"},
+        "pipeline.ai.scenes": {"queue": "drama"},
     },
 )
 

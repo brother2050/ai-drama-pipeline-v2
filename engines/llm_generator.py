@@ -238,14 +238,13 @@ def expand_outline(llm, outline: str) -> str:
 # ── 内部工具 ──
 
 def _parse_json_response(text: str) -> Any:
-    """从 LLM 回复中提取 JSON（兼容 markdown 代码块）"""
+    """从 LLM 回复中提取 JSON（兼容 markdown 代码块、单引号、注释等）"""
     if not text:
         return None
 
-    # 尝试直接解析
     text = text.strip()
 
-    # 去掉 markdown 代码块
+    # 1. 去掉 markdown 代码块
     patterns = [
         r'```json\s*\n?(.*?)\n?\s*```',
         r'```\s*\n?(.*?)\n?\s*```',
@@ -256,24 +255,83 @@ def _parse_json_response(text: str) -> Any:
             text = m.group(1).strip()
             break
 
+    # 2. 直接尝试
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        # 尝试修复常见问题
-        # 去掉尾随逗号
-        fixed = re.sub(r',\s*([\]}])', r'\1', text)
+        pass
+
+    # 3. 去掉尾随逗号
+    fixed = re.sub(r',\s*([\]}])', r'\1', text)
+    try:
+        return json.loads(fixed)
+    except json.JSONDecodeError:
+        pass
+
+    # 4. 去掉行注释 (// ...)
+    fixed = re.sub(r'//[^\n]*', '', fixed)
+    fixed = re.sub(r',\s*([\]}])', r'\1', fixed)
+    try:
+        return json.loads(fixed)
+    except json.JSONDecodeError:
+        pass
+
+    # 5. 单引号 → 双引号（Python 风格 dict → JSON）
+    if "'" in text and '"' not in text:
+        fixed = text.replace("'", '"')
+        fixed = re.sub(r',\s*([\]}])', r'\1', fixed)
         try:
             return json.loads(fixed)
         except json.JSONDecodeError:
-            # 尝试找到第一个 [ 或 {
-            for i, ch in enumerate(text):
-                if ch in '[{':
+            pass
+
+    # 6. 从大段文本中提取最外层 JSON（找匹配的 [] 或 {}）
+    for start_ch, end_ch in [('[', ']'), ('{', '}')]:
+        idx = text.find(start_ch)
+        if idx < 0:
+            continue
+        depth = 0
+        in_str = False
+        escape = False
+        for i in range(idx, len(text)):
+            c = text[i]
+            if escape:
+                escape = False
+                continue
+            if c == '\\' and in_str:
+                escape = True
+                continue
+            if c == '"' and not escape:
+                in_str = not in_str
+                continue
+            if in_str:
+                continue
+            if c == start_ch:
+                depth += 1
+            elif c == end_ch:
+                depth -= 1
+                if depth == 0:
+                    candidate = text[idx:i+1]
                     try:
-                        return json.loads(text[i:])
+                        return json.loads(candidate)
                     except json.JSONDecodeError:
-                        continue
-            logger.warning("无法从 LLM 回复中提取 JSON")
-            return None
+                        # 尝试修复后解析
+                        candidate = re.sub(r',\s*([\]}])', r'\1', candidate)
+                        try:
+                            return json.loads(candidate)
+                        except json.JSONDecodeError:
+                            break
+
+    # 7. 最后尝试：去掉所有换行和多余空白后解析
+    oneline = re.sub(r'\s+', ' ', text).strip()
+    if oneline.startswith('[') or oneline.startswith('{'):
+        try:
+            return json.loads(oneline)
+        except json.JSONDecodeError:
+            pass
+
+    logger.warning(f"无法从 LLM 回复中提取 JSON（前 200 字）: {text[:200]}")
+    return None
 
 
 def _postprocess_shots(shots: list[dict], episode: int) -> list[dict]:

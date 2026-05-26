@@ -847,108 +847,26 @@ def _get_llm_for_api():
 
 @router.post("/llm/storyboard")
 def llm_generate_storyboard(req: StoryboardGenRequest):
-    """AI 生成分镜表"""
-    llm = _get_llm_for_api()
-    from engines.llm_generator import generate_storyboard
-
-    # 加载已有角色和场景
-    proj_dir = _active_project_dir()
-    characters = _yaml_list("characters", "character")
-    scenes = _yaml_list("scenes", "scene")
-
-    shots = generate_storyboard(llm, req.outline, characters, scenes, req.episode, req.duration)
-    if not shots:
-        raise HTTPException(500, "LLM 未能生成有效分镜")
-
-    # 保存到 CSV
-    sb_path = proj_dir / "storyboard" / "episodes.csv"
-    _save_storyboard_for_api(sb_path, shots, req.episode, req.append)
-
-    # 同步数据库
-    try:
-        from infra.database.pool import get_pool
-        from infra.database.shots import upsert as db_upsert_shot
-        pool = get_pool()
-        for shot in shots:
-            sid = shot.get("shot_id", "")
-            if sid:
-                db_upsert_shot(pool, req.episode, sid, shot)
-    except Exception as e:
-        logger.debug(f"数据库同步跳过: {e}")
-
-    total_sec = sum(int(s.get("duration", 4)) for s in shots)
-    return {
-        "status": "ok",
-        "shots": shots,
-        "count": len(shots),
-        "total_duration": total_sec,
-    }
+    """AI 生成分镜表（异步，通过 Celery）"""
+    cfg = _cfg_path()
+    from pipeline.tasks import ai_storyboard_task
+    return _submit_task(ai_storyboard_task, cfg, req.episode, req.outline, req.duration, req.append)
 
 
 @router.post("/llm/characters")
 def llm_generate_characters(req: CharacterGenRequest):
-    """AI 生成角色配置"""
-    llm = _get_llm_for_api()
-    from engines.llm_generator import generate_characters
-
-    chars = generate_characters(llm, req.descriptions)
-    if not chars:
-        raise HTTPException(500, "LLM 未能生成有效角色")
-
-    # 保存
-    proj_dir = _active_project_dir()
-    char_dir = proj_dir / "config" / "characters"
-    char_dir.mkdir(parents=True, exist_ok=True)
-
-    import yaml
-    saved = []
-    for char in chars:
-        cid = char.get("id", "unknown")
-        path = char_dir / f"{cid}.yaml"
-        with open(path, "w", encoding="utf-8") as f:
-            yaml.dump({"character": char}, f, allow_unicode=True, default_flow_style=False)
-        # 同步数据库
-        try:
-            from infra.database.characters import upsert as db_up
-            from infra.database.pool import get_pool
-            db_up(get_pool(), cid, char)
-        except Exception:
-            pass
-        saved.append(char)
-
-    return {"status": "ok", "characters": saved, "count": len(saved)}
+    """AI 生成角色（异步，通过 Celery）"""
+    cfg = _cfg_path()
+    from pipeline.tasks import ai_characters_task
+    return _submit_task(ai_characters_task, cfg, req.descriptions)
 
 
 @router.post("/llm/scenes")
 def llm_generate_scenes(req: SceneGenRequest):
-    """AI 生成场景配置"""
-    llm = _get_llm_for_api()
-    from engines.llm_generator import generate_scenes
-
-    scene_list = generate_scenes(llm, req.descriptions)
-    if not scene_list:
-        raise HTTPException(500, "LLM 未能生成有效场景")
-
-    proj_dir = _active_project_dir()
-    scene_dir = proj_dir / "config" / "scenes"
-    scene_dir.mkdir(parents=True, exist_ok=True)
-
-    import yaml
-    saved = []
-    for scene in scene_list:
-        sid = scene.get("id", "unknown")
-        path = scene_dir / f"{sid}.yaml"
-        with open(path, "w", encoding="utf-8") as f:
-            yaml.dump({"scene": scene}, f, allow_unicode=True, default_flow_style=False)
-        try:
-            from infra.database.scenes import upsert as db_up
-            from infra.database.pool import get_pool
-            db_up(get_pool(), sid, scene)
-        except Exception:
-            pass
-        saved.append(scene)
-
-    return {"status": "ok", "scenes": saved, "count": len(saved)}
+    """AI 生成场景（异步，通过 Celery）"""
+    cfg = _cfg_path()
+    from pipeline.tasks import ai_scenes_task
+    return _submit_task(ai_scenes_task, cfg, req.descriptions)
 
 
 def _save_storyboard_for_api(path: Path, shots: list[dict], episode: int, append: bool):
