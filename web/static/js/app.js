@@ -1221,7 +1221,7 @@ async function loadSeko() {
           <button class="btn btn-xs btn-outline" onclick="sekoModify(${i})">${t('seko.modify_btn')}</button>
         </div>
       </div>
-      ${task.result ? `<details style="margin-top:.5rem"><summary>${t('seko.result_title')}</summary><pre style="max-height:400px;overflow:auto;font-size:.8rem;background:var(--bg-secondary,#f5f5f5);padding:.5rem;border-radius:4px">${esc(JSON.stringify(task.result, null, 2))}</pre></details>` : ''}
+      ${task.result ? `<details style="margin-top:.5rem"><summary>${t('seko.result_title')}</summary><pre style="max-height:400px;overflow:auto;font-size:.8rem;background:var(--bg3,#1a1e2e);color:var(--fg,#e6e8ef);padding:.5rem;border-radius:4px;border:1px solid rgba(255,255,255,.06)">${esc(JSON.stringify(task.result, null, 2))}</pre></details>` : ''}
     </div>
   `).join('') : `<div class="card"><p style="color:var(--text-dim,#888)">${t('seko.no_tasks')}</p></div>`;
 
