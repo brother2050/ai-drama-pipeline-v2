@@ -8,7 +8,7 @@ const CACHE_TTL = 30000;
 const MAX_UNDO = 50;
 const MAX_POLL = 300;
 
-let ep = 1, shots = [], activeShot = 0, batchCancelled = false;
+let ep = 1, shots = [], batchCancelled = false;
 const _undoStack = [], _redoStack = [];
 let _currentTaskId = null; // 当前正在执行的任务 ID
 
@@ -51,9 +51,8 @@ async function addEpisode() {
 }
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-/** 去掉 i18n 文字开头的 emoji（用于已有图标的场景） */
 
-function debounce(fn, ms = 300) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+function debounce(fn, ms = 300) { let _t; return (...a) => { clearTimeout(_t); _t = setTimeout(() => fn(...a), ms); }; }
 function toast(msg, type = 'success') { const el = document.createElement('div'); el.className = `toast toast-${type}`; el.textContent = msg; document.body.appendChild(el); setTimeout(() => el.remove(), 3500); }
 
 // ── 简洁工具 ──
@@ -70,8 +69,6 @@ function _btnLoad(btn, text) {
 }
 
 // ── 自定义模态框（替代原生 prompt/confirm）──
-
-function _btnLoading(btn, loadingText = '⏳ ...') { return _btnLoad(btn, loadingText); }
 
 function modalConfirm(message) {
   return new Promise(resolve => {
@@ -547,8 +544,7 @@ const EMOTIONS = ['neutral', 'happy', 'sad', 'angry', 'worried', 'surprised', 'c
 function _selectOpts(options, current) { return options.map(o => `<option ${current === o ? 'selected' : ''}>${o}</option>`).join(''); }
 
 async function editShot(idx) {
-  activeShot = idx;
-  const s = shots[idx], sid = _shotId(s, idx);
+  const s = shots[idx], sid = _shotId(shots[idx], idx);
   // 加载角色和场景列表用于下拉选择
   let charOpts = `<option value="">${t('edit.select_char')}</option>`;
   let sceneOpts = `<option value="">${t('edit.select_scene')}</option>`;
@@ -593,27 +589,37 @@ function updateCharCount(inputId, countId) {
   if (inp && cnt) cnt.textContent = t('edit.char_count', { count: inp.value.length });
 }
 
-async function _saveAndEdit(fromIdx, toIdx) {
-  // 保存当前镜头，成功后打开下一个
-  const s = shots[fromIdx];
-  for (const [k, id] of [['scene', 'ed-scene'], ['characters', 'ed-chars'], ['action', 'ed-action'], ['action_en', 'ed-action-en'], ['dialogue', 'ed-dialogue'], ['dialogue_en', 'ed-dialogue-en'], ['outfit', 'ed-outfit'], ['camera', 'ed-camera'], ['shot_type', 'ed-shottype'], ['duration', 'ed-dur'], ['emotion', 'ed-emo']])
+const _SHOT_FIELDS = [['scene', 'ed-scene'], ['characters', 'ed-chars'], ['action', 'ed-action'], ['action_en', 'ed-action-en'], ['dialogue', 'ed-dialogue'], ['dialogue_en', 'ed-dialogue-en'], ['outfit', 'ed-outfit'], ['camera', 'ed-camera'], ['shot_type', 'ed-shottype'], ['duration', 'ed-dur'], ['emotion', 'ed-emo']];
+
+/** 从编辑面板读取字段值到 shots[idx] */
+function _collectShotFields(idx) {
+  const s = shots[idx];
+  for (const [k, id] of _SHOT_FIELDS)
     s[k] = document.getElementById(id)?.value || (k === 'duration' ? 4 : k === 'emotion' ? 'neutral' : '');
+  return s;
+}
+
+/** 保存 shots 到后端并刷新缓存 */
+async function _persistShots() {
+  await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } });
+  invalidateCache(`storyboard/${ep}`);
+  invalidateCache(`res/${ep}`);
+}
+
+async function _saveAndEdit(fromIdx, toIdx) {
+  const s = _collectShotFields(fromIdx);
   pushUndo(`${t('edit.shot_title')} ${s.shot_id || fromIdx + 1}`);
   try {
-    await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } });
-    invalidateCache(`storyboard/${ep}`);
-    invalidateCache(`res/${ep}`);
+    await _persistShots();
     document.getElementById('edit-overlay')?.remove();
     editShot(toIdx);
   } catch (e) { toast(e.message, 'error'); }
 }
 
 async function saveShot(idx) {
-  const s = shots[idx];
-  for (const [k, id] of [['scene', 'ed-scene'], ['characters', 'ed-chars'], ['action', 'ed-action'], ['action_en', 'ed-action-en'], ['dialogue', 'ed-dialogue'], ['dialogue_en', 'ed-dialogue-en'], ['outfit', 'ed-outfit'], ['camera', 'ed-camera'], ['shot_type', 'ed-shottype'], ['duration', 'ed-dur'], ['emotion', 'ed-emo']])
-    s[k] = document.getElementById(id)?.value || (k === 'duration' ? 4 : k === 'emotion' ? 'neutral' : '');
+  const s = _collectShotFields(idx);
   pushUndo(`${t('edit.shot_title')} ${s.shot_id || idx + 1}`);
-  try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } }); invalidateCache(`storyboard/${ep}`); invalidateCache(`res/${ep}`); toast(t('toast.saved')); document.getElementById('edit-overlay')?.remove(); renderShotsGrid(); } catch (e) { toast(e.message, 'error'); }
+  try { await _persistShots(); toast(t('toast.saved')); document.getElementById('edit-overlay')?.remove(); renderShotsGrid(); } catch (e) { toast(e.message, 'error'); }
 }
 
 async function deleteShot(idx) {
