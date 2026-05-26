@@ -970,6 +970,33 @@ async function generatePortrait(charId) {
   reset();
 }
 
+async function generateSceneImage(sceneId) {
+  const btn = document.getElementById('gen-scene-img-btn');
+  const status = document.getElementById('gen-scene-img-status');
+  const reset = _btnLoad(btn, '⏳ 生成中...');
+  _html(status, '⏳ AI 正在生成场景图...');
+  try {
+    const r = await api(`/scenes/${sceneId}/generate-image`, { method: 'POST' });
+    _html(status, '✅ 生成完成');
+    toast('✅ 场景图已生成');
+    // 更新预览图
+    const preview = document.getElementById('es-img-preview');
+    if (preview && r.url) {
+      preview.src = r.url + '?t=' + Date.now();
+    } else if (r.url) {
+      const wrap = document.getElementById('es-img-wrap');
+      if (wrap) {
+        wrap.innerHTML = `<div class="upload-preview"><img src="${r.url}?t=${Date.now()}" id="es-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="esRemoveImg('${sceneId}')">✕</button></div>`;
+      }
+    }
+    invalidateCache('scenes');
+  } catch (e) {
+    _html(status, `❌ ${e.message}`);
+    toast(`❌ ${e.message}`, 'error');
+  }
+  reset();
+}
+
 async function editChar(id) {
   await _getTtsBackend();
   _editEntityPanel('characters', id, {
@@ -1051,6 +1078,7 @@ async function editScene(id) {
     titleKey: 'scene.edit_title', notFoundKey: 'scene.not_found', imgPrefix: 'es', imgLabel: t('scene.upload_img'), confirmMsg: '删除参考图？',
     reload: loadScenes,
     deleteFn: deleteSceneWithRef,
+    extraHtml: `<div class="edit-field"><button class="btn btn-ai btn-sm" onclick="generateSceneImage('${esc(id)}')" id="gen-scene-img-btn">🎨 ${t('scene.gen_image')}</button><span id="gen-scene-img-status" class="dim" style="font-size:.8rem;margin-left:.5rem"></span></div>`,
     fields: [
       { key: 'name', label: t('scene.name') },
       { key: 'description', label: t('scene.desc'), type: 'textarea' },

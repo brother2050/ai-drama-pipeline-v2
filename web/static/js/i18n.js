@@ -105,6 +105,7 @@ const I18N = {
   'scene.lighting': { zh: '光照', en: 'Lighting' },
   'scene.operations': { zh: '操作', en: 'Actions' },
   'scene.edit_title': { zh: '✏️ 编辑场景', en: '✏️ Edit Scene' },
+  'scene.gen_image': { zh: '🎨 AI 生成场景图', en: '🎨 AI Generate Scene Image' },
 
   // 分镜表
   'sb.title': { zh: '分镜表', en: 'Storyboard' },

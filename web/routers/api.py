@@ -909,6 +909,96 @@ def delete_scene(scene_id: str):
     return {"status": "ok", "id": scene_id}
 
 
+@router.post("/scenes/{scene_id}/generate-image")
+async def generate_scene_image(scene_id: str):
+    """为单个场景 AI 生成参考图（强制重新生成，完成后更新 reference_images）"""
+    _check_id(scene_id, "场景 ID")
+
+    import yaml
+    from infra.config import Config
+    from api import _ensure_registered; _ensure_registered()
+    from api.registry import Container
+
+    cfg_path = _cfg_path()
+    cfg = Config(cfg_path)
+
+    # 读取场景配置
+    scene_yaml_path = _proj() / "config" / "scenes" / f"{scene_id}.yaml"
+    if not scene_yaml_path.exists():
+        raise HTTPException(404, f"场景 {scene_id} 不存在")
+
+    with open(scene_yaml_path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    scene = data.get("scene", {})
+    description = scene.get("description", scene_id)
+
+    # 获取 ComfyUI 后端
+    try:
+        cont = Container(cfg.data)
+        comfyui = cont.get("image")
+    except Exception as e:
+        raise HTTPException(503, f"ComfyUI 不可用: {e}")
+
+    # 生成场景图
+    from engines.workflow_builder import WorkflowBuilder
+    from engines.prompt import translate_to_english
+
+    scene_dir = _proj() / "assets" / "scenes" / scene_id
+    scene_dir.mkdir(parents=True, exist_ok=True)
+
+    # 清除旧图（强制重新生成）
+    for old in scene_dir.glob("*.png"):
+        old.unlink()
+    for old in scene_dir.glob("*.jpg"):
+        old.unlink()
+
+    # 翻译场景描述为英文 prompt
+    llm = None
+    try:
+        if cfg.get("llm", {}).get("enabled"):
+            llm = cont.get("llm")
+    except Exception:
+        pass
+    scene_desc_en = translate_to_english(description, llm=llm)
+
+    models = cfg.get("models", {})
+    wb = WorkflowBuilder(cfg.data, models, str(_proj()), comfyui=comfyui)
+    wb.load_workflows()
+    fake_shot = {"characters": "", "emotion": "neutral",
+                 "shot_type": "全景", "camera": "固定"}
+    _, wf = wb.build_first_frame(fake_shot, scene_desc=scene_desc_en)
+    if not wf:
+        raise HTTPException(500, "首帧工作流为空（缺少模板）")
+
+    try:
+        files = comfyui.generate(wf, str(scene_dir))
+    except Exception as e:
+        raise HTTPException(500, f"ComfyUI 生成失败: {e}")
+
+    if not files:
+        raise HTTPException(500, "ComfyUI 未返回任何图片")
+
+    # 更新 YAML reference_images
+    img_url = f"/api/assets/scenes/{scene_id}/{Path(files[0]).name}"
+    scene.setdefault("reference_images", [])
+    prefix = f"/api/assets/scenes/{scene_id}/cover"
+    scene["reference_images"] = [u for u in scene["reference_images"] if not u.startswith(prefix)]
+    scene["reference_images"].append(img_url)
+    data["scene"] = scene
+    with open(scene_yaml_path, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+
+    # 同步数据库
+    try:
+        from infra.database.scenes import upsert as db_up
+        from infra.database.pool import get_pool
+        db_up(get_pool(), scene_id, scene)
+    except Exception:
+        pass
+
+    return {"status": "ok", "url": img_url, "scene_id": scene_id}
+
+
 # ── 角色/场景图片上传 ──
 
 @router.post("/assets/{entity_type}/{entity_id}/upload")
