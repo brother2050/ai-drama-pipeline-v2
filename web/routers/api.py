@@ -218,7 +218,7 @@ def system_status():
 def _collect_tools(cfg: dict) -> dict:
     """收集所有工具状态"""
     tools = {}
-    for name in ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg", "seko"]:
+    for name in ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg", "seko", "training"]:
         tools[name] = _check_tool(name, cfg)
     return tools
 
@@ -324,6 +324,15 @@ def test_tool(name: str):
             active = insp.active() or {}
             workers = list(active.keys())
             return {"ok": True, "name": name, "message": f"Celery Worker: {', '.join(workers) or 'none'}", **result}
+
+        elif name == "training":
+            training_cfg = cfg.get("training", {})
+            api_url = training_cfg.get("api_url", "")
+            if not api_url:
+                return {"ok": False, "name": name, "message": "训练服务地址未配置", **result}
+            import httpx
+            r = httpx.get(api_url, timeout=5)
+            return {"ok": True, "name": name, "message": f"FluxGym 连接成功 (HTTP {r.status_code})", **result}
 
         return {"ok": True, "name": name, "message": "可用", **result}
 

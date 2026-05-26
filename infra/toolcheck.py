@@ -138,4 +138,14 @@ def check_tool(name: str, cfg: dict) -> dict:
         return {"available": ok, "backend": "seko", "type": "cloud",
                 "reason": "" if ok else "SEKO_API_KEY 未配置"}
 
+    elif name == "training":
+        training_cfg = cfg.get("training", {})
+        api_url = training_cfg.get("api_url", "")
+        if not api_url:
+            return {"available": False, "backend": "fluxgym", "type": "gpu",
+                    "reason": "训练服务地址未配置"}
+        ok = _url_ok(api_url)
+        return {"available": ok, "backend": "fluxgym", "type": "gpu",
+                "url": api_url, "reason": "" if ok else f"FluxGym 服务不可达 ({api_url})"}
+
     return {"available": False, "backend": "unknown", "type": "unknown", "reason": "未知工具"}

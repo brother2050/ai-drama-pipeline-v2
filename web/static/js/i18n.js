@@ -225,6 +225,11 @@ const I18N = {
   'set.tts_voice_desc': { zh: '声音描述', en: 'Voice Description' },
   'set.tts_prompt_text': { zh: '提示文本', en: 'Prompt Text' },
 
+  // 训练
+  'set.training': { zh: 'LoRA 训练', en: 'LoRA Training' },
+  'set.training_timeout': { zh: '训练超时(秒)', en: 'Train Timeout(s)' },
+  'set.training_poll': { zh: '轮询间隔(秒)', en: 'Poll Interval(s)' },
+
   // 批量补充
   'batch.cancel_btn': { zh: '⏹ 取消', en: '⏹ Cancel' },
   'batch.close_btn': { zh: '关闭', en: 'Close' },

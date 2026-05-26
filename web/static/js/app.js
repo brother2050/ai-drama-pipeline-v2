@@ -234,7 +234,7 @@ function _showOverlay(id, title, bodyHtml, saveFn, saveLabel) {
 // 仪表盘
 // ══════════════════════════════════════════════════════════
 
-const TOOL_META = { redis:{icon:'🔴',label:'Redis'}, celery:{icon:'🔧',label:'Celery'}, ffmpeg:{icon:'🎞️',label:'FFmpeg'}, tts:{icon:'🎤',label:'TTS'}, comfyui:{icon:'🎨',label:'ComfyUI'}, lipsync:{icon:'👄',label:'LipSync'}, llm:{icon:'🧠',label:'LLM'}, music:{icon:'🎵',label:'Music'}, seko:{icon:'🎬',label:'Seko'} };
+const TOOL_META = { redis:{icon:'🔴',label:'Redis'}, celery:{icon:'🔧',label:'Celery'}, ffmpeg:{icon:'🎞️',label:'FFmpeg'}, tts:{icon:'🎤',label:'TTS'}, comfyui:{icon:'🎨',label:'ComfyUI'}, lipsync:{icon:'👄',label:'LipSync'}, llm:{icon:'🧠',label:'LLM'}, music:{icon:'🎵',label:'Music'}, seko:{icon:'🎬',label:'Seko'}, training:{icon:'🏋️',label:'Training'} };
 
 async function loadDashboard() {
   const el = document.getElementById('page-dashboard');
@@ -254,7 +254,7 @@ async function loadDashboard() {
     // 工具状态分组
     const groups = [
       { label: t('dash.infra'), keys: ['redis', 'celery', 'ffmpeg'] },
-      { label: t('dash.ai_tools'), keys: ['tts', 'music', 'seko'] },
+      { label: t('dash.ai_tools'), keys: ['tts', 'music', 'seko', 'training'] },
       { label: t('dash.gpu_tools'), keys: ['comfyui', 'lipsync', 'llm'] },
     ];
     let toolHtml = '';
@@ -1531,6 +1531,7 @@ async function loadSettings() {
     const tools = td.tools || {}, lang = localStorage.getItem('drama_lang') || 'zh';
     const tts = _resolveBackendUrl(sysCfg, 'tts'), ls = _resolveBackendUrl(sysCfg, 'lip_sync');
     const llm = sysCfg.llm || {};
+    const training = sysCfg.training || {};
     el.innerHTML = `
       <div class="card"><h2>🌐 语言 / Language</h2><div class="form-row"><label>Language</label>
         <select id="cfg-lang" onchange="setLang(this.value);loadSettings()"><option value="zh" ${lang === 'zh' ? 'selected' : ''}>中文</option><option value="en" ${lang === 'en' ? 'selected' : ''}>English</option></select></div></div>
@@ -1570,6 +1571,14 @@ async function loadSettings() {
         <div class="config-section"><h3>🎬 Seko 影视策划</h3>
           <div class="form-row"><label>API Key</label><div style="display:flex;gap:.3rem;flex:1"><input id="cfg-seko-key" type="password" value="${esc(sysCfg.seko?.api_key || '')}" style="flex:1" placeholder="获取: seko.sensetime.com/explore"><button class="btn btn-xs btn-outline" onclick="_toggleKeyVis('cfg-seko-key','cfg-seko-key-toggle')" id="cfg-seko-key-toggle">👁</button></div></div>
           <div class="tool-status-inline"><span class="status-dot ${tools.seko?.available ? 'ok' : 'err'}"></span>${tools.seko?.available ? t('dash.available') : tools.seko?.reason || t('dash.unavailable')}</div></div>
+        <div class="config-section"><h3>🏋️ ${t('set.training')}</h3>
+          <div class="form-row"><label>${t('set.backend')}</label><select id="cfg-training-backend"><option value="fluxgym" selected>FluxGym</option></select></div>
+          <div class="form-row"><label>${t('set.address')}</label><input id="cfg-training-url" value="${esc(training.api_url || '')}" placeholder="http://127.0.0.1:7860"></div>
+          <div class="form-row"><label>${t('set.training_timeout')}</label><input id="cfg-training-timeout" type="number" value="${training.timeout || 3600}" min="60" max="86400"></div>
+          <div class="form-row"><label>${t('set.training_poll')}</label><input id="cfg-training-poll" type="number" value="${training.poll_interval || 10}" min="5" max="120"></div>
+          <div class="tool-status-inline"><span class="status-dot ${tools.training?.available ? 'ok' : 'err'}"></span>${tools.training?.available ? t('dash.available') : tools.training?.reason || t('dash.unavailable')}
+            <button class="btn btn-xs btn-outline" onclick="testTool('training')" id="test-btn-training">🔌 ${t('set.test')}</button>
+            <span id="test-result-training" class="dim" style="font-size:0.8rem;margin-left:0.3rem"></span></div></div>
         <button class="btn btn-primary" style="margin-top:1rem" onclick="saveCfg()">💾 ${t('btn.save')}</button></div>`;
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
@@ -1602,6 +1611,11 @@ async function saveCfg() {
     // Seko
     const sekoKey = $val('cfg-seko-key');
     if (sekoKey) sys.seko = { api_key: sekoKey };
+    // Training
+    const trainingUrl = $val('cfg-training-url');
+    const trainingTimeout = parseInt($val('cfg-training-timeout')) || 3600;
+    const trainingPoll = parseInt($val('cfg-training-poll')) || 10;
+    sys.training = { api_url: trainingUrl, timeout: trainingTimeout, poll_interval: trainingPoll };
 
     await api('/system/config', { method: 'POST', body: sys });
     toast(t('toast.saved'));
