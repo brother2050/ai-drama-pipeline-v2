@@ -135,9 +135,9 @@ def _cfg_path() -> str:
 
 # ── 校验工具 ──
 
-_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+_ID_RE = re.compile(r"^[a-zA-Z0-9_\-\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]+$")
 _UUID_RE = re.compile(r"^[a-f0-9-]{36}$")
-_FILE_RE = re.compile(r"^[a-zA-Z0-9_\-\.]+$")
+_FILE_RE = re.compile(r"^[a-zA-Z0-9_\-\.\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]+$")
 
 def _check_id(v: str, label: str = "ID") -> None:
     if not _ID_RE.match(v):
