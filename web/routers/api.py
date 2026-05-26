@@ -1045,7 +1045,7 @@ def save_storyboard(episode: int, data: dict):
     sb_path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = ["episode", "shot_id", "scene", "characters", "action", "dialogue",
                   "camera", "shot_type", "duration", "outfit", "emotion",
-                  "action_en", "dialogue_en"]
+                  "action_en", "dialogue_en", "language"]
     lock_path = sb_path.with_suffix(".lock")
     with open(lock_path, "w") as lock_f:
         _file_lock(lock_f)

@@ -15,7 +15,7 @@ REQUIRED_FIELDS = ["episode", "shot_id", "scene", "characters", "action", "dialo
 STORYBOARD_FIELDNAMES = [
     "episode", "shot_id", "scene", "characters", "action", "dialogue",
     "camera", "shot_type", "duration", "outfit", "emotion",
-    "action_en", "dialogue_en",
+    "action_en", "dialogue_en", "language",
 ]
 
 
