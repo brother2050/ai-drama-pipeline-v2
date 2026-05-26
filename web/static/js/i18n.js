@@ -133,7 +133,6 @@ const I18N = {
   'set.address': { zh: '地址', en: 'Address' },
   'set.os': { zh: 'OS', en: 'OS' },
   'set.python': { zh: 'Python', en: 'Python' },
-  'set.gpu': { zh: 'GPU', en: 'GPU' },
 
   // 运镜/景别/情绪
   'camera.fixed': { zh: '固定', en: 'Fixed' },
@@ -162,7 +161,6 @@ const I18N = {
   'emo.determined': { zh: '坚定', en: 'Determined' },
 
   // 仪表盘补充
-  'dash.gpu_unavailable': { zh: '不可用', en: 'Unavailable' },
 
   // 通用补充
   'common.loading': { zh: '⏳ 加载...', en: '⏳ Loading...' },
@@ -207,7 +205,6 @@ const I18N = {
 
   // 设置补充
   'set.saved': { zh: '✅ 已保存', en: '✅ Saved' },
-  'set.gpu_unavailable': { zh: '不可用', en: 'Unavailable' },
   'set.optional': { zh: '选填', en: 'Optional' },
   'set.llm': { zh: 'LLM', en: 'LLM' },
   'set.llm_enabled': { zh: '启用', en: 'Enabled' },

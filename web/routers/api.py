@@ -223,13 +223,9 @@ def _collect_tools(cfg: dict) -> dict:
 
 @router.get("/system/env")
 def system_env():
-    from infra.gpu import get_generation_config
     import platform
-    gen = get_generation_config()
     return {"os": f"{platform.system()} {platform.release()}",
-            "python": platform.python_version(),
-            "gpu": {"name": "N/A", "available": False, "note": "由三方工具管理"},
-            "generation": gen}
+            "python": platform.python_version()}
 
 
 # ══════════════════════════════════════════════════════════
