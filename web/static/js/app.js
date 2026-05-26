@@ -388,7 +388,7 @@ const _stepBtns = () => [
 function _shotId(s, i) { return s.shot_id || String(i + 1).padStart(3, '0'); }
 function _actionBtns(idx) {
   return `<button class="btn btn-xs" onclick="editShot(${idx})" title="${t('btn.edit')}">✏️</button>` +
-    STEP_BTNS().map(b => `<button class="btn btn-xs" onclick="runOne('${b.step}',${idx})" title="${b.label}">${b.icon}</button>`).join('') +
+    _stepBtns().map(b => `<button class="btn btn-xs" onclick="runOne('${b.step}',${idx})" title="${b.label}">${b.icon}</button>`).join('') +
     `<button class="btn btn-xs btn-danger" onclick="deleteShot(${idx})" title="${t('btn.delete')}">🗑️</button>`;
 }
 
