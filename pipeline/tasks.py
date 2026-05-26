@@ -867,7 +867,7 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                     from infra.database.pool import get_pool
                     db_up(get_pool(), new_id, char)
                 except Exception:
-                    pass
+                    logger.warning(f"DB 写入跳过: {e}")
                 generated_chars.append(new_id)
                 logger.info(f"  ✅ 角色: {chinese_name} ({old_id} → {new_id})")
         except Exception as e:
@@ -912,7 +912,7 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                     from infra.database.pool import get_pool
                     db_up(get_pool(), new_id, scene)
                 except Exception:
-                    pass
+                    logger.warning(f"DB 写入跳过: {e}")
                 generated_scenes.append(new_id)
                 logger.info(f"  ✅ 场景: {scene_name} ({old_id} → {new_id})")
         except Exception as e:
@@ -945,7 +945,7 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
             if sid:
                 db_upsert_shot(pool, episode, sid, shot)
     except Exception:
-        pass
+        logger.warning(f"DB 写入跳过: {e}")
 
     total_sec = sum(int(s.get("duration", 4)) for s in shots)
     return {"status": "done", "episode": episode, "count": len(shots),
@@ -1013,7 +1013,7 @@ def ai_characters_task(self, config_path: str, descriptions: list[str]) -> dict:
             from infra.database.pool import get_pool
             db_up(get_pool(), cid, char)
         except Exception:
-            pass
+            logger.warning(f"DB 写入跳过: {e}")
         saved.append(char)
 
     return {"status": "done", "count": len(saved), "characters": saved}
@@ -1056,7 +1056,7 @@ def ai_scenes_task(self, config_path: str, descriptions: list[str]) -> dict:
             from infra.database.pool import get_pool
             db_up(get_pool(), sid, scene)
         except Exception:
-            pass
+            logger.warning(f"DB 写入跳过: {e}")
         saved.append(scene)
 
     return {"status": "done", "count": len(saved), "scenes": saved}
@@ -1357,7 +1357,7 @@ def seko_import_task(
                 from infra.database.pool import get_pool
                 db_up(get_pool(), cid, char_yaml)
             except Exception:
-                pass
+                logger.warning(f"DB 写入跳过: {e}")
 
             result["characters"] += 1
 
@@ -1393,7 +1393,7 @@ def seko_import_task(
                 from infra.database.pool import get_pool
                 db_up(get_pool(), sid, scene_yaml)
             except Exception:
-                pass
+                logger.warning(f"DB 写入跳过: {e}")
 
             result["scenes"] += 1
 
@@ -1416,7 +1416,7 @@ def seko_import_task(
                     if sid:
                         db_upsert_shot(pool, episode, sid, shot)
             except Exception:
-                pass
+                logger.warning(f"DB 写入跳过: {e}")
 
             result["shots"] = len(shots)
 
