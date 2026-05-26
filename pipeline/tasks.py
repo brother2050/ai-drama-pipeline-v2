@@ -665,6 +665,9 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
             # 不传 expected_ids，让 LLM 自由生成 id，我们再用 hash 替换
             new_chars = generate_characters(llm, char_descriptions)
             for i, char in enumerate(new_chars):
+                if char is None:
+                    logger.warning(f"  ⚠ 角色 {missing_chars[i]} 生成失败，跳过")
+                    continue
                 old_id = missing_chars[i] if i < len(missing_chars) else char.get("id", "")
                 chinese_name = char.get("name", old_id)
                 new_id = _make_hash_id("ch", chinese_name)
@@ -709,6 +712,9 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
         try:
             new_scenes_list = generate_scenes(llm, scene_descriptions)
             for i, scene in enumerate(new_scenes_list):
+                if scene is None:
+                    logger.warning(f"  ⚠ 场景 {missing_scenes[i]} 生成失败，跳过")
+                    continue
                 old_id = missing_scenes[i] if i < len(missing_scenes) else scene.get("id", "")
                 scene_name = scene.get("name", old_id)
                 new_id = _make_hash_id("sc", scene_name)
@@ -805,7 +811,7 @@ def ai_characters_task(self, config_path: str, descriptions: list[str]):
     except Exception as e:
         return {"status": "error", "reason": f"生成失败: {e}"}
 
-    if not chars:
+    if not chars or all(c is None for c in chars):
         return {"status": "error", "reason": "LLM 未能生成有效角色"}
 
     # 保存
@@ -813,6 +819,8 @@ def ai_characters_task(self, config_path: str, descriptions: list[str]):
     char_dir.mkdir(parents=True, exist_ok=True)
     saved = []
     for char in chars:
+        if char is None:
+            continue
         cid = char.get("id", "unknown")
         path = char_dir / f"{cid}.yaml"
         with open(path, "w", encoding="utf-8") as f:
@@ -847,13 +855,15 @@ def ai_scenes_task(self, config_path: str, descriptions: list[str]):
     except Exception as e:
         return {"status": "error", "reason": f"生成失败: {e}"}
 
-    if not scene_list:
+    if not scene_list or all(s is None for s in scene_list):
         return {"status": "error", "reason": "LLM 未能生成有效场景"}
 
     scene_dir = _cfg_dir(config_path, "config", "scenes")
     scene_dir.mkdir(parents=True, exist_ok=True)
     saved = []
     for scene in scene_list:
+        if scene is None:
+            continue
         sid = scene.get("id", "unknown")
         path = scene_dir / f"{sid}.yaml"
         with open(path, "w", encoding="utf-8") as f:
