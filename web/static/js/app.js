@@ -307,12 +307,12 @@ async function loadDashboard() {
 
       <div class="card"><h2>⚡ ${t('dash.quick_actions')}</h2>
         <div class="quick-entry-grid">
-          <div class="quick-entry" onclick="navTo('storyboard')"><span class="quick-entry-icon">📝</span><div><div class="quick-entry-text">${t('nav.storyboard')}</div><div class="quick-entry-desc">${t('dash.qe_storyboard')}</div></div></div>
-          <div class="quick-entry" onclick="navTo('characters')"><span class="quick-entry-icon">👤</span><div><div class="quick-entry-text">${t('nav.characters')}</div><div class="quick-entry-desc">${t('dash.qe_characters')}</div></div></div>
-          <div class="quick-entry" onclick="navTo('scenes')"><span class="quick-entry-icon">🏔️</span><div><div class="quick-entry-text">${t('nav.scenes')}</div><div class="quick-entry-desc">${t('dash.qe_scenes')}</div></div></div>
-          <div class="quick-entry" onclick="navTo('pipeline')"><span class="quick-entry-icon">🎬</span><div><div class="quick-entry-text">${t('nav.pipeline')}</div><div class="quick-entry-desc">${t('dash.qe_pipeline')}</div></div></div>
-          <div class="quick-entry" onclick="navTo('projects')"><span class="quick-entry-icon">📂</span><div><div class="quick-entry-text">${t('nav.projects')}</div><div class="quick-entry-desc">${t('dash.qe_projects')}</div></div></div>
-          <div class="quick-entry" onclick="navTo('settings')"><span class="quick-entry-icon">⚙️</span><div><div class="quick-entry-text">${t('nav.settings')}</div><div class="quick-entry-desc">${t('dash.qe_settings')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('storyboard')"><span class="quick-entry-icon">📝</span><div><div class="quick-entry-text">${t('nav.storyboard').replace(/^[^\w\s]+\s*/, '')}</div><div class="quick-entry-desc">${t('dash.qe_storyboard')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('characters')"><span class="quick-entry-icon">👤</span><div><div class="quick-entry-text">${t('nav.characters').replace(/^[^\w\s]+\s*/, '')}</div><div class="quick-entry-desc">${t('dash.qe_characters')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('scenes')"><span class="quick-entry-icon">🏔️</span><div><div class="quick-entry-text">${t('nav.scenes').replace(/^[^\w\s]+\s*/, '')}</div><div class="quick-entry-desc">${t('dash.qe_scenes')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('pipeline')"><span class="quick-entry-icon">🎬</span><div><div class="quick-entry-text">${t('nav.pipeline').replace(/^[^\w\s]+\s*/, '')}</div><div class="quick-entry-desc">${t('dash.qe_pipeline')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('projects')"><span class="quick-entry-icon">📂</span><div><div class="quick-entry-text">${t('nav.projects').replace(/^[^\w\s]+\s*/, '')}</div><div class="quick-entry-desc">${t('dash.qe_projects')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('settings')"><span class="quick-entry-icon">⚙️</span><div><div class="quick-entry-text">${t('nav.settings').replace(/^[^\w\s]+\s*/, '')}</div><div class="quick-entry-desc">${t('dash.qe_settings')}</div></div></div>
         </div>
       </div>
 
