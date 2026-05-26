@@ -218,13 +218,14 @@ async function _crudSave(endpoint, id, fieldsFn, overlayId, reload) {
   try { await api(`/${endpoint}`, { method: 'POST', body: { id, ...fieldsFn() } }); invalidateCache(endpoint); document.getElementById(overlayId)?.remove(); toast(t('toast.saved')); reload(); } catch (e) { toast(e.message, 'error'); }
 }
 
-function _showOverlay(id, title, bodyHtml, saveFn, saveLabel) {
+function _showOverlay(id, title, bodyHtml, saveFn, saveLabel, deleteFn) {
   const btnText = saveLabel || `💾 ${t('btn.save')}`;
+  const deleteBtn = deleteFn ? `<button class="btn btn-danger" onclick="${deleteFn}" style="margin-right:auto">🗑️ ${t('btn.delete')}</button>` : '';
   const o = document.createElement('div'); o.className = 'edit-overlay'; o.id = id;
   o.innerHTML = `<div class="edit-panel"><div class="edit-header"><h3>${esc(title)}</h3>
     <button class="btn btn-sm btn-outline" onclick="document.getElementById('${id}')?.remove()">✕</button></div>
     <div class="edit-body">${bodyHtml}</div><div class="edit-footer">
-    <button class="btn btn-primary" onclick="${saveFn}">${btnText}</button>
+    ${deleteBtn}<button class="btn btn-primary" onclick="${saveFn}">${btnText}</button>
     <button class="btn btn-outline" onclick="document.getElementById('${id}')?.remove()">${t('btn.cancel')}</button></div></div>`;
   document.body.appendChild(o);
   o.querySelector('input,textarea')?.focus();
@@ -813,7 +814,7 @@ function _loadEntityPage(type, { pageId, icon, titleKey, emptyHintKey, emptyDesc
 }
 
 /** 通用编辑面板 */
-function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, imgLabel, confirmMsg, imgKey = 'reference_images', buildExtra, reload, extraHtml }) {
+function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, imgLabel, confirmMsg, imgKey = 'reference_images', buildExtra, reload, extraHtml, deleteFn }) {
   const p = imgPrefix;
   api(`/${type}`).then(d => {
     const item = (d[type] || []).find(x => x.id === id);
@@ -829,7 +830,8 @@ function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, 
         return `<div class="edit-field"><label>${f.label}</label><input id="${p}-${f.key}" value="${esc(v)}"></div>`;
       }).join('') + (typeof extraHtml === 'function' ? extraHtml(item) : (extraHtml || ''));
     window[`_${p}ImgRemoved`] = false;
-    _showOverlay(`edit-${type.slice(0,-1)}-overlay`, `${t(titleKey)} ${id}`, body, `save_${p}Edit('${id}')`);
+    const delFn = deleteFn ? `delete_${p}Edit('${id}')` : undefined;
+    _showOverlay(`edit-${type.slice(0,-1)}-overlay`, `${t(titleKey)} ${id}`, body, `save_${p}Edit('${id}')`, undefined, delFn);
   }).catch(e => toast(e.message, 'error'));
   window[`save_${p}Edit`] = function(eid) {
     const extra = window[`_${p}ImgRemoved`] ? { [imgKey]: [] } : {};
@@ -838,6 +840,12 @@ function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, 
     fields.forEach(f => { if (!f.getValue) data[f.key] = $val(`${p}-${f.key}`); });
     _crudSave(type, eid, () => data, `edit-${type.slice(0,-1)}-overlay`, reload);
   };
+  if (deleteFn) {
+    window[`delete_${p}Edit`] = async function(eid) {
+      document.getElementById(`edit-${type.slice(0,-1)}-overlay`)?.remove();
+      await deleteFn(eid);
+    };
+  }
   window[`${p}UploadImg`] = async function(eid) { await _uploadImg(type, eid); };
   window[`${p}HandleDrop`] = function(e, eid) { _handleImgDrop(e, type, eid); };
   window[`${p}RemoveImg`] = async function(eid) {
@@ -855,7 +863,7 @@ async function loadCharacters() {
     card: c => {
       const avatar = c.appearance ? esc(c.appearance.substring(0, 2)) : '👤';
       const thumb = (c.reference_images?.length) ? `<img src="${esc(c.reference_images[0])}" loading="lazy">` : avatar;
-      return `<div class="entity-card" onclick="editChar('${esc(c.id)}')"><div class="entity-card-thumb">${thumb}</div><div class="entity-card-body"><h3>${esc(c.name || c.id)}</h3><p>${esc(c.appearance || '')}</p></div><div class="entity-card-footer"><span class="entity-card-id">${esc(c.id)}</span><span>${c.gender === 'male' ? '♂' : c.gender === 'female' ? '♀' : ''}</span></div></div>`;
+      return `<div class="entity-card" onclick="editChar('${esc(c.id)}')"><div class="entity-card-thumb">${thumb}</div><div class="entity-card-body"><h3>${esc(c.name || c.id)}</h3><p>${esc(c.appearance || '')}</p></div><div class="entity-card-footer"><span class="entity-card-id">${esc(c.id)}</span><span>${c.gender === 'male' ? '♂' : c.gender === 'female' ? '♀' : ''} <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteChar('${esc(c.id)}')" title="${t('btn.delete')}">🗑️</button></span></div></div>`;
     }
   });
 }
@@ -939,6 +947,7 @@ async function editChar(id) {
   _editEntityPanel('characters', id, {
     titleKey: 'char.edit_title', notFoundKey: 'char.not_found', imgPrefix: 'ec', imgLabel: t('char.upload_img'), confirmMsg: '删除定妆照？',
     reload: loadCharacters,
+    deleteFn: deleteCharWithRef,
     buildExtra() { return { voice: _collectVoiceConfig('ec'), outfits: $val('ec-outfits') ? { default: $val('ec-outfits') } : null }; },
     extraHtml: (item) => _ttsVoiceFieldsHtml('ec', item.voice || {}),
     fields: [
@@ -993,7 +1002,7 @@ async function loadScenes() {
     editFn: 'editScene', newFn: 'newScene', aiFn: 'showAIGenScene',
     card: s => {
       const thumb = (s.reference_images?.length) ? `<img src="${esc(s.reference_images[0])}" loading="lazy">` : '🏔️';
-      return `<div class="entity-card" onclick="editScene('${esc(s.id)}')"><div class="entity-card-thumb">${thumb}</div><div class="entity-card-body"><h3>${esc(s.name || s.id)}</h3><p>${esc(s.description || '')}</p></div><div class="entity-card-footer"><span class="entity-card-id">${esc(s.id)}</span><span class="dim" style="font-size:.7rem">${esc(s.lighting || '')}</span></div></div>`;
+      return `<div class="entity-card" onclick="editScene('${esc(s.id)}')"><div class="entity-card-thumb">${thumb}</div><div class="entity-card-body"><h3>${esc(s.name || s.id)}</h3><p>${esc(s.description || '')}</p></div><div class="entity-card-footer"><span class="entity-card-id">${esc(s.id)}</span><span class="dim" style="font-size:.7rem">${esc(s.lighting || '')} <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteScene('${esc(s.id)}')" title="${t('btn.delete')}">🗑️</button></span></div></div>`;
     }
   });
 }
@@ -1013,6 +1022,7 @@ async function editScene(id) {
   _editEntityPanel('scenes', id, {
     titleKey: 'scene.edit_title', notFoundKey: 'scene.not_found', imgPrefix: 'es', imgLabel: t('scene.upload_img'), confirmMsg: '删除参考图？',
     reload: loadScenes,
+    deleteFn: deleteSceneWithRef,
     fields: [
       { key: 'name', label: t('scene.name') },
       { key: 'description', label: t('scene.desc'), type: 'textarea' },
