@@ -742,7 +742,6 @@ def delete_scene(scene_id: str):
 @router.post("/assets/{entity_type}/{entity_id}/upload")
 async def upload_entity_image(entity_type: str, entity_id: str, file: UploadFile = File(...)):
     """上传角色/场景参考图"""
-    from fastapi.responses import JSONResponse
     import shutil
 
     if entity_type not in ("characters", "scenes"):
@@ -774,8 +773,10 @@ async def upload_entity_image(entity_type: str, entity_id: str, file: UploadFile
         entity = data.get(entity_key, {})
         imgs = entity.get("reference_images") or []
         img_url = f"/api/assets/{entity_type}/{entity_id}/{filename}"
-        if img_url not in imgs:
-            imgs.append(img_url)
+        # 移除同实体的旧 cover URL（不同扩展名），再添加新的
+        prefix = f"/api/assets/{entity_type}/{entity_id}/cover"
+        imgs = [u for u in imgs if not u.startswith(prefix)]
+        imgs.append(img_url)
         entity["reference_images"] = imgs
         data[entity_key] = entity
         with open(yaml_path, "w") as f:

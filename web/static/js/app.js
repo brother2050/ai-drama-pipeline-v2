@@ -557,8 +557,8 @@ async function editShot(idx) {
       <div class="edit-field"><label>${t('edit.emotion')}</label><select id="ed-emo">${_selectOpts(EMOTIONS, s.emotion)}</select></div>
     </div>
     <div class="edit-nav-row">
-      ${idx > 0 ? `<button class="btn btn-xs btn-outline" onclick="saveShot(${idx});setTimeout(()=>editShot(${idx-1}),200)">${t('edit.prev_shot')}</button>` : '<span></span>'}
-      ${idx < shots.length - 1 ? `<button class="btn btn-xs btn-outline" onclick="saveShot(${idx});setTimeout(()=>editShot(${idx+1}),200)">${t('edit.next_shot')}</button>` : '<span></span>'}
+      ${idx > 0 ? `<button class="btn btn-xs btn-outline" onclick="_saveAndEdit(${idx},${idx-1})">${t('edit.prev_shot')}</button>` : '<span></span>'}
+      ${idx < shots.length - 1 ? `<button class="btn btn-xs btn-outline" onclick="_saveAndEdit(${idx},${idx+1})">${t('edit.next_shot')}</button>` : '<span></span>'}
     </div>`, `saveShot(${idx})`);
   // 初始化字数统计
   ['ed-action','ed-action-en','ed-dialogue','ed-dialogue-en'].forEach(id => {
@@ -571,6 +571,21 @@ function updateCharCount(inputId, countId) {
   const inp = document.getElementById(inputId);
   const cnt = document.getElementById(countId);
   if (inp && cnt) cnt.textContent = t('edit.char_count', { count: inp.value.length });
+}
+
+async function _saveAndEdit(fromIdx, toIdx) {
+  // 保存当前镜头，成功后打开下一个
+  const s = shots[fromIdx];
+  for (const [k, id] of [['scene', 'ed-scene'], ['characters', 'ed-chars'], ['action', 'ed-action'], ['action_en', 'ed-action-en'], ['dialogue', 'ed-dialogue'], ['dialogue_en', 'ed-dialogue-en'], ['outfit', 'ed-outfit'], ['camera', 'ed-camera'], ['shot_type', 'ed-shottype'], ['duration', 'ed-dur'], ['emotion', 'ed-emo']])
+    s[k] = document.getElementById(id)?.value || (k === 'duration' ? 4 : k === 'emotion' ? 'neutral' : '');
+  pushUndo(`${t('edit.shot_title')} ${s.shot_id || fromIdx + 1}`);
+  try {
+    await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } });
+    invalidateCache(`storyboard/${ep}`);
+    invalidateCache(`res/${ep}`);
+    document.getElementById('edit-overlay')?.remove();
+    editShot(toIdx);
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function saveShot(idx) {
@@ -815,6 +830,7 @@ function deleteChar(id) { _crudDelete('characters', id, t('char.title').replace(
 
 async function editChar(id) {
   try {
+  _charImgRemoved = false;
   const c = ((await cachedFetch('characters', () => api('/characters'))).characters || []).find(x => x.id === id);
   if (!c) { toast(t('char.not_found'), 'error'); return; }
   const voiceKey = c.voice?.key || '';
@@ -855,18 +871,23 @@ function ecHandleDrop(e, id) {
   if (inp) { const dt = new DataTransfer(); dt.items.add(file); inp.files = dt.files; ecUploadImg(id); }
 }
 
+let _charImgRemoved = false;
 async function ecRemoveImg(id) {
   if (!await modalConfirm('删除定妆照？')) return;
+  _charImgRemoved = true;
   const wrap = document.getElementById('ec-img-wrap');
   if (wrap) wrap.innerHTML = `<div class="upload-area" onclick="document.getElementById('ec-file').click()"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`;
 }
 function saveCharEdit(id) {
   const voiceVal = val('ec-voice');
   const outfitVal = val('ec-outfits');
+  const extra = _charImgRemoved ? { reference_images: [] } : {};
+  _charImgRemoved = false;
   _crudSave('characters', id, () => ({
     name: val('ec-name'), gender: val('ec-gender'), appearance: val('ec-appearance'),
     voice: voiceVal ? { key: voiceVal } : null,
     outfits: outfitVal ? { default: outfitVal } : null,
+    ...extra,
   }), 'edit-char-overlay', loadCharacters);
 }
 
@@ -917,6 +938,7 @@ function deleteScene(id) { _crudDelete('scenes', id, t('scene.title').replace(/�
 
 async function editScene(id) {
   try {
+  _sceneImgRemoved = false;
   const s = ((await cachedFetch('scenes', () => api('/scenes'))).scenes || []).find(x => x.id === id);
   if (!s) { toast(t('scene.not_found'), 'error'); return; }
   const existingImg = (s.reference_images && s.reference_images.length) ? `<div class="upload-preview"><img src="${esc(s.reference_images[0])}" id="es-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="esRemoveImg('${id}')">✕</button></div>` : `<div class="upload-area" id="es-upload-area" onclick="document.getElementById('es-file').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="esHandleDrop(event,'${id}')"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`;
@@ -953,12 +975,18 @@ function esHandleDrop(e, id) {
   if (inp) { const dt = new DataTransfer(); dt.items.add(file); inp.files = dt.files; esUploadImg(id); }
 }
 
+let _sceneImgRemoved = false;
 async function esRemoveImg(id) {
   if (!await modalConfirm('删除参考图？')) return;
+  _sceneImgRemoved = true;
   const wrap = document.getElementById('es-img-wrap');
   if (wrap) wrap.innerHTML = `<div class="upload-area" onclick="document.getElementById('es-file').click()"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`;
 }
-function saveSceneEdit(id) { _crudSave('scenes', id, () => ({ name: val('es-name'), description: val('es-desc'), lighting: val('es-lighting') }), 'edit-scene-overlay', loadScenes); }
+function saveSceneEdit(id) {
+  const extra = _sceneImgRemoved ? { reference_images: [] } : {};
+  _sceneImgRemoved = false;
+  _crudSave('scenes', id, () => ({ name: val('es-name'), description: val('es-desc'), lighting: val('es-lighting'), ...extra }), 'edit-scene-overlay', loadScenes);
+}
 
 // ── DOM 取值快捷 ──
 function val(id) { return document.getElementById(id)?.value || ''; }
