@@ -12,6 +12,7 @@ import csv
 import logging
 import os
 import re
+import shutil
 import sys
 import yaml
 from pathlib import Path
@@ -779,7 +780,6 @@ def delete_scene(scene_id: str):
 @router.post("/assets/{entity_type}/{entity_id}/upload")
 async def upload_entity_image(entity_type: str, entity_id: str, file: UploadFile = File(...)):
     """上传角色/场景参考图"""
-    import shutil
 
     _check_entity_type(entity_type)
     _check_id(entity_id)
@@ -1108,7 +1108,6 @@ def copy_asset_to_project(entity_type: str, entity_id: str):
     if dst.exists():
         raise HTTPException(409, f"项目中已存在: {entity_id}")
 
-    import shutil
     shutil.copy2(str(src), str(dst))
 
     # 复制图片
@@ -1135,7 +1134,6 @@ def add_to_shared_library(entity_type: str, entity_id: str):
     shared_dir.mkdir(parents=True, exist_ok=True)
     dst = shared_dir / f"{entity_id}.yaml"
 
-    import shutil
     shutil.copy2(str(src), str(dst))
 
     # 复制图片

@@ -739,7 +739,6 @@ def ai_chat_edit_task(self, config_path: str, episode: int, message: str, curren
 如果用户的指令不清晰或无法执行，返回一个 JSON 对象：{{"error": "原因说明"}}"""
 
     try:
-        import json as _json
         response = llm.generate(prompt)
         # 尝试解析 JSON
         text = response.strip()
@@ -750,7 +749,7 @@ def ai_chat_edit_task(self, config_path: str, episode: int, message: str, curren
                 text = text[:-3]
             text = text.strip()
 
-        result = _json.loads(text)
+        result = json.loads(text)
 
         if isinstance(result, dict) and "error" in result:
             return {"status": "error", "reason": result["error"]}
@@ -761,7 +760,7 @@ def ai_chat_edit_task(self, config_path: str, episode: int, message: str, curren
 
         return {"status": "error", "reason": "LLM 返回格式不正确"}
 
-    except _json.JSONDecodeError:
+    except json.JSONDecodeError:
         return {"status": "error", "reason": "LLM 返回的不是有效 JSON"}
     except Exception as e:
         return {"status": "error", "reason": f"LLM 执行失败: {e}"}
