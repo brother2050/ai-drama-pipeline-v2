@@ -524,8 +524,46 @@ def preview_task(self, config_path: str, episode: int, preset: str = "draft"):
     shots = _load_episode_shots(config_path, episode)
     if not shots:
         return {"status": "empty", "message": f"第{episode}集没有镜头"}
-    return {"status": "done", "episode": episode, "preset": preset,
-            "shots": _iterate_shots(self, config_path, episode, shots)}
+    # 根据 preset 缩放生成参数，写入临时配置文件
+    effective_cfg = _apply_preset(config_path, preset)
+    try:
+        return {"status": "done", "episode": episode, "preset": preset,
+                "shots": _iterate_shots(self, effective_cfg, episode, shots)}
+    finally:
+        # 清理临时配置文件
+        if effective_cfg != config_path:
+            try:
+                os.unlink(effective_cfg)
+            except OSError:
+                pass
+
+
+def _apply_preset(config_path: str, preset: str) -> str:
+    """根据 preset 缩放生成参数，返回（可能新建的）配置文件路径"""
+    if preset == "draft":
+        return config_path  # draft 不修改，使用默认参数
+    from infra.config import Config, save_config, load_config
+    import tempfile
+    cfg = Config(config_path)
+    gen = cfg.get("generation", {})
+    base_steps = gen.get("image_steps", 20)
+    base_res = gen.get("resolution", [512, 512])
+    base_frames = gen.get("video_frames", 8)
+    if preset == "high":
+        overrides = {
+            "image_steps": int(base_steps * 1.4),
+            "resolution": [min(1920, int(base_res[0] * 1.5)), min(1080, int(base_res[1] * 1.5))],
+            "video_frames": min(16, int(base_frames * 2)),
+        }
+    else:  # standard
+        return config_path
+    # 写入临时配置文件（继承原配置 + 覆盖 generation 段）
+    existing = load_config(config_path)
+    existing.setdefault("generation", {}).update(overrides)
+    fd, tmp_path = tempfile.mkstemp(suffix=".yaml", dir=str(Path(config_path).parent))
+    os.close(fd)
+    save_config(tmp_path, existing)
+    return tmp_path
 
 
 @app.task(bind=True, name="pipeline.produce", soft_time_limit=7200)
