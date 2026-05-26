@@ -178,6 +178,23 @@ def _err(shot_id, step, reason): return {"shot_id": shot_id, "step": step, "stat
 def _done(shot_id, step, path, **kw): return {"shot_id": shot_id, "step": step, "status": "done", "path": path, **kw}
 
 
+def _init_ctx(config_path: str):
+    """初始化通用上下文: ensure_path + Config + Container（用于非 _prepare 的任务）"""
+    _ensure_path()
+    from infra.config import Config
+    from api import _ensure_registered; _ensure_registered()
+    from api.registry import Container
+    cfg = Config(config_path)
+    return cfg, Container(cfg.data)
+
+
+def _cfg_dir(config_path: str, *parts) -> Path:
+    """获取项目目录下的子路径"""
+    from infra.config import Config
+    p = Path(Config(config_path).project_dir)
+    return p.joinpath(*parts) if parts else p
+
+
 # ══════════════════════════════════════════════════════════
 #  核心逻辑函数
 # ══════════════════════════════════════════════════════════
@@ -545,18 +562,12 @@ def subtitle_task(self, config_path: str, episode: int):
 def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                        duration: int = 90, append: bool = False):
     """AI 生成分镜表（异步）"""
-    _ensure_path()
-    from infra.config import Config
-    from api import _ensure_registered; _ensure_registered()
-    from api.registry import Container
     from engines.llm_generator import generate_storyboard
     from engines.storyboard import save_storyboard
-    from pathlib import Path as P
 
     self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 10, "message": "正在初始化 LLM..."})
 
-    cfg = Config(config_path)
-    cont = Container(cfg.data)
+    cfg, cont = _init_ctx(config_path)
     try:
         llm = cont.get("llm")
     except Exception as e:
@@ -565,11 +576,9 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
     self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 30, "message": "AI 正在生成分镜..."})
 
     # 加载已有角色和场景
-    project_dir = P(cfg.project_dir)
-    char_dir = project_dir / "config" / "characters"
-    scene_dir = project_dir / "config" / "scenes"
-    characters = _load_yaml_entities(char_dir, "character")
-    scenes = _load_yaml_entities(scene_dir, "scene")
+    project_dir = _cfg_dir(config_path)
+    characters = _load_yaml_entities(project_dir / "config" / "characters", "character")
+    scenes = _load_yaml_entities(project_dir / "config" / "scenes", "scene")
 
     try:
         shots = generate_storyboard(llm, outline, characters, scenes, episode, duration)

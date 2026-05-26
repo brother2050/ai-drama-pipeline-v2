@@ -126,8 +126,34 @@ def _merged_cfg() -> dict:
 
 
 def _cfg_path() -> str:
-    return str(_active_project_dir() / "config" / "project.yaml")
+    return str(_proj() / "config" / "project.yaml")
 
+
+# ── 校验工具 ──
+
+_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+_UUID_RE = re.compile(r"^[a-f0-9-]{36}$")
+_FILE_RE = re.compile(r"^[a-zA-Z0-9_\-\.]+$")
+
+def _check_id(v: str, label: str = "ID") -> None:
+    if not _ID_RE.match(v):
+        raise HTTPException(400, f"无效的 {label}")
+
+def _check_uuid(v: str) -> None:
+    if not _UUID_RE.match(v):
+        raise HTTPException(400, "无效的任务 ID")
+
+def _check_filename(v: str) -> None:
+    if not _FILE_RE.match(v):
+        raise HTTPException(400, "无效的文件名")
+
+def _check_entity_type(v: str) -> None:
+    if v not in ("characters", "scenes"):
+        raise HTTPException(400, "entity_type 必须是 characters 或 scenes")
+
+def _check_episode(ep: int) -> None:
+    if ep < 1:
+        raise HTTPException(400, "episode 必须 >= 1")
 
 
 def _safe_path(base: Path, *parts: str) -> Path:
@@ -384,7 +410,7 @@ def run_step_shot(req: StepRequest):
 
 
 def _find_shot_for_api(episode: int, shot_id: str) -> dict | None:
-    sb_path = _active_project_dir() / "storyboard" / "episodes.csv"
+    sb_path = _proj() / "storyboard" / "episodes.csv"
     if not sb_path.exists():
         return None
     with open(sb_path, encoding="utf-8") as f:
@@ -427,7 +453,7 @@ def run_music(req: MusicRequest):
     """配乐生成"""
     from pipeline.tasks import music_task
     import time
-    output = str(_active_project_dir() / "output" / f"bgm_{int(time.time())}.wav")
+    output = str(_proj() / "output" / f"bgm_{int(time.time())}.wav")
     return _submit_task(music_task, _cfg_path(), req.duration, req.mood, output)
 
 
@@ -444,9 +470,7 @@ def run_subtitle(req: SubtitleRequest):
 
 @router.get("/tasks/{task_id}")
 def get_task(task_id: str):
-    # 校验 task_id 格式（UUID）
-    if not re.match(r"^[a-f0-9-]{36}$", task_id):
-        raise HTTPException(400, "无效的任务 ID")
+    _check_uuid(task_id)
     from pipeline.celery_app import app
     result = app.AsyncResult(task_id)
     info = result.info if result.info else {}
@@ -484,8 +508,7 @@ def list_tasks():
 
 @router.post("/tasks/{task_id}/cancel")
 def cancel_task(task_id: str):
-    if not re.match(r"^[a-f0-9-]{36}$", task_id):
-        raise HTTPException(400, "无效的任务 ID")
+    _check_uuid(task_id)
     from pipeline.celery_app import app
     app.control.revoke(task_id, terminate=True)
     return {"status": "cancelled", "task_id": task_id}
@@ -631,7 +654,7 @@ def delete_project(name: str):
 
 # ── 通用 YAML CRUD 工厂 ──
 
-def _active_project_dir() -> Path:
+def _proj() -> Path:
     """返回当前活动项目目录"""
     active_file = ROOT / "projects" / ".active"
     if active_file.exists():
@@ -643,7 +666,7 @@ def _active_project_dir() -> Path:
 
 def _yaml_list(yaml_dir: str, entity_key: str) -> list[dict]:
     """通用 YAML 实体列表读取"""
-    d = _active_project_dir() / "config" / yaml_dir
+    d = _proj() / "config" / yaml_dir
     if not d.exists():
         return []
     result = []
@@ -664,7 +687,7 @@ def _yaml_list(yaml_dir: str, entity_key: str) -> list[dict]:
 def _yaml_save(yaml_dir: str, entity_key: str, entity_id: str, data: dict,
                db_upsert=None) -> None:
     """通用 YAML 实体保存（YAML + DB 双写）"""
-    d = _active_project_dir() / "config" / yaml_dir
+    d = _proj() / "config" / yaml_dir
     d.mkdir(parents=True, exist_ok=True)
     with open(d / f"{entity_id}.yaml", "w") as f:
         yaml.dump({entity_key: {**data, "id": entity_id}}, f,
@@ -679,7 +702,7 @@ def _yaml_save(yaml_dir: str, entity_key: str, entity_id: str, data: dict,
 
 def _yaml_delete(yaml_dir: str, entity_id: str, label: str, db_delete=None) -> None:
     """通用 YAML 实体删除（文件 + DB）"""
-    path = _active_project_dir() / "config" / yaml_dir / f"{entity_id}.yaml"
+    path = _proj() / "config" / yaml_dir / f"{entity_id}.yaml"
     if not path.exists():
         raise HTTPException(404, f"{label} {entity_id} 不存在")
     path.unlink()
@@ -707,8 +730,7 @@ def save_character(req: CharacterData):
 
 @router.delete("/characters/{char_id}")
 def delete_character(char_id: str):
-    if not re.match(r"^[a-zA-Z0-9_-]+$", char_id):
-        raise HTTPException(400, "无效的角色 ID")
+    _check_id(char_id, "角色 ID")
     from infra.database.characters import delete as db_del
     _yaml_delete("characters", char_id, "角色", db_delete=db_del)
     return {"status": "ok", "id": char_id}
@@ -730,8 +752,7 @@ def save_scene(req: SceneData):
 
 @router.delete("/scenes/{scene_id}")
 def delete_scene(scene_id: str):
-    if not re.match(r"^[a-zA-Z0-9_-]+$", scene_id):
-        raise HTTPException(400, "无效的场景 ID")
+    _check_id(scene_id, "场景 ID")
     from infra.database.scenes import delete as db_del
     _yaml_delete("scenes", scene_id, "场景", db_delete=db_del)
     return {"status": "ok", "id": scene_id}
@@ -744,10 +765,8 @@ async def upload_entity_image(entity_type: str, entity_id: str, file: UploadFile
     """上传角色/场景参考图"""
     import shutil
 
-    if entity_type not in ("characters", "scenes"):
-        raise HTTPException(400, "entity_type 必须是 characters 或 scenes")
-    if not re.match(r"^[a-zA-Z0-9_-]+$", entity_id):
-        raise HTTPException(400, "无效的 ID")
+    _check_entity_type(entity_type)
+    _check_id(entity_id)
 
     # 校验文件类型
     allowed = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
@@ -756,7 +775,7 @@ async def upload_entity_image(entity_type: str, entity_id: str, file: UploadFile
         raise HTTPException(400, f"不支持的文件类型: {ext}，允许: {', '.join(allowed)}")
 
     # 保存到 assets 目录
-    asset_dir = _active_project_dir() / "assets" / entity_type / entity_id
+    asset_dir = _proj() / "assets" / entity_type / entity_id
     asset_dir.mkdir(parents=True, exist_ok=True)
     filename = f"cover{ext}"
     dest = asset_dir / filename
@@ -766,7 +785,7 @@ async def upload_entity_image(entity_type: str, entity_id: str, file: UploadFile
     # 更新 YAML 中的 reference_images
     yaml_dir = "characters" if entity_type == "characters" else "scenes"
     entity_key = "character" if entity_type == "characters" else "scene"
-    yaml_path = _active_project_dir() / "config" / yaml_dir / f"{entity_id}.yaml"
+    yaml_path = _proj() / "config" / yaml_dir / f"{entity_id}.yaml"
     if yaml_path.exists():
         with open(yaml_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
@@ -790,14 +809,11 @@ def get_entity_asset(entity_type: str, entity_id: str, filename: str):
     """访问角色/场景资源文件"""
     from fastapi.responses import FileResponse
 
-    if entity_type not in ("characters", "scenes"):
-        raise HTTPException(400, "entity_type 必须是 characters 或 scenes")
-    if not re.match(r"^[a-zA-Z0-9_-]+$", entity_id):
-        raise HTTPException(400, "无效的 ID")
-    if not re.match(r"^[a-zA-Z0-9_\-\.]+$", filename):
-        raise HTTPException(400, "无效的文件名")
+    _check_entity_type(entity_type)
+    _check_id(entity_id)
+    _check_filename(filename)
 
-    file_path = _active_project_dir() / "assets" / entity_type / entity_id / filename
+    file_path = _proj() / "assets" / entity_type / entity_id / filename
     if not file_path.exists():
         raise HTTPException(404, f"文件不存在: {filename}")
 
@@ -809,7 +825,7 @@ def get_entity_asset(entity_type: str, entity_id: str, filename: str):
 @router.get("/episodes")
 def get_episodes():
     """获取可用集数列表"""
-    sb_path = _active_project_dir() / "storyboard" / "episodes.csv"
+    sb_path = _proj() / "storyboard" / "episodes.csv"
     if not sb_path.exists():
         return {"episodes": [1], "current": 1}
     ep_set = set()
@@ -828,9 +844,8 @@ def get_episodes():
 
 @router.get("/storyboard/{episode}")
 def get_storyboard(episode: int):
-    if episode < 1:
-        raise HTTPException(400, "episode 必须 >= 1")
-    sb_path = _active_project_dir() / "storyboard" / "episodes.csv"
+    _check_episode(episode)
+    sb_path = _proj() / "storyboard" / "episodes.csv"
     if not sb_path.exists():
         return {"episode": episode, "shots": []}
     shots = []
@@ -843,8 +858,7 @@ def get_storyboard(episode: int):
 
 @router.post("/storyboard/{episode}")
 def save_storyboard(episode: int, data: dict):
-    if episode < 1:
-        raise HTTPException(400, "episode 必须 >= 1")
+    _check_episode(episode)
     shots = data.get("shots", [])
     if not isinstance(shots, list):
         raise HTTPException(400, "shots 必须是数组")
@@ -854,10 +868,10 @@ def save_storyboard(episode: int, data: dict):
     # 校验每个镜头的 shot_id 格式
     for shot in shots:
         sid = shot.get("shot_id", "")
-        if sid and not re.match(r"^[a-zA-Z0-9_-]+$", sid):
-            raise HTTPException(400, f"无效的 shot_id: {sid}")
+        if sid:
+            _check_id(sid, "shot_id")
 
-    sb_path = _active_project_dir() / "storyboard" / "episodes.csv"
+    sb_path = _proj() / "storyboard" / "episodes.csv"
     sb_path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = ["episode", "shot_id", "scene", "characters", "action", "dialogue",
                   "camera", "shot_type", "duration", "outfit", "emotion",
@@ -944,7 +958,7 @@ def run_pipeline(req: PipelineRequest):
 @router.get("/pipeline/status/{episode}")
 def pipeline_status(episode: int):
     from flow.episode import get_episode_status
-    return get_episode_status(str(_active_project_dir()), episode)
+    return get_episode_status(str(_proj()), episode)
 
 
 # ══════════════════════════════════════════════════════════
@@ -954,12 +968,10 @@ def pipeline_status(episode: int):
 @router.get("/shots/{episode}/{shot_id}/resources")
 def get_shot_resources(episode: int, shot_id: str):
     """查询镜头已生成的资源"""
-    if episode < 1:
-        raise HTTPException(400, "episode 必须 >= 1")
-    if not re.match(r"^[a-zA-Z0-9_-]+$", shot_id):
-        raise HTTPException(400, "无效的 shot_id")
+    _check_episode(episode)
+    _check_id(shot_id, "shot_id")
 
-    out_dir = _safe_path(_active_project_dir(), "output", f"e{episode:02d}", f"s{shot_id}")
+    out_dir = _safe_path(_proj(), "output", f"e{episode:02d}", f"s{shot_id}")
     if not out_dir.exists():
         return {"shot_id": shot_id, "resources": {}}
 
@@ -976,15 +988,11 @@ def get_shot_file(episode: int, shot_id: str, filename: str):
     """预览镜头资源文件（带路径遍历防护）"""
     from fastapi.responses import FileResponse
 
-    if episode < 1:
-        raise HTTPException(400, "episode 必须 >= 1")
-    if not re.match(r"^[a-zA-Z0-9_-]+$", shot_id):
-        raise HTTPException(400, "无效的 shot_id")
-    # 文件名只允许字母数字下划线连字符点号
-    if not re.match(r"^[a-zA-Z0-9_\-\.]+$", filename):
-        raise HTTPException(400, "无效的文件名")
+    _check_episode(episode)
+    _check_id(shot_id, "shot_id")
+    _check_filename(filename)
 
-    file_path = _safe_path(_active_project_dir(), "output", f"e{episode:02d}", f"s{shot_id}", filename)
+    file_path = _safe_path(_proj(), "output", f"e{episode:02d}", f"s{shot_id}", filename)
     if not file_path.exists():
         raise HTTPException(404, f"文件不存在: {filename}")
 
