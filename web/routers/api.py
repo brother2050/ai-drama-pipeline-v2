@@ -16,7 +16,7 @@ import sys
 import yaml
 from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Request, UploadFile
 
 logger = logging.getLogger(__name__)
 
@@ -735,6 +735,74 @@ def delete_scene(scene_id: str):
     from infra.database.scenes import delete as db_del
     _yaml_delete("scenes", scene_id, "场景", db_delete=db_del)
     return {"status": "ok", "id": scene_id}
+
+
+# ── 角色/场景图片上传 ──
+
+@router.post("/assets/{entity_type}/{entity_id}/upload")
+async def upload_entity_image(entity_type: str, entity_id: str, file: UploadFile = File(...)):
+    """上传角色/场景参考图"""
+    from fastapi.responses import JSONResponse
+    import shutil
+
+    if entity_type not in ("characters", "scenes"):
+        raise HTTPException(400, "entity_type 必须是 characters 或 scenes")
+    if not re.match(r"^[a-zA-Z0-9_-]+$", entity_id):
+        raise HTTPException(400, "无效的 ID")
+
+    # 校验文件类型
+    allowed = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in allowed:
+        raise HTTPException(400, f"不支持的文件类型: {ext}，允许: {', '.join(allowed)}")
+
+    # 保存到 assets 目录
+    asset_dir = _active_project_dir() / "assets" / entity_type / entity_id
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"cover{ext}"
+    dest = asset_dir / filename
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    # 更新 YAML 中的 reference_images
+    yaml_dir = "characters" if entity_type == "characters" else "scenes"
+    entity_key = "character" if entity_type == "characters" else "scene"
+    yaml_path = _active_project_dir() / "config" / yaml_dir / f"{entity_id}.yaml"
+    if yaml_path.exists():
+        with open(yaml_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        entity = data.get(entity_key, {})
+        imgs = entity.get("reference_images") or []
+        img_url = f"/api/assets/{entity_type}/{entity_id}/{filename}"
+        if img_url not in imgs:
+            imgs.append(img_url)
+        entity["reference_images"] = imgs
+        data[entity_key] = entity
+        with open(yaml_path, "w") as f:
+            yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+
+    return {"status": "ok", "url": f"/api/assets/{entity_type}/{entity_id}/{filename}"}
+
+
+@router.get("/assets/{entity_type}/{entity_id}/{filename}")
+def get_entity_asset(entity_type: str, entity_id: str, filename: str):
+    """访问角色/场景资源文件"""
+    from fastapi.responses import FileResponse
+
+    if entity_type not in ("characters", "scenes"):
+        raise HTTPException(400, "entity_type 必须是 characters 或 scenes")
+    if not re.match(r"^[a-zA-Z0-9_-]+$", entity_id):
+        raise HTTPException(400, "无效的 ID")
+    if not re.match(r"^[a-zA-Z0-9_\-\.]+$", filename):
+        raise HTTPException(400, "无效的文件名")
+
+    file_path = _active_project_dir() / "assets" / entity_type / entity_id / filename
+    if not file_path.exists():
+        raise HTTPException(404, f"文件不存在: {filename}")
+
+    ext = file_path.suffix.lower()
+    media_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}
+    return FileResponse(str(file_path), media_type=media_types.get(ext, "application/octet-stream"))
 
 
 @router.get("/episodes")

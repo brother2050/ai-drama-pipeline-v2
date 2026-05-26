@@ -267,6 +267,25 @@ async function loadDashboard() {
       <div class="dash-hero">
         <h1>🎬 ${currentProj?.name || t('app.title')}</h1>
         <p>${t('dash.welcome_desc')}</p>
+        <div class="inspire-box">
+          <textarea id="dash-inspire-input" class="inspire-input" rows="3" placeholder="${esc(t('dash.inspire_placeholder'))}"></textarea>
+          <div class="inspire-footer">
+            <div class="inspire-options">
+              <label class="inspire-toggle" onclick="document.getElementById('inspire-adv').classList.toggle('open')">${t('dash.inspire_advanced')}</label>
+              <div id="inspire-adv" class="inspire-advanced">
+                <div class="inspire-adv-row">
+                  <label>${t('dash.inspire_ep')}</label>
+                  <input id="dash-inspire-ep" type="number" value="${ep}" min="1" style="width:60px">
+                  <label>${t('dash.inspire_dur')}</label>
+                  <input id="dash-inspire-dur" type="number" value="90" min="10" max="600" style="width:80px">
+                </div>
+                <label class="inspire-check"><input type="checkbox" id="dash-inspire-append"> ${t('dash.inspire_append')}</label>
+              </div>
+            </div>
+            <button class="btn btn-ai btn-inspire" id="dash-inspire-btn" onclick="dashInspireGen()">${t('dash.inspire_btn')}</button>
+          </div>
+          <div id="dash-inspire-status" class="inspire-status"></div>
+        </div>
         <div class="dash-hero-actions">
           <button class="btn btn-primary" onclick="navTo('storyboard')">📝 ${t('nav.storyboard')}</button>
           <button class="btn btn-outline" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline')}</button>
@@ -296,9 +315,65 @@ async function loadDashboard() {
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('dash.conn_fail')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 
+// ── 灵感生成（一键从大纲生成分镜）──
+
+async function dashInspireGen() {
+  const input = document.getElementById('dash-inspire-input');
+  const outline = input?.value?.trim();
+  if (!outline || outline.length < 10) { toast('请输入至少 10 字的剧情灵感', 'error'); input?.focus(); return; }
+  const episode = parseInt(document.getElementById('dash-inspire-ep')?.value) || ep;
+  const duration = parseInt(document.getElementById('dash-inspire-dur')?.value) || 90;
+  const append = document.getElementById('dash-inspire-append')?.checked || false;
+  const statusEl = document.getElementById('dash-inspire-status');
+  const btn = document.getElementById('dash-inspire-btn');
+  const resetBtn = _btnLoading(btn, '⏳ AI 生成中...');
+
+  try {
+    const { task_id } = await api('/llm/storyboard', { method: 'POST', body: { episode, outline, duration, append } });
+    const result = await pollTask(task_id, info => {
+      if (statusEl) statusEl.innerHTML = `<div class="inspire-progress"><div class="batch-bar"><div class="batch-fill" style="width:${info.progress || 0}%"></div></div><span>⏳ ${info.message || 'AI 生成中...'} (${info.progress || 0}%)</span></div>`;
+    });
+
+    if (result.status === 'success' && result.result?.status === 'done') {
+      const r = result.result;
+      if (statusEl) statusEl.innerHTML = `✅ 生成 ${r.count} 个镜头，共 ${r.total_duration} 秒`;
+      toast(`✅ 已生成 ${r.count} 个镜头`);
+      invalidateCache(`storyboard/${episode}`);
+      invalidateCache('episodes');
+      setTimeout(() => { ep = episode; navTo('storyboard'); }, 1200);
+    } else {
+      const err = result.result?.reason || result.error || '生成失败';
+      if (statusEl) statusEl.innerHTML = `❌ ${err}`;
+      toast(`❌ ${err}`, 'error');
+    }
+  } catch (e) {
+    if (statusEl) statusEl.innerHTML = `❌ ${e.message}`;
+    toast(`❌ ${e.message}`, 'error');
+  }
+  resetBtn();
+}
+
 // ══════════════════════════════════════════════════════════
 // 生产工作台
 // ══════════════════════════════════════════════════════════
+
+function _updatePipelineStep(step, state) {
+  // state: 'active' | 'done' | 'fail' | ''
+  const el = document.getElementById(`pf-${step}`);
+  if (!el) return;
+  el.classList.remove('active', 'done', 'fail');
+  if (state) el.classList.add(state);
+  // 箭头联动：完成时标记前一段箭头
+  const steps = ['tts', 'first-frame', 'video', 'lipsync', 'post'];
+  const idx = steps.indexOf(step);
+  const arrows = document.querySelectorAll('.pipeline-arrow');
+  if (state === 'done' && idx > 0 && arrows[idx - 1]) arrows[idx - 1].classList.add('done');
+}
+
+function _resetPipelineSteps() {
+  document.querySelectorAll('.pipeline-step').forEach(el => el.classList.remove('active', 'done', 'fail'));
+  document.querySelectorAll('.pipeline-arrow').forEach(el => el.classList.remove('done'));
+}
 
 const STEP_BTNS = [
   { step: 'tts', icon: '🎤', label: 'TTS' },
@@ -358,6 +433,7 @@ function renderWB(episodes) {
     <div class="card" style="margin-bottom:.7rem"><h2>${t('wb.flow_title')}</h2>${flowHtml}</div>
     <div id="wb-shots-grid" class="wb-shots-grid"></div>
     <div id="wb-batch-status" class="wb-batch-status" style="display:none"></div>`;
+  _resetPipelineSteps();
   renderShotsGrid();
 }
 
@@ -450,23 +526,51 @@ const EMOTIONS = ['neutral', 'happy', 'sad', 'angry', 'worried', 'surprised', 'c
 
 function _selectOpts(options, current) { return options.map(o => `<option ${current === o ? 'selected' : ''}>${o}</option>`).join(''); }
 
-function editShot(idx) {
+async function editShot(idx) {
   activeShot = idx;
   const s = shots[idx], sid = _shotId(s, idx);
+  // 加载角色和场景列表用于下拉选择
+  let charOpts = `<option value="">${t('edit.select_char')}</option>`;
+  let sceneOpts = `<option value="">${t('edit.select_scene')}</option>`;
+  try {
+    const [charData, sceneData] = await Promise.all([
+      cachedFetch('characters', () => api('/characters')),
+      cachedFetch('scenes', () => api('/scenes')),
+    ]);
+    (charData.characters || []).forEach(c => { charOpts += `<option value="${esc(c.name || c.id)}" ${(s.characters || '').includes(c.name || c.id) ? 'selected' : ''}>${esc(c.name || c.id)}</option>`; });
+    (sceneData.scenes || []).forEach(sc => { sceneOpts += `<option value="${esc(sc.name || sc.id)}" ${(s.scene || '') === (sc.name || sc.id) ? 'selected' : ''}>${esc(sc.name || sc.id)}</option>`; });
+  } catch {}
   _showOverlay('edit-overlay', `${t('edit.shot_title')} ${sid}`, `
-    <div class="edit-field"><label>${t('edit.scene')}</label><input id="ed-scene" value="${esc(s.scene || '')}"></div>
-    <div class="edit-field"><label>${t('edit.characters')}</label><input id="ed-chars" value="${esc(s.characters || '')}"></div>
-    <div class="edit-field"><label>${t('edit.action')}</label><textarea id="ed-action" rows="2">${esc(s.action || '')}</textarea></div>
-    <div class="edit-field"><label>${t('sb.action_en')}</label><textarea id="ed-action-en" rows="2">${esc(s.action_en || '')}</textarea></div>
-    <div class="edit-field"><label>${t('edit.dialogue')}</label><textarea id="ed-dialogue" rows="2">${esc(s.dialogue || '')}</textarea></div>
-    <div class="edit-field"><label>${t('sb.dialogue_en')}</label><textarea id="ed-dialogue-en" rows="2">${esc(s.dialogue_en || '')}</textarea></div>
+    <div class="edit-field"><label>${t('edit.scene')}</label>
+      <div class="edit-field-combo"><select id="ed-scene-sel" onchange="document.getElementById('ed-scene').value=this.value">${sceneOpts}</select><input id="ed-scene" value="${esc(s.scene || '')}" placeholder="${t('edit.select_scene')}"></div></div>
+    <div class="edit-field"><label>${t('edit.characters')}</label>
+      <div class="edit-field-combo"><select id="ed-chars-sel" onchange="document.getElementById('ed-chars').value=this.value">${charOpts}</select><input id="ed-chars" value="${esc(s.characters || '')}" placeholder="${t('edit.select_char')}"></div></div>
+    <div class="edit-field"><label>${t('edit.action')} <span class="char-count" id="cc-action">0</span></label><textarea id="ed-action" rows="2" oninput="updateCharCount('ed-action','cc-action')">${esc(s.action || '')}</textarea></div>
+    <div class="edit-field"><label>${t('sb.action_en')} <span class="char-count" id="cc-action-en">0</span></label><textarea id="ed-action-en" rows="2" oninput="updateCharCount('ed-action-en','cc-action-en')">${esc(s.action_en || '')}</textarea></div>
+    <div class="edit-field"><label>${t('edit.dialogue')} <span class="char-count" id="cc-dialogue">0</span></label><textarea id="ed-dialogue" rows="2" oninput="updateCharCount('ed-dialogue','cc-dialogue')">${esc(s.dialogue || '')}</textarea></div>
+    <div class="edit-field"><label>${t('sb.dialogue_en')} <span class="char-count" id="cc-dialogue-en">0</span></label><textarea id="ed-dialogue-en" rows="2" oninput="updateCharCount('ed-dialogue-en','cc-dialogue-en')">${esc(s.dialogue_en || '')}</textarea></div>
     <div class="edit-field"><label>${t('edit.outfit')}</label><input id="ed-outfit" value="${esc(s.outfit || '')}" placeholder="${t('edit.outfit_ph')}"></div>
     <div class="edit-field-row">
       <div class="edit-field"><label>${t('edit.camera')}</label><select id="ed-camera">${_selectOpts(CAMERAS, s.camera)}</select></div>
       <div class="edit-field"><label>${t('edit.shot_type')}</label><select id="ed-shottype">${_selectOpts(SHOT_TYPES, s.shot_type)}</select></div>
       <div class="edit-field"><label>${t('edit.duration')}</label><input id="ed-dur" type="number" value="${s.duration || 4}" min="1" max="30"></div>
       <div class="edit-field"><label>${t('edit.emotion')}</label><select id="ed-emo">${_selectOpts(EMOTIONS, s.emotion)}</select></div>
+    </div>
+    <div class="edit-nav-row">
+      ${idx > 0 ? `<button class="btn btn-xs btn-outline" onclick="saveShot(${idx});setTimeout(()=>editShot(${idx-1}),200)">${t('edit.prev_shot')}</button>` : '<span></span>'}
+      ${idx < shots.length - 1 ? `<button class="btn btn-xs btn-outline" onclick="saveShot(${idx});setTimeout(()=>editShot(${idx+1}),200)">${t('edit.next_shot')}</button>` : '<span></span>'}
     </div>`, `saveShot(${idx})`);
+  // 初始化字数统计
+  ['ed-action','ed-action-en','ed-dialogue','ed-dialogue-en'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) updateCharCount(id, 'cc-' + id.replace('ed-', ''));
+  });
+}
+
+function updateCharCount(inputId, countId) {
+  const inp = document.getElementById(inputId);
+  const cnt = document.getElementById(countId);
+  if (inp && cnt) cnt.textContent = t('edit.char_count', { count: inp.value.length });
 }
 
 async function saveShot(idx) {
@@ -490,6 +594,7 @@ async function runOne(step, idx) {
   const sid = _shotId(shots[idx], idx);
   const actionsEl = document.getElementById(`shot-${sid}`)?.querySelector('.wb-shot-actions');
   if (actionsEl) actionsEl.innerHTML = `<span class="run-indicator">⏳ ${step}...</span> <button class="btn btn-xs btn-danger" onclick="cancelCurrentTask()">⏹</button>`;
+  _updatePipelineStep(step, 'active');
   try {
     const { task_id } = await api(`/steps/${step}`, { method: 'POST', body: { episode: ep, shot_id: sid } });
     _currentTaskId = task_id;
@@ -497,13 +602,13 @@ async function runOne(step, idx) {
     _currentTaskId = null;
     if (result.status === 'success') {
       const sub = result.result;
-      if (sub?.status === 'error') toast(`❌ ${sid} ${step}: ${sub.reason || t('wb.shot_fail')}`, 'error');
-      else if (sub?.status === 'skipped') toast(`⏭ ${sid} ${step}: ${sub.reason || t('wb.shot_skip')}`);
-      else toast(`✅ ${sid} ${step} ${t('wb.shot_done')}`);
+      if (sub?.status === 'error') { toast(`❌ ${sid} ${step}: ${sub.reason || t('wb.shot_fail')}`, 'error'); _updatePipelineStep(step, 'fail'); }
+      else if (sub?.status === 'skipped') { toast(`⏭ ${sid} ${step}: ${sub.reason || t('wb.shot_skip')}`); _updatePipelineStep(step, 'done'); }
+      else { toast(`✅ ${sid} ${step} ${t('wb.shot_done')}`); _updatePipelineStep(step, 'done'); }
     }
-    else if (result.status === 'timeout') toast(`⏰ ${sid} ${step}: ${t('toast.timeout')}`, 'error');
-    else toast(`❌ ${sid} ${step}: ${result.error || t('wb.shot_fail')}`, 'error');
-  } catch (e) { _currentTaskId = null; toast(`❌ ${sid}: ${e.message}`, 'error'); }
+    else if (result.status === 'timeout') { toast(`⏰ ${sid} ${step}: ${t('toast.timeout')}`, 'error'); _updatePipelineStep(step, 'fail'); }
+    else { toast(`❌ ${sid} ${step}: ${result.error || t('wb.shot_fail')}`, 'error'); _updatePipelineStep(step, 'fail'); }
+  } catch (e) { _currentTaskId = null; toast(`❌ ${sid}: ${e.message}`, 'error'); _updatePipelineStep(step, 'fail'); }
   if (actionsEl) actionsEl.innerHTML = _actionBtns(idx);
   invalidateCache(`res/${ep}/${sid}`); loadResources(idx);
 }
@@ -522,6 +627,7 @@ async function batchRun(step) {
   const names = { tts: t('step.tts'), 'first-frame': t('step.first_frame'), video: t('step.video'), lipsync: t('step.lipsync') };
   if (!await modalConfirm(t('batch.confirm', { step: names[step], n: shots.length }))) return;
   batchCancelled = false;
+  _updatePipelineStep(step, 'active');
   const statusEl = document.getElementById('wb-batch-status');
   statusEl.style.display = 'block';
   const concurrency = parseInt(localStorage.getItem('drama_concurrency') || '1');
@@ -574,8 +680,9 @@ async function batchRun(step) {
     await Promise.all(pool);
   }
 
-  if (batchCancelled) { statusEl.innerHTML = _batchSummary(done, skip, fail, true); toast(t('toast.cancelled')); return; }
+  if (batchCancelled) { statusEl.innerHTML = _batchSummary(done, skip, fail, true); toast(t('toast.cancelled')); _updatePipelineStep(step, 'fail'); return; }
   statusEl.innerHTML = _batchSummary(done, skip, fail, false);
+  _updatePipelineStep(step, fail > 0 ? 'fail' : 'done');
   toast(t('batch.complete', { done, skip, fail }));
 }
 
@@ -671,8 +778,9 @@ async function loadCharacters() {
     const items = d.characters || [];
     const grid = items.length ? `<div class="entity-grid">${items.map(c => {
       const avatar = c.appearance ? esc(c.appearance.substring(0, 2)) : '👤';
+      const coverImg = (c.reference_images && c.reference_images.length) ? `<img src="${esc(c.reference_images[0])}" loading="lazy">` : avatar;
       return `<div class="entity-card" onclick="editChar('${esc(c.id)}')">
-        <div class="entity-card-thumb">${avatar}</div>
+        <div class="entity-card-thumb">${coverImg}</div>
         <div class="entity-card-body"><h3>${esc(c.name || c.id)}</h3><p>${esc(c.appearance || '')}</p></div>
         <div class="entity-card-footer"><span class="entity-card-id">${esc(c.id)}</span>
           <span>${c.gender === 'male' ? '♂' : c.gender === 'female' ? '♀' : ''}</span></div></div>`;
@@ -711,13 +819,46 @@ async function editChar(id) {
   if (!c) { toast(t('char.not_found'), 'error'); return; }
   const voiceKey = c.voice?.key || '';
   const outfitDesc = c.outfits?.default || '';
+  const existingImg = (c.reference_images && c.reference_images.length) ? `<div class="upload-preview"><img src="${esc(c.reference_images[0])}" id="ec-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="ecRemoveImg('${id}')">✕</button></div>` : `<div class="upload-area" id="ec-upload-area" onclick="document.getElementById('ec-file').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="ecHandleDrop(event,'${id}')"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`;
   _showOverlay('edit-char-overlay', `${t('char.edit_title')} ${id}`, `
+    <div class="edit-field"><label>${t('char.upload_img')}</label><div id="ec-img-wrap">${existingImg}</div><input type="file" id="ec-file" accept="image/*" style="display:none" onchange="ecUploadImg('${id}')"></div>
     <div class="edit-field"><label>${t('char.name')}</label><input id="ec-name" value="${esc(c.name || '')}"></div>
     <div class="edit-field"><label>${t('char.gender')}</label><select id="ec-gender"><option value="">-</option><option value="male" ${c.gender === 'male' ? 'selected' : ''}>${t('char.gender.male')}</option><option value="female" ${c.gender === 'female' ? 'selected' : ''}>${t('char.gender.female')}</option></select></div>
     <div class="edit-field"><label>${t('char.appearance')}</label><textarea id="ec-appearance" rows="3">${esc(c.appearance || '')}</textarea></div>
     <div class="edit-field"><label>${t('char.voice_key')}</label><input id="ec-voice" value="${esc(voiceKey)}" placeholder="e.g. male-1"></div>
     <div class="edit-field"><label>${t('char.outfit_desc')}</label><textarea id="ec-outfits" rows="2">${esc(outfitDesc)}</textarea></div>`, `saveCharEdit('${id}')`);
   } catch (e) { toast(e.message, 'error'); }
+}
+
+async function ecUploadImg(id) {
+  const fileInput = document.getElementById('ec-file');
+  if (!fileInput?.files?.[0]) return;
+  const wrap = document.getElementById('ec-img-wrap');
+  if (wrap) wrap.innerHTML = `<span class="dim">${t('common.uploading')}</span>`;
+  const form = new FormData();
+  form.append('file', fileInput.files[0]);
+  try {
+    const r = await fetch(`${API}/assets/characters/${id}/upload`, { method: 'POST', body: form });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || '上传失败');
+    if (wrap) wrap.innerHTML = `<div class="upload-preview"><img src="${d.url}" id="ec-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="ecRemoveImg('${id}')">✕</button></div>`;
+    invalidateCache('characters');
+    toast('✅ 图片已上传');
+  } catch (e) { if (wrap) wrap.innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`; toast(e.message, 'error'); }
+}
+
+function ecHandleDrop(e, id) {
+  e.preventDefault(); e.currentTarget.classList.remove('dragover');
+  const file = e.dataTransfer?.files?.[0];
+  if (!file) return;
+  const inp = document.getElementById('ec-file');
+  if (inp) { const dt = new DataTransfer(); dt.items.add(file); inp.files = dt.files; ecUploadImg(id); }
+}
+
+async function ecRemoveImg(id) {
+  if (!await modalConfirm('删除定妆照？')) return;
+  const wrap = document.getElementById('ec-img-wrap');
+  if (wrap) wrap.innerHTML = `<div class="upload-area" onclick="document.getElementById('ec-file').click()"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`;
 }
 function saveCharEdit(id) {
   const voiceVal = val('ec-voice');
@@ -744,8 +885,9 @@ async function loadScenes() {
     const d = await cachedFetch('scenes', () => api('/scenes'));
     const items = d.scenes || [];
     const grid = items.length ? `<div class="entity-grid">${items.map(s => {
+      const coverImg = (s.reference_images && s.reference_images.length) ? `<img src="${esc(s.reference_images[0])}" loading="lazy">` : '🏔️';
       return `<div class="entity-card" onclick="editScene('${esc(s.id)}')">
-        <div class="entity-card-thumb">🏔️</div>
+        <div class="entity-card-thumb">${coverImg}</div>
         <div class="entity-card-body"><h3>${esc(s.name || s.id)}</h3><p>${esc(s.description || '')}</p></div>
         <div class="entity-card-footer"><span class="entity-card-id">${esc(s.id)}</span>
           <span class="dim" style="font-size:.7rem">${esc(s.lighting || '')}</span></div></div>`;
@@ -777,11 +919,44 @@ async function editScene(id) {
   try {
   const s = ((await cachedFetch('scenes', () => api('/scenes'))).scenes || []).find(x => x.id === id);
   if (!s) { toast(t('scene.not_found'), 'error'); return; }
+  const existingImg = (s.reference_images && s.reference_images.length) ? `<div class="upload-preview"><img src="${esc(s.reference_images[0])}" id="es-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="esRemoveImg('${id}')">✕</button></div>` : `<div class="upload-area" id="es-upload-area" onclick="document.getElementById('es-file').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="esHandleDrop(event,'${id}')"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`;
   _showOverlay('edit-scene-overlay', `${t('scene.edit_title')} ${id}`, `
+    <div class="edit-field"><label>${t('scene.upload_img')}</label><div id="es-img-wrap">${existingImg}</div><input type="file" id="es-file" accept="image/*" style="display:none" onchange="esUploadImg('${id}')"></div>
     <div class="edit-field"><label>${t('scene.name')}</label><input id="es-name" value="${esc(s.name || '')}"></div>
     <div class="edit-field"><label>${t('scene.desc')}</label><textarea id="es-desc" rows="3">${esc(s.description || '')}</textarea></div>
     <div class="edit-field"><label>${t('scene.lighting')}</label><input id="es-lighting" value="${esc(s.lighting || '')}"></div>`, `saveSceneEdit('${id}')`);
   } catch (e) { toast(e.message, 'error'); }
+}
+
+async function esUploadImg(id) {
+  const fileInput = document.getElementById('es-file');
+  if (!fileInput?.files?.[0]) return;
+  const wrap = document.getElementById('es-img-wrap');
+  if (wrap) wrap.innerHTML = `<span class="dim">${t('common.uploading')}</span>`;
+  const form = new FormData();
+  form.append('file', fileInput.files[0]);
+  try {
+    const r = await fetch(`${API}/assets/scenes/${id}/upload`, { method: 'POST', body: form });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || '上传失败');
+    if (wrap) wrap.innerHTML = `<div class="upload-preview"><img src="${d.url}" id="es-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="esRemoveImg('${id}')">✕</button></div>`;
+    invalidateCache('scenes');
+    toast('✅ 图片已上传');
+  } catch (e) { if (wrap) wrap.innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`; toast(e.message, 'error'); }
+}
+
+function esHandleDrop(e, id) {
+  e.preventDefault(); e.currentTarget.classList.remove('dragover');
+  const file = e.dataTransfer?.files?.[0];
+  if (!file) return;
+  const inp = document.getElementById('es-file');
+  if (inp) { const dt = new DataTransfer(); dt.items.add(file); inp.files = dt.files; esUploadImg(id); }
+}
+
+async function esRemoveImg(id) {
+  if (!await modalConfirm('删除参考图？')) return;
+  const wrap = document.getElementById('es-img-wrap');
+  if (wrap) wrap.innerHTML = `<div class="upload-area" onclick="document.getElementById('es-file').click()"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`;
 }
 function saveSceneEdit(id) { _crudSave('scenes', id, () => ({ name: val('es-name'), description: val('es-desc'), lighting: val('es-lighting') }), 'edit-scene-overlay', loadScenes); }
 
@@ -975,7 +1150,7 @@ async function loadStoryboard() {
         const sid = _shotId(s, i);
         return `<div class="timeline-item" id="tl-${esc(sid)}"><div class="timeline-dot"></div>
           <div class="timeline-card">
-            <div class="timeline-thumb" id="tl-thumb-${esc(sid)}">🎬</div>
+            <div class="timeline-thumb" id="tl-thumb-${esc(sid)}"><div class="thumb-skeleton"><div class="thumb-skeleton-pulse"></div></div></div>
             <div class="timeline-info">
               <div class="timeline-info-head"><span class="timeline-sid">${esc(sid)}</span><span class="timeline-meta">${esc(s.scene || '')} · ${esc(s.characters || '')}</span></div>
               <div class="timeline-info-body">${esc((s.action || '').substring(0, 60))}${(s.action||'').length > 60 ? '...' : ''}</div>
@@ -1012,12 +1187,14 @@ async function _loadTimelineThumb(idx) {
     const r = (await cachedFetch(`res/${ep}/${sid}`, () => api(`/shots/${ep}/${sid}/resources`))).resources || {};
     const item = document.getElementById(`tl-${sid}`);
     if (r.frame) {
-      el.innerHTML = `<img src="/api/files/${ep}/${sid}/frame.png" loading="lazy">`;
+      el.innerHTML = `<img src="/api/files/${ep}/${sid}/frame.png" loading="lazy" onclick="previewRes('${sid}','frame')" style="cursor:pointer" title="点击放大">`;
       if (item) item.classList.add('has-frame');
+    } else {
+      el.innerHTML = '🎬';
     }
     if (r.video && item) item.classList.add('has-video');
     if (r.synced && item) item.classList.add('has-synced');
-  } catch {}
+  } catch { el.innerHTML = '🎬'; }
 }
 
 let _sbDirty = false, _sbSaving = false;

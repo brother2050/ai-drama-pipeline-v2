@@ -273,6 +273,31 @@ const I18N = {
   'wb.gen_subtitle': { zh: '📝 字幕', en: '📝 Subtitle' },
   'wb.music_duration': { zh: '时长(秒)', en: 'Duration(s)' },
   'wb.music_mood': { zh: '情绪', en: 'Mood' },
+
+  // 2.1 灵感输入
+  'dash.inspire_placeholder': { zh: '输入你的剧情灵感，例如：\n"林夏独自在家等顾辰来过生日，等了很久他都没回消息..."', en: 'Enter your story idea, e.g.:\n"Lin Xia waits alone at home for Gu Chen to arrive for her birthday..."' },
+  'dash.inspire_btn': { zh: '🚀 AI 生成分镜', en: '🚀 AI Generate Storyboard' },
+  'dash.inspire_hint': { zh: '输入一句话，AI 自动生成完整分镜表', en: 'One sentence → AI generates a full storyboard' },
+  'dash.inspire_advanced': { zh: '⚙️ 高级选项', en: '⚙️ Advanced' },
+  'dash.inspire_ep': { zh: '集数', en: 'Episode' },
+  'dash.inspire_dur': { zh: '目标时长(秒)', en: 'Target Duration(s)' },
+  'dash.inspire_append': { zh: '追加到现有分镜表', en: 'Append to existing storyboard' },
+
+  // 2.3 缩略图骨架屏
+  'wb.thumb_loading': { zh: '加载中...', en: 'Loading...' },
+
+  // 2.5 编辑面板增强
+  'edit.char_count': { zh: '{count} 字', en: '{count} chars' },
+  'edit.next_shot': { zh: '▶ 下一个镜头', en: '▶ Next Shot' },
+  'edit.prev_shot': { zh: '◀ 上一个镜头', en: '◀ Prev Shot' },
+  'edit.select_char': { zh: '选择角色...', en: 'Select character...' },
+  'edit.select_scene': { zh: '选择场景...', en: 'Select scene...' },
+
+  // 2.2 图片上传
+  'char.upload_img': { zh: '📷 上传定妆照', en: '📷 Upload Portrait' },
+  'scene.upload_img': { zh: '📷 上传参考图', en: '📷 Upload Reference' },
+  'common.upload_hint': { zh: '点击或拖拽上传', en: 'Click or drag to upload' },
+  'common.uploading': { zh: '上传中...', en: 'Uploading...' },
 };
 
 // 当前语言（默认中文）
