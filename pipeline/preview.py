@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -154,8 +155,7 @@ def _process_shot(shot: dict, sm, container, cfg, shot_out: Path, preset: dict):
             comfyui = container.get("image")
             files = comfyui.generate(wf, str(shot_out))
             if files:
-                from pathlib import Path as P
-                P(files[0]).rename(frame_path)
+                os.replace(files[0], frame_path)
                 logger.info(f"    ✅ 首帧: {frame_path.name}")
         else:
             logger.warning(f"    ⚠ 首帧工作流为空")
@@ -175,8 +175,7 @@ def _process_shot(shot: dict, sm, container, cfg, shot_out: Path, preset: dict):
                 video_backend = container.get("video")
                 files = video_backend.generate(video_wf, str(shot_out))
                 if files:
-                    from pathlib import Path as P
-                    P(files[0]).rename(video_path)
+                    os.replace(files[0], video_path)
                     logger.info(f"    ✅ 视频: {video_path.name}")
             else:
                 logger.warning(f"    ⚠ 视频工作流为空（缺少模板）")

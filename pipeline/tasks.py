@@ -326,7 +326,7 @@ def _run_first_frame(config_path: str, episode: int, shot_id: str) -> dict:
     if not files:
         return _err(shot_id, "first_frame", "ComfyUI 未返回任何图片")
     frame_path = str(out_dir / "frame.png")
-    Path(files[0]).rename(frame_path)
+    os.replace(files[0], frame_path)
     return _done(shot_id, "first_frame", frame_path, prompt=prompt.get("positive", ""))
 
 
@@ -355,7 +355,7 @@ def _run_video(config_path: str, episode: int, shot_id: str) -> dict:
     if not files:
         return _err(shot_id, "video", "ComfyUI 未返回任何视频")
     video_path = str(out_dir / "video.mp4")
-    Path(files[0]).rename(video_path)
+    os.replace(files[0], video_path)
     return _done(shot_id, "video", video_path)
 
 
@@ -908,7 +908,7 @@ def ai_chat_edit_task(self, config_path: str, episode: int, message: str, curren
 如果用户的指令不清晰或无法执行，返回一个 JSON 对象：{{"error": "原因说明"}}"""
 
     try:
-        response = llm.generate(prompt)
+        response = llm.chat(prompt)
         # 尝试解析 JSON
         text = response.strip()
         # 去掉可能的 markdown 代码块

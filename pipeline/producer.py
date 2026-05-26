@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -151,8 +152,7 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path):
             comfyui = container.get("image")
             files = comfyui.generate(wf, str(shot_out))
             if files:
-                from pathlib import Path as P
-                P(files[0]).rename(frame_path)
+                os.replace(files[0], frame_path)
                 logger.info(f"  ✅ 首帧完成")
     except Exception as e:
         logger.warning(f"  ⚠ 首帧失败: {e}")
@@ -171,8 +171,7 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path):
                 video_backend = container.get("video")
                 files = video_backend.generate(video_wf, str(shot_out))
                 if files:
-                    from pathlib import Path as P
-                    P(files[0]).rename(video_path)
+                    os.replace(files[0], video_path)
                     logger.info(f"  ✅ 视频完成")
         except Exception as e:
             logger.warning(f"  ⚠ 视频失败: {e}")
