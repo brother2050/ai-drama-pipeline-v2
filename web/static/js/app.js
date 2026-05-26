@@ -872,13 +872,12 @@ function _newEntityPanel(type, { titleKey, fields, buildExtra, reload }) {
 function newChar() {
   _newEntityPanel('characters', {
     titleKey: 'char.title', reload: loadCharacters,
-    buildExtra() { return { voice: { key: $val('nc-voice_key') || '', voice_description: $val('nc-voice_desc') || '' }, outfits: $val('nc-outfits') ? { default: $val('nc-outfits') } : null }; },
+    buildExtra() { return { voice: $val('nc-voice_desc') ? { voice_description: $val('nc-voice_desc') } : null, outfits: $val('nc-outfits') ? { default: $val('nc-outfits') } : null }; },
     fields: [
       { key: 'name', label: t('char.name') },
       { key: 'gender', label: t('char.gender'), type: 'select', options: [{ value: '', label: '-' }, { value: 'male', label: t('char.gender.male') }, { value: 'female', label: t('char.gender.female') }] },
       { key: 'appearance', label: t('char.appearance'), type: 'textarea' },
       { key: 'personality', label: t('char.personality') || '性格', type: 'textarea' },
-      { key: 'voice_key', label: t('char.voice_key'), placeholder: 'e.g. male-1', getValue: true },
       { key: 'voice_desc', label: t('char.voice_desc') || '声音描述', type: 'textarea', getValue: true },
       { key: 'outfits', label: t('char.outfit_desc'), type: 'textarea', getValue: true },
     ],
@@ -891,13 +890,12 @@ async function editChar(id) {
   _editEntityPanel('characters', id, {
     titleKey: 'char.edit_title', notFoundKey: 'char.not_found', imgPrefix: 'ec', imgLabel: t('char.upload_img'), confirmMsg: '删除定妆照？',
     reload: loadCharacters,
-    buildExtra() { return { voice: { key: $val('ec-voice_key') || '', voice_description: $val('ec-voice_desc') || '' }, outfits: $val('ec-outfits') ? { default: $val('ec-outfits') } : null }; },
+    buildExtra() { return { voice: $val('ec-voice_desc') ? { voice_description: $val('ec-voice_desc') } : null, outfits: $val('ec-outfits') ? { default: $val('ec-outfits') } : null }; },
     fields: [
       { key: 'name', label: t('char.name') },
       { key: 'gender', label: t('char.gender'), type: 'select', options: [{ value: '', label: '-' }, { value: 'male', label: t('char.gender.male') }, { value: 'female', label: t('char.gender.female') }] },
       { key: 'appearance', label: t('char.appearance'), type: 'textarea' },
       { key: 'personality', label: t('char.personality') || '性格', type: 'textarea', getValue: c => c.personality || '' },
-      { key: 'voice_key', label: t('char.voice_key'), getValue: c => c.voice?.key || '' },
       { key: 'voice_desc', label: t('char.voice_desc') || '声音描述', type: 'textarea', getValue: c => c.voice?.voice_description || '' },
       { key: 'outfits', label: t('char.outfit_desc'), type: 'textarea', getValue: c => c.outfits?.default || '' },
     ],
