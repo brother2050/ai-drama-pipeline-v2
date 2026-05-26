@@ -853,12 +853,6 @@ def llm_generate_scenes(req: SceneGenRequest):
     return _submit_task(ai_scenes_task, cfg, req.descriptions)
 
 
-def _save_storyboard_for_api(path: Path, shots: list[dict], episode: int, append: bool):
-    """保存分镜到 CSV（委托给 engines.storyboard）"""
-    from engines.storyboard import save_storyboard
-    save_storyboard(path, shots, episode, append)
-
-
 # ══════════════════════════════════════════════════════════
 # 管线
 # ══════════════════════════════════════════════════════════
