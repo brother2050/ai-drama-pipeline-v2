@@ -298,6 +298,77 @@ const I18N = {
   'scene.upload_img': { zh: '📷 上传参考图', en: '📷 Upload Reference' },
   'common.upload_hint': { zh: '点击或拖拽上传', en: 'Click or drag to upload' },
   'common.uploading': { zh: '上传中...', en: 'Uploading...' },
+
+  // 3.1 拖拽排序
+  'sb.drag_hint': { zh: '💡 拖拽行可调整镜头顺序', en: '💡 Drag rows to reorder shots' },
+  'sb.reordered': { zh: '✅ 顺序已更新', en: '✅ Order updated' },
+
+  // 3.2 导入/导出
+  'sb.import': { zh: '📥 导入', en: '📥 Import' },
+  'sb.export': { zh: '📤 导出', en: '📤 Export' },
+  'sb.import_title': { zh: '📥 导入分镜', en: '📥 Import Storyboard' },
+  'sb.import_mode': { zh: '导入模式', en: 'Import Mode' },
+  'sb.import_merge': { zh: '合并（追加）', en: 'Merge (Append)' },
+  'sb.import_overwrite': { zh: '覆盖（替换）', en: 'Overwrite (Replace)' },
+  'sb.import_file': { zh: '选择文件', en: 'Select File' },
+  'sb.import_done': { zh: '✅ 已导入 {n} 个镜头', en: '✅ Imported {n} shots' },
+  'sb.export_done': { zh: '✅ 已导出 {n} 个镜头', en: '✅ Exported {n} shots' },
+  'sb.import_parse_err': { zh: '文件解析失败', en: 'File parse error' },
+
+  // 3.3 引用计数
+  'char.ref_count': { zh: '被 {n} 个镜头引用', en: 'Referenced by {n} shots' },
+  'scene.ref_count': { zh: '被 {n} 个镜头引用', en: 'Referenced by {n} shots' },
+  'char.confirm_delete_ref': { zh: '此角色被 {n} 个镜头引用，确认删除？', en: 'This character is referenced by {n} shots. Delete anyway?' },
+  'scene.confirm_delete_ref': { zh: '此场景被 {n} 个镜头引用，确认删除？', en: 'This scene is referenced by {n} shots. Delete anyway?' },
+
+  // 3.4 配置预设
+  'set.presets': { zh: '⚡ 快速配置', en: '⚡ Quick Presets' },
+  'set.preset_local': { zh: '🏠 本地 ComfyUI', en: '🏠 Local ComfyUI' },
+  'set.preset_cloud': { zh: '☁️ 云端 SiliconFlow', en: '☁️ Cloud SiliconFlow' },
+  'set.preset_ollama': { zh: '🦙 Ollama 本地', en: '🦙 Ollama Local' },
+  'set.preset_applied': { zh: '✅ 预设已应用', en: '✅ Preset applied' },
+
+  // 3.5 成片预览
+  'wb.final_preview': { zh: '🎬 成片预览', en: '🎬 Final Preview' },
+  'wb.no_final': { zh: '尚未生成成片', en: 'No final video yet' },
+  'wb.no_final_hint': { zh: '运行「一键全流程」后可在此预览', en: 'Run "Run All" to generate the final video' },
+  'wb.download': { zh: '⬇ 下载', en: '⬇ Download' },
+
+  // 4.1 对话式编辑
+  'chat.title': { zh: '💬 对话编辑', en: '💬 Chat Edit' },
+  'chat.placeholder': { zh: '用自然语言编辑分镜，例如：\n"把第3个镜头的台词改成..."', en: 'Edit storyboard with natural language, e.g.:\n"Change shot 3 dialogue to..."' },
+  'chat.send': { zh: '发送', en: 'Send' },
+  'chat.thinking': { zh: '🧠 AI 思考中...', en: '🧠 AI thinking...' },
+  'chat.success': { zh: '✅ 已执行', en: '✅ Done' },
+  'chat.error': { zh: '❌ 执行失败', en: '❌ Failed' },
+  'chat.empty': { zh: '请输入指令', en: 'Please enter a command' },
+
+  // 4.2 主体库
+  'nav.assets': { zh: '📦 主体库', en: '📦 Assets' },
+  'asset.title': { zh: '📦 主体库', en: '📦 Asset Library' },
+  'asset.desc': { zh: '全局共享的角色和场景，可跨项目复用', en: 'Global shared characters and scenes, reusable across projects' },
+  'asset.copy_to_proj': { zh: '📋 复制到当前项目', en: '📋 Copy to Project' },
+  'asset.copied': { zh: '✅ 已复制到当前项目', en: '✅ Copied to current project' },
+  'asset.empty': { zh: '主体库为空', en: 'Asset library is empty' },
+  'asset.empty_hint': { zh: '在角色/场景管理中添加到主体库', en: 'Add assets from Character/Scene management' },
+  'asset.add_to_lib': { zh: '📦 添加到主体库', en: '📦 Add to Library' },
+
+  // 4.3 多剧集管理
+  'ep.title': { zh: '📺 集数管理', en: '📺 Episode Manager' },
+  'ep.shots': { zh: '镜头', en: 'Shots' },
+  'ep.duration': { zh: '时长', en: 'Duration' },
+  'ep.status': { zh: '状态', en: 'Status' },
+  'ep.status_none': { zh: '未开始', en: 'Not Started' },
+  'ep.status_progress': { zh: '进行中', en: 'In Progress' },
+  'ep.status_done': { zh: '已完成', en: 'Completed' },
+  'ep.batch_gen': { zh: '🚀 全集生成', en: '🚀 Generate All' },
+  'ep.batch_export': { zh: '📤 全集导出', en: '📤 Export All' },
+
+  // 4.4 实时协作指示
+  'worker.running': { zh: '🔧 Worker 运行中', en: '🔧 Worker Running' },
+  'worker.idle': { zh: '💤 Worker 空闲', en: '💤 Worker Idle' },
+  'worker.tasks': { zh: '{n} 个任务', en: '{n} tasks' },
+  'worker.offline': { zh: '⛔ Worker 离线', en: '⛔ Worker Offline' },
 };
 
 // 当前语言（默认中文）

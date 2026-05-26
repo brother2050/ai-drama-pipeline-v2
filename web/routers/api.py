@@ -93,6 +93,7 @@ from web.schemas import (
     SubtitleRequest, PipelineRequest, CharacterData, SceneData,
     ProjectCreate, ProjectSwitch, ConfigUpdate,
     StoryboardGenRequest, CharacterGenRequest, SceneGenRequest,
+    ChatEditRequest,
 )
 
 # ── 工具函数 ──
@@ -1004,10 +1005,19 @@ def get_shot_file(episode: int, shot_id: str, filename: str):
     from fastapi.responses import FileResponse
 
     _check_episode(episode)
-    _check_id(shot_id, "shot_id")
     _check_filename(filename)
 
-    file_path = _safe_path(_proj(), "output", f"e{episode:02d}", f"s{shot_id}", filename)
+    proj = _proj()
+
+    if shot_id == "final":
+        # 成片文件
+        out_dir = proj / "output" / f"e{episode:02d}" / "final"
+        if not out_dir.exists():
+            out_dir = proj / "output" / f"e{episode:02d}"
+        file_path = _safe_path(out_dir, filename)
+    else:
+        _check_id(shot_id, "shot_id")
+        file_path = _safe_path(proj, "output", f"e{episode:02d}", f"s{shot_id}", filename)
     if not file_path.exists():
         raise HTTPException(404, f"文件不存在: {filename}")
 
@@ -1018,3 +1028,156 @@ def get_shot_file(episode: int, shot_id: str, filename: str):
         ".mp4": "video/mp4", ".webm": "video/webm",
     }
     return FileResponse(str(file_path), media_type=media_types.get(ext, "application/octet-stream"))
+
+
+# ══════════════════════════════════════════════════════════
+# 4.4 Worker 状态
+# ══════════════════════════════════════════════════════════
+
+@router.get("/system/workers")
+def get_worker_status():
+    """获取 Celery Worker 状态"""
+    try:
+        from celery_app import app as celery_app
+        inspect = celery_app.control.inspect(timeout=2.0)
+        active = inspect.active() or {}
+        active_tasks = sum(len(v) for v in active.values())
+        return {"status": "online", "active": active_tasks, "workers": list(active.keys())}
+    except Exception as e:
+        logger.debug(f"Worker 状态检查失败: {e}")
+        return {"status": "offline", "active": 0, "workers": []}
+
+
+# ══════════════════════════════════════════════════════════
+# 4.2 主体库（共享资产）
+# ══════════════════════════════════════════════════════════
+
+def _shared_assets_dir() -> Path:
+    """获取全局共享资产目录"""
+    d = _proj().parent.parent / "shared_assets"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+@router.get("/assets/shared/characters")
+def list_shared_characters():
+    """获取全局共享角色列表"""
+    shared_dir = _shared_assets_dir() / "characters"
+    shared_dir.mkdir(parents=True, exist_ok=True)
+    items = []
+    for yaml_file in sorted(shared_dir.glob("*.yaml")):
+        try:
+            data = yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
+            data["id"] = yaml_file.stem
+            items.append(data)
+        except Exception:
+            pass
+    return {"assets": items}
+
+
+@router.get("/assets/shared/scenes")
+def list_shared_scenes():
+    """获取全局共享场景列表"""
+    shared_dir = _shared_assets_dir() / "scenes"
+    shared_dir.mkdir(parents=True, exist_ok=True)
+    items = []
+    for yaml_file in sorted(shared_dir.glob("*.yaml")):
+        try:
+            data = yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
+            data["id"] = yaml_file.stem
+            items.append(data)
+        except Exception:
+            pass
+    return {"assets": items}
+
+
+@router.post("/assets/shared/{entity_type}/{entity_id}/copy")
+def copy_asset_to_project(entity_type: str, entity_id: str):
+    """从主体库复制到当前项目"""
+    _check_entity_type(entity_type)
+    _check_id(entity_id)
+
+    shared_dir = _shared_assets_dir() / entity_type
+    src = shared_dir / f"{entity_id}.yaml"
+    if not src.exists():
+        raise HTTPException(404, f"主体库中不存在: {entity_id}")
+
+    proj_dir = _proj() / entity_type
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    dst = proj_dir / f"{entity_id}.yaml"
+    if dst.exists():
+        raise HTTPException(409, f"项目中已存在: {entity_id}")
+
+    import shutil
+    shutil.copy2(str(src), str(dst))
+
+    # 复制图片
+    src_img = shared_dir / entity_id
+    if src_img.is_dir():
+        dst_img = proj_dir / entity_id
+        shutil.copytree(str(src_img), str(dst_img), dirs_exist_ok=True)
+
+    return {"ok": True, "message": f"已复制 {entity_id} 到当前项目"}
+
+
+@router.post("/assets/{entity_type}/{entity_id}/share")
+def add_to_shared_library(entity_type: str, entity_id: str):
+    """将项目资产添加到全局主体库"""
+    _check_entity_type(entity_type)
+    _check_id(entity_id)
+
+    proj_dir = _proj() / entity_type
+    src = proj_dir / f"{entity_id}.yaml"
+    if not src.exists():
+        raise HTTPException(404, f"项目中不存在: {entity_id}")
+
+    shared_dir = _shared_assets_dir() / entity_type
+    shared_dir.mkdir(parents=True, exist_ok=True)
+    dst = shared_dir / f"{entity_id}.yaml"
+
+    import shutil
+    shutil.copy2(str(src), str(dst))
+
+    # 复制图片
+    src_img = proj_dir / entity_id
+    if src_img.is_dir():
+        dst_img = shared_dir / entity_id
+        shutil.copytree(str(src_img), str(dst_img), dirs_exist_ok=True)
+
+    return {"ok": True, "message": f"已添加 {entity_id} 到主体库"}
+
+
+# ══════════════════════════════════════════════════════════
+# 3.5 成片预览
+# ══════════════════════════════════════════════════════════
+
+@router.get("/shots/{episode}/final/resources")
+def get_final_resources(episode: int):
+    """获取成片资源状态"""
+    _check_episode(episode)
+    proj = _proj()
+    out_dir = proj / "output" / f"e{episode:02d}" / "final"
+    if not out_dir.exists():
+        out_dir = proj / "output" / f"e{episode:02d}"
+    final_mp4 = out_dir / f"episode_{episode:02d}_final.mp4"
+    if not final_mp4.exists():
+        candidates = list(out_dir.glob("*final*.mp4"))
+        if candidates:
+            final_mp4 = candidates[0]
+        else:
+            return {"resources": {}}
+    return {"resources": {"final": final_mp4.name}}
+
+
+# ══════════════════════════════════════════════════════════
+# 4.1 对话式编辑（LLM Chat Edit）
+# ══════════════════════════════════════════════════════════
+
+@router.post("/llm/chat-edit")
+def llm_chat_edit(req: ChatEditRequest):
+    """对话式编辑分镜 — 用自然语言修改分镜表"""
+    _check_episode(req.episode)
+    cfg = _cfg_path()
+
+    from pipeline.tasks import ai_chat_edit_task
+    return _submit_task(ai_chat_edit_task, cfg, req.episode, req.message, req.shots)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import logging
 import os
 import sys
@@ -706,3 +707,61 @@ def ai_scenes_task(self, config_path: str, descriptions: list[str]):
         saved.append(scene)
 
     return {"status": "done", "count": len(saved), "scenes": saved}
+
+
+# ══════════════════════════════════════════════════════════
+# 4.1 对话式编辑 — LLM Chat Edit
+# ══════════════════════════════════════════════════════════
+
+@app.task(bind=True, name="ai_chat_edit")
+def ai_chat_edit_task(self, config_path: str, episode: int, message: str, current_shots: list):
+    """对话式编辑分镜 — 用自然语言修改分镜表"""
+    self.update_state(state="PROGRESS", meta={"step": "chat_edit", "progress": 10, "message": "正在初始化 LLM..."})
+
+    cfg, cont = _init_ctx(config_path)
+    try:
+        llm = cont.get("llm")
+    except Exception as e:
+        return {"status": "error", "reason": f"LLM 初始化失败: {e}"}
+
+    self.update_state(state="PROGRESS", meta={"step": "chat_edit", "progress": 30, "message": "AI 正在理解指令..."})
+
+    # 构建 prompt
+    shots_json = json.dumps(current_shots, ensure_ascii=False, indent=2)
+    prompt = f"""你是一个分镜表编辑助手。用户会用自然语言描述对分镜表的修改需求。
+当前分镜表（JSON 格式）：
+{shots_json}
+
+用户指令：{message}
+
+请根据用户的指令修改分镜表，返回修改后的完整分镜表 JSON 数组。
+只返回 JSON 数组，不要其他文字。确保所有字段都保留。
+如果用户的指令不清晰或无法执行，返回一个 JSON 对象：{{"error": "原因说明"}}"""
+
+    try:
+        import json as _json
+        response = llm.generate(prompt)
+        # 尝试解析 JSON
+        text = response.strip()
+        # 去掉可能的 markdown 代码块
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            text = text.strip()
+
+        result = _json.loads(text)
+
+        if isinstance(result, dict) and "error" in result:
+            return {"status": "error", "reason": result["error"]}
+
+        if isinstance(result, list):
+            self.update_state(state="PROGRESS", meta={"step": "chat_edit", "progress": 90, "message": "编辑完成"})
+            return {"status": "done", "shots": result, "message": f"已修改 {len(result)} 个镜头"}
+
+        return {"status": "error", "reason": "LLM 返回格式不正确"}
+
+    except _json.JSONDecodeError:
+        return {"status": "error", "reason": "LLM 返回的不是有效 JSON"}
+    except Exception as e:
+        return {"status": "error", "reason": f"LLM 执行失败: {e}"}

@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>🎬 AI 短剧工作台 v2</title>
-<link rel="stylesheet" href="/css/style.css?v=6">
+<link rel="stylesheet" href="/css/style.css?v=7">
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 </head>
 <body>
 <div id="app">
@@ -18,7 +19,9 @@
       <li class="nav-item" data-page="pipeline" data-i18n="nav.pipeline">🎬 生产管线</li>
       <li class="nav-item" data-page="projects" data-i18n="nav.projects">📂 项目管理</li>
       <li class="nav-item" data-page="settings" data-i18n="nav.settings">⚙️ 系统设置</li>
+      <li class="nav-item" data-page="assets" data-i18n="nav.assets">📦 主体库</li>
     </ul>
+    <div id="sidebar-worker" class="sidebar-worker"></div>
   </nav>
   <main id="content">
     <div id="page-dashboard" class="page active"></div>
@@ -28,9 +31,10 @@
     <div id="page-pipeline" class="page"></div>
     <div id="page-projects" class="page"></div>
     <div id="page-settings" class="page"></div>
+    <div id="page-assets" class="page"></div>
   </main>
 </div>
-<script src="/js/i18n.js?v=6"></script>
-<script src="/js/app.js?v=6"></script>
+<script src="/js/i18n.js?v=7"></script>
+<script src="/js/app.js?v=7"></script>
 </body>
 </html>

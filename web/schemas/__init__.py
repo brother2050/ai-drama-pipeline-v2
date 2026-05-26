@@ -8,7 +8,7 @@ __all__ = [
     "StepRequest", "TTSRequest", "PostRequest", "MusicRequest",
     "SubtitleRequest", "PipelineRequest", "CharacterData", "SceneData",
     "ProjectCreate", "ProjectSwitch", "ConfigUpdate",
-    "StoryboardGenRequest", "CharacterGenRequest", "SceneGenRequest",
+    "StoryboardGenRequest", "CharacterGenRequest", "SceneGenRequest", "ChatEditRequest",
 ]
 
 
@@ -169,3 +169,9 @@ class SceneGenRequest(BaseModel):
     @classmethod
     def validate_descs(cls, v: list[str]) -> list[str]:
         return [d.strip() for d in v if d.strip()]
+
+
+class ChatEditRequest(BaseModel):
+    episode: int = Field(1, ge=1, description="集数")
+    message: str = Field(..., min_length=1, description="编辑指令")
+    shots: list = Field(default_factory=list, description="当前分镜表")

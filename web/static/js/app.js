@@ -175,7 +175,7 @@ document.querySelectorAll('.nav-item').forEach(item => {
   };
 });
 function navTo(p) { document.querySelector(`.nav-item[data-page="${p}"]`).click(); }
-const PAGES = { dashboard: loadDashboard, characters: loadCharacters, scenes: loadScenes, storyboard: loadStoryboard, pipeline: loadPipeline, projects: loadProjects, settings: loadSettings };
+const PAGES = { dashboard: loadDashboard, characters: loadCharacters, scenes: loadScenes, storyboard: loadStoryboard, pipeline: loadPipeline, projects: loadProjects, settings: loadSettings, assets: loadAssets };
 async function loadPage(p) { if (PAGES[p]) await PAGES[p](); }
 
 document.addEventListener('keydown', e => {
@@ -436,9 +436,21 @@ function renderWB(episodes) {
     </div></div>
     <div class="card" style="margin-bottom:.7rem"><h2>${t('wb.flow_title')}</h2>${flowHtml}</div>
     <div id="wb-shots-grid" class="wb-shots-grid"></div>
-    <div id="wb-batch-status" class="wb-batch-status" style="display:none"></div>`;
+    <div id="wb-batch-status" class="wb-batch-status" style="display:none"></div>
+    <div class="card" style="margin-top:.7rem"><h2>${t('wb.final_preview')}</h2><div id="final-preview-area"></div></div>`;
   _resetPipelineSteps();
   renderShotsGrid();
+  _loadFinalPreview();
+  // Chat FAB
+  if (!document.getElementById('chat-fab')) {
+    const fab = document.createElement('button');
+    fab.id = 'chat-fab';
+    fab.className = 'chat-fab';
+    fab.textContent = '💬';
+    fab.title = t('chat.title');
+    fab.onclick = toggleChat;
+    document.body.appendChild(fab);
+  }
 }
 
 function renderShotsGrid() {
@@ -864,7 +876,7 @@ function newChar() {
   });
 }
 async function saveNewChar() { /* handled by _newEntityPanel */ }
-function deleteChar(id) { _crudDelete('characters', id, t('char.title').replace(/👤\s?/, ''), loadCharacters); }
+function deleteChar(id) { deleteCharWithRef(id); }
 
 async function editChar(id) {
   _editEntityPanel('characters', id, {
@@ -938,7 +950,7 @@ function newScene() {
     ],
   });
 }
-function deleteScene(id) { _crudDelete('scenes', id, t('scene.title').replace(/🏔️\s?/, ''), loadScenes); }
+function deleteScene(id) { deleteSceneWithRef(id); }
 
 async function editScene(id) {
   _editEntityPanel('scenes', id, {
@@ -1071,7 +1083,8 @@ async function loadStoryboard() {
     const ss = d.shots || [];
     const epSelector = _episodeSelectHtml(episodes, 'switchEpisode');
     const header = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${t('sb.title')}</h2>
-      <div style="display:flex;gap:0.5rem;align-items:center">${epSelector}${_sbViewToggle()}<button class="btn btn-outline btn-ai" onclick="showAIGenStoryboard()">🤖 AI 生成分镜</button><button class="btn btn-primary" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline').replace('🎬 ', '')}</button><button class="btn btn-success" onclick="addShot()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>`;
+      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">${epSelector}${_sbViewToggle()}<button class="btn btn-outline btn-ai" onclick="showAIGenStoryboard()">🤖 AI 生成分镜</button><button class="btn btn-outline" onclick="exportStoryboard()">📤 ${t('sb.export')}</button><button class="btn btn-outline" onclick="showImportDialog()">📥 ${t('sb.import')}</button><button class="btn btn-primary" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline').replace('🎬 ', '')}</button><button class="btn btn-success" onclick="addShot()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>
+      <p class="dim" style="font-size:.76rem;margin-bottom:.5rem">${t('sb.drag_hint')}</p>`;
 
     if (!ss.length) {
       el.innerHTML = header + `<div class="empty-state"><div class="empty-state-icon">📝</div><h3>${t('sb.none')}</h3><p>${t('sb.empty_desc')}</p><button class="btn btn-ai" onclick="showAIGenStoryboard()">🤖 AI 生成分镜</button></div></div>`;
@@ -1097,9 +1110,11 @@ async function loadStoryboard() {
       el.innerHTML = header + timeline + '</div>';
       // 加载缩略图
       ss.forEach((_, i) => _loadTimelineThumb(i));
+      _initTimelineSortable();
     } else {
       // 表格视图
       const rows = ss.map((s, i) => `<tr>
+        <td><span class="drag-handle" title="拖拽排序">⠿</span></td>
         <td>${_shotId(s, i)}</td>
         ${SB_FIELDS.slice(0, 4).map(f => `<td><input class="sb-inline-input" value="${esc(s[f] || '')}" data-idx="${i}" data-field="${f}" onchange="updateShotField(this)"></td>`).join('')}
         <td><select class="sb-inline-input" data-idx="${i}" data-field="camera" onchange="updateShotField(this)">${_selectOpts(CAMERAS, s.camera)}</select></td>
@@ -1107,8 +1122,9 @@ async function loadStoryboard() {
         <td><input class="sb-inline-input" type="number" value="${s.duration || 4}" min="1" max="30" data-idx="${i}" data-field="duration" onchange="updateShotField(this)"></td>
         <td><select class="sb-inline-input" data-idx="${i}" data-field="emotion" onchange="updateShotField(this)">${_selectOpts(EMOTIONS, s.emotion)}</select></td>
         <td><button class="btn btn-xs btn-danger" onclick="deleteShotFromSB(${i})">🗑️</button></td></tr>`).join('');
-      el.innerHTML = header + `<div style="overflow-x:auto"><table><thead><tr><th>${t('sb.shot_id')}</th><th>${t('edit.scene')}</th><th>${t('edit.characters')}</th><th>${t('edit.action')}</th><th>${t('edit.dialogue')}</th><th>${t('edit.camera')}</th><th>${t('edit.shot_type')}</th><th>${t('edit.duration')}</th><th>${t('sb.emotion')}</th><th></th></tr></thead>
+      el.innerHTML = header + `<div style="overflow-x:auto"><table><thead><tr><th></th><th>${t('sb.shot_id')}</th><th>${t('edit.scene')}</th><th>${t('edit.characters')}</th><th>${t('edit.action')}</th><th>${t('edit.dialogue')}</th><th>${t('edit.camera')}</th><th>${t('edit.shot_type')}</th><th>${t('edit.duration')}</th><th>${t('sb.emotion')}</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div></div>`;
+      _initSortable();
     }
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
@@ -1174,7 +1190,9 @@ async function loadProjects() {
       return `<tr><td>${p.active ? '→' : ''}</td><td>${esc(p.name)}</td><td class="dim" style="font-size:0.75rem">${esc(p.path)}</td><td>${p.active ? `<span class="badge badge-green">${t('common.current')}</span>` : switchBtn + deleteBtn}</td></tr>`;
     }).join('');
     el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>${t('proj.title')}</h2><button class="btn btn-success" onclick="newProj()">+ ${t('btn.add').replace('+ ', '')}</button></div>
-      <table><thead><tr><th></th><th>${t('common.name')}</th><th>${t('common.path')}</th><th>${t('common.status')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      <table><thead><tr><th></th><th>${t('common.name')}</th><th>${t('common.path')}</th><th>${t('common.status')}</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div id="ep-manager"></div>`;
+    loadEpisodeManager();
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
 async function newProj() { const n = await modalPrompt(t('proj.input_name')); if (!n) return; api('/projects/new', { method: 'POST', body: { name: n } }).then(() => { toast(t('toast.created')); loadProjects(); }).catch(e => toast(e.message, 'error')); }
@@ -1237,6 +1255,13 @@ async function loadSettings() {
       <div class="card"><h2>🌐 语言 / Language</h2><div class="form-row"><label>Language</label>
         <select id="cfg-lang" onchange="setLang(this.value);loadSettings()"><option value="zh" ${lang === 'zh' ? 'selected' : ''}>中文</option><option value="en" ${lang === 'en' ? 'selected' : ''}>English</option></select></div></div>
       <div class="card"><h2>💻 ${t('set.env')}</h2><div class="info-grid"><div><span class="dim">${t('set.os')}:</span> ${env.os}</div><div><span class="dim">${t('set.python')}:</span> ${env.python}</div><div><span class="dim">${t('set.gpu')}:</span> ${env.gpu.available ? env.gpu.name + ' (' + env.gpu.vram_mb + 'MB)' : t('set.gpu_unavailable')}</div></div></div>
+      <div class="card"><h2>${t('set.presets')}</h2>
+        <div class="preset-btns">
+          <button class="preset-btn" onclick="applyPreset('local_comfyui')">${t('set.preset_local')}</button>
+          <button class="preset-btn" onclick="applyPreset('cloud_siliconflow')">${t('set.preset_cloud')}</button>
+          <button class="preset-btn" onclick="applyPreset('ollama_local')">${t('set.preset_ollama')}</button>
+        </div>
+      </div>
       <div class="card"><h2>🔧 系统配置</h2>
         ${_backendSection(t('set.tts'), '🎤', 'tts', ['mimo-voicedesign', 'mimo-voiceclone', 'gpt-sovits', 'cosyvoice', 'fish-speech'], tts.backend, tts.url, tools.tts?.available, tools.tts?.reason)}
         ${_backendSection(t('set.lipsync'), '👄', 'lipsync', ['musetalk', 'sadtalker', 'wav2lip'], ls.backend, ls.url, tools.lipsync?.available, tools.lipsync?.reason)}
@@ -1322,5 +1347,406 @@ async function testTool(name) {
   if (btn) btn.disabled = false;
 }
 
+// ══════════════════════════════════════════════════════════
+// 3.1 拖拽排序
+// ══════════════════════════════════════════════════════════
+
+function _initSortable() {
+  const tbody = document.querySelector('#page-storyboard tbody');
+  if (!tbody || !window.Sortable) return;
+  Sortable.create(tbody, {
+    animation: 150,
+    handle: '.drag-handle',
+    ghostClass: 'sortable-ghost',
+    chosenClass: 'sortable-chosen',
+    onEnd: async function(evt) {
+      if (evt.oldIndex === evt.newIndex) return;
+      const [moved] = shots.splice(evt.oldIndex, 1);
+      shots.splice(evt.newIndex, 0, moved);
+      pushUndo(t('sb.reordered'));
+      try {
+        await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } });
+        invalidateCache(`storyboard/${ep}`);
+        toast(t('sb.reordered'));
+      } catch (e) { toast(e.message, 'error'); }
+      loadStoryboard();
+    }
+  });
+}
+
+function _initTimelineSortable() {
+  const container = document.querySelector('.timeline-container');
+  if (!container || !window.Sortable) return;
+  Sortable.create(container, {
+    animation: 150,
+    handle: '.timeline-card',
+    ghostClass: 'sortable-ghost',
+    chosenClass: 'sortable-chosen',
+    onEnd: async function(evt) {
+      if (evt.oldIndex === evt.newIndex) return;
+      const [moved] = shots.splice(evt.oldIndex, 1);
+      shots.splice(evt.newIndex, 0, moved);
+      pushUndo(t('sb.reordered'));
+      try {
+        await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } });
+        invalidateCache(`storyboard/${ep}`);
+        toast(t('sb.reordered'));
+      } catch (e) { toast(e.message, 'error'); }
+      loadStoryboard();
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+// 3.2 批量导入/导出
+// ══════════════════════════════════════════════════════════
+
+function exportStoryboard() {
+  const headers = ['shot_id', 'scene', 'characters', 'action', 'action_en', 'dialogue', 'dialogue_en', 'camera', 'shot_type', 'duration', 'emotion', 'outfit'];
+  const csv = [headers.join(',')];
+  shots.forEach(s => {
+    csv.push(headers.map(h => `"${(s[h] || '').replace(/"/g, '""')}"`).join(','));
+  });
+  const blob = new Blob(['\uFEFF' + csv.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `storyboard_ep${ep}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  toast(t('sb.export_done', { n: shots.length }));
+}
+
+function showImportDialog() {
+  _showOverlay('import-overlay', t('sb.import_title'), `
+    <div class="edit-field"><label>${t('sb.import_file')}</label>
+      <input type="file" id="import-file" accept=".csv,.json" style="display:block;margin-top:.3rem"></div>
+    <div class="edit-field"><label>${t('sb.import_mode')}</label>
+      <select id="import-mode"><option value="merge">${t('sb.import_merge')}</option><option value="overwrite">${t('sb.import_overwrite')}</option></select></div>
+    <div id="import-status" class="dim" style="margin-top:.5rem"></div>`, `doImport()`, '📥 ' + t('sb.import'));
+}
+
+async function doImport() {
+  const fileInput = document.getElementById('import-file');
+  const mode = document.getElementById('import-mode')?.value || 'merge';
+  const statusEl = document.getElementById('import-status');
+  if (!fileInput?.files?.[0]) { toast(t('sb.import_file'), 'error'); return; }
+
+  const file = fileInput.files[0];
+  const text = await file.text();
+  let newShots = [];
+
+  try {
+    if (file.name.endsWith('.json')) {
+      const data = JSON.parse(text);
+      newShots = Array.isArray(data) ? data : (data.shots || []);
+    } else {
+      // CSV
+      const lines = text.split('\n').filter(l => l.trim());
+      if (lines.length < 2) throw new Error('Empty CSV');
+      const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+      for (let i = 1; i < lines.length; i++) {
+        const vals = lines[i].match(/(".*?"|[^,]*)/g) || [];
+        const shot = {};
+        headers.forEach((h, j) => { shot[h] = (vals[j] || '').replace(/^"|"$/g, '').replace(/""/g, '"'); });
+        if (shot.shot_id) newShots.push(shot);
+      }
+    }
+  } catch (e) { _html(statusEl, `❌ ${t('sb.import_parse_err')}: ${e.message}`); return; }
+
+  if (!newShots.length) { _html(statusEl, `❌ ${t('sb.import_parse_err')}`); return; }
+
+  const finalShots = mode === 'overwrite' ? newShots : [...shots, ...newShots];
+  try {
+    await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: finalShots } });
+    shots = finalShots;
+    invalidateCache(`storyboard/${ep}`);
+    document.getElementById('import-overlay')?.remove();
+    toast(t('sb.import_done', { n: newShots.length }));
+    loadStoryboard();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════
+// 3.3 引用计数
+// ══════════════════════════════════════════════════════════
+
+async function _getRefCounts(type) {
+  try {
+    const d = await cachedFetch(`storyboard/${ep}`, () => api(`/storyboard/${ep}`));
+    const ss = d.shots || [];
+    const counts = {};
+    ss.forEach(s => {
+      const names = (type === 'characters' ? s.characters : s.scene) || '';
+      names.split(/[,、]/).map(n => n.trim()).filter(Boolean).forEach(n => { counts[n] = (counts[n] || 0) + 1; });
+    });
+    return counts;
+  } catch { return {}; }
+}
+
+async function deleteCharWithRef(id) {
+  const counts = await _getRefCounts('characters');
+  const count = counts[id] || 0;
+  if (count > 0) {
+    if (!await modalConfirm(t('char.confirm_delete_ref', { n: count }))) return;
+  }
+  _crudDelete('characters', id, t('char.title').replace(/👤\s?/, ''), loadCharacters);
+}
+
+async function deleteSceneWithRef(id) {
+  const counts = await _getRefCounts('scenes');
+  const count = counts[id] || 0;
+  if (count > 0) {
+    if (!await modalConfirm(t('scene.confirm_delete_ref', { n: count }))) return;
+  }
+  _crudDelete('scenes', id, t('scene.title').replace(/🏔️\s?/, ''), loadScenes);
+}
+
+// ══════════════════════════════════════════════════════════
+// 3.4 配置预设模板
+// ══════════════════════════════════════════════════════════
+
+const CONFIG_PRESETS = {
+  local_comfyui: {
+    tts: { backend: 'gpt-sovits', url: 'http://127.0.0.1:9880' },
+    lipsync: { backend: 'sadtalker', url: 'http://127.0.0.1:7860' },
+    comfyui: { url: 'http://127.0.0.1:8188' },
+    llm: { enabled: false, backend: 'ollama', base_url: 'http://127.0.0.1:11434', model: 'qwen2.5:7b', api_key: '' },
+  },
+  cloud_siliconflow: {
+    tts: { backend: 'mimo-voicedesign', url: 'https://api.siliconflow.cn/v1' },
+    lipsync: { backend: 'musetalk', url: 'http://127.0.0.1:7860' },
+    comfyui: { url: 'http://127.0.0.1:8188' },
+    llm: { enabled: true, backend: 'openai', base_url: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen2.5-7B-Instruct', api_key: '' },
+  },
+  ollama_local: {
+    tts: { backend: 'mimo-voicedesign', url: '' },
+    lipsync: { backend: 'musetalk', url: 'http://127.0.0.1:7860' },
+    comfyui: { url: 'http://127.0.0.1:8188' },
+    llm: { enabled: true, backend: 'ollama', base_url: 'http://127.0.0.1:11434', model: 'qwen2.5:7b', api_key: '' },
+  },
+};
+
+function applyPreset(key) {
+  const p = CONFIG_PRESETS[key];
+  if (!p) return;
+  // TTS
+  const ttsSel = document.getElementById('cfg-tts');
+  if (ttsSel) { ttsSel.value = p.tts.backend; }
+  const ttsUrl = document.getElementById('cfg-tts-url');
+  if (ttsUrl) ttsUrl.value = p.tts.url;
+  // LipSync
+  const lsSel = document.getElementById('cfg-lipsync');
+  if (lsSel) { lsSel.value = p.lipsync.backend; }
+  const lsUrl = document.getElementById('cfg-lipsync-url');
+  if (lsUrl) lsUrl.value = p.lipsync.url;
+  // ComfyUI
+  const cuUrl = document.getElementById('cfg-comfyui');
+  if (cuUrl) cuUrl.value = p.comfyui.url;
+  // LLM
+  const llmEnabled = document.getElementById('cfg-llm-enabled');
+  if (llmEnabled) llmEnabled.value = String(p.llm.enabled);
+  const llmBackend = document.getElementById('cfg-llm-backend');
+  if (llmBackend) llmBackend.value = p.llm.backend;
+  const llmUrl = document.getElementById('cfg-llm-url');
+  if (llmUrl) llmUrl.value = p.llm.base_url;
+  const llmModel = document.getElementById('cfg-llm-model');
+  if (llmModel) llmModel.value = p.llm.model;
+  toast(t('set.preset_applied'));
+}
+
+// ══════════════════════════════════════════════════════════
+// 3.5 成片预览
+// ══════════════════════════════════════════════════════════
+
+async function _loadFinalPreview() {
+  const el = document.getElementById('final-preview-area');
+  if (!el) return;
+  try {
+    const r = await api(`/shots/${ep}/final/resources`).catch(() => ({ resources: {} }));
+    if (r.resources?.final) {
+      const fname = r.resources.final;
+      el.innerHTML = `<div class="final-preview-wrap">
+        <video controls src="/api/files/${ep}/final/${fname}" style="max-width:100%;max-height:400px;border-radius:8px;background:#000"></video>
+        <div style="margin-top:.5rem"><a href="/api/files/${ep}/final/${fname}" download class="btn btn-outline">⬇ ${t('wb.download')}</a></div></div>`;
+    } else {
+      el.innerHTML = `<div class="final-preview-wrap"><div style="font-size:2rem;opacity:.3">🎬</div><p class="dim">${t('wb.no_final')}</p><p class="dim" style="font-size:.76rem">${t('wb.no_final_hint')}</p></div>`;
+    }
+  } catch {
+    el.innerHTML = `<div class="final-preview-wrap"><div style="font-size:2rem;opacity:.3">🎬</div><p class="dim">${t('wb.no_final')}</p></div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// 4.1 对话式编辑
+// ══════════════════════════════════════════════════════════
+
+let _chatOpen = false;
+let _chatHistory = [];
+
+function toggleChat() {
+  _chatOpen = !_chatOpen;
+  let panel = document.getElementById('chat-panel');
+  if (_chatOpen) {
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'chat-panel';
+      panel.className = 'chat-panel';
+      panel.innerHTML = `<div class="chat-header"><span>${t('chat.title')}</span><button class="btn btn-xs btn-outline" onclick="toggleChat()">✕</button></div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input-row"><textarea id="chat-input" rows="2" placeholder="${t('chat.placeholder')}" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMsg()}"></textarea>
+          <button class="btn btn-primary" onclick="sendChatMsg()">${t('chat.send')}</button></div>`;
+      document.body.appendChild(panel);
+    }
+    panel.style.display = 'flex';
+    document.getElementById('chat-input')?.focus();
+    _renderChatHistory();
+  } else if (panel) {
+    panel.style.display = 'none';
+  }
+}
+
+function _renderChatHistory() {
+  const el = document.getElementById('chat-messages');
+  if (!el) return;
+  el.innerHTML = _chatHistory.map(m => `<div class="chat-msg chat-msg-${m.role}">${esc(m.text)}</div>`).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+async function sendChatMsg() {
+  const input = document.getElementById('chat-input');
+  const text = input?.value?.trim();
+  if (!text) { toast(t('chat.empty'), 'error'); return; }
+  input.value = '';
+  _chatHistory.push({ role: 'user', text });
+  _renderChatHistory();
+
+  _chatHistory.push({ role: 'ai', text: t('chat.thinking') });
+  _renderChatHistory();
+
+  try {
+    const { task_id } = await api('/llm/chat-edit', { method: 'POST', body: { episode: ep, message: text, shots } });
+    const result = await pollTask(task_id);
+    _chatHistory.pop(); // remove thinking
+
+    if (result.status === 'success' && result.result?.status === 'done') {
+      const r = result.result;
+      _chatHistory.push({ role: 'ai', text: `${t('chat.success')}\n${r.message || ''}` });
+      if (r.shots) {
+        shots = r.shots;
+        await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } });
+        invalidateCache(`storyboard/${ep}`);
+        const p = document.querySelector('.page.active');
+        if (p?.id === 'page-storyboard') loadStoryboard();
+        else if (p?.id === 'page-pipeline') { renderShotsGrid(); }
+      }
+    } else {
+      const err = result.result?.reason || result.error || t('chat.error');
+      _chatHistory.push({ role: 'err', text: `❌ ${err}` });
+    }
+  } catch (e) {
+    _chatHistory.pop();
+    _chatHistory.push({ role: 'err', text: `❌ ${e.message}` });
+  }
+  _renderChatHistory();
+}
+
+// ══════════════════════════════════════════════════════════
+// 4.2 主体库管理
+// ══════════════════════════════════════════════════════════
+
+async function loadAssets() {
+  const el = document.getElementById('page-assets');
+  el.innerHTML = `<div class="card"><h2>${t('common.loading')}</h2></div>`;
+  try {
+    const [charData, sceneData] = await Promise.all([
+      api('/assets/shared/characters').catch(() => ({ assets: [] })),
+      api('/assets/shared/scenes').catch(() => ({ assets: [] })),
+    ]);
+    const chars = charData.assets || [];
+    const scenes = sceneData.assets || [];
+
+    const charCards = chars.map(c => {
+      const thumb = c.reference_images?.length ? `<img src="${esc(c.reference_images[0])}" loading="lazy">` : '👤';
+      return `<div class="asset-card"><div class="asset-card-thumb">${thumb}</div><div class="asset-card-info"><h4>${esc(c.name || c.id)}</h4><p>${esc(c.appearance || '')}</p></div><button class="btn btn-xs btn-outline" onclick="copyAssetToProject('characters','${esc(c.id)}')">${t('asset.copy_to_proj')}</button></div>`;
+    }).join('');
+    const sceneCards = scenes.map(s => {
+      const thumb = s.reference_images?.length ? `<img src="${esc(s.reference_images[0])}" loading="lazy">` : '🏔️';
+      return `<div class="asset-card"><div class="asset-card-thumb">${thumb}</div><div class="asset-card-info"><h4>${esc(s.name || s.id)}</h4><p>${esc(s.description || '')}</p></div><button class="btn btn-xs btn-outline" onclick="copyAssetToProject('scenes','${esc(s.id)}')">${t('asset.copy_to_proj')}</button></div>`;
+    }).join('');
+
+    const allCards = charCards + sceneCards;
+    el.innerHTML = `<div class="card"><h2>${t('asset.title')}</h2><p class="dim" style="margin-bottom:1rem">${t('asset.desc')}</p>
+      ${allCards ? `<div style="display:flex;flex-direction:column;gap:.5rem">${allCards}</div>` : `<div class="empty-state"><div class="empty-state-icon">📦</div><h3>${t('asset.empty')}</h3><p>${t('asset.empty_hint')}</p></div>`}</div>`;
+  } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
+}
+
+async function copyAssetToProject(type, id) {
+  try {
+    await api(`/assets/shared/${type}/${id}/copy`, { method: 'POST' });
+    invalidateCache(type);
+    toast(t('asset.copied'));
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function addToSharedLibrary(type, id) {
+  try {
+    await api(`/assets/${type}/${id}/share`, { method: 'POST' });
+    toast(t('asset.copied'));
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════
+// 4.3 多剧集管理
+// ══════════════════════════════════════════════════════════
+
+async function loadEpisodeManager() {
+  // This is embedded in the projects page
+  const el = document.getElementById('ep-manager');
+  if (!el) return;
+  try {
+    const d = await api('/episodes');
+    const episodes = d.episodes || [1];
+    const cards = [];
+    for (const e of episodes) {
+      try {
+        const sb = await cachedFetch(`storyboard/${e}`, () => api(`/storyboard/${e}`));
+        const ss = sb.shots || [];
+        const totalDur = ss.reduce((sum, s) => sum + (parseInt(s.duration) || 4), 0);
+        const hasResources = ss.some(s => s.has_frame || s.has_video);
+        const status = ss.length === 0 ? 'none' : hasResources ? 'done' : 'progress';
+        const statusKey = `ep.status_${status}`;
+        const badgeClass = status === 'done' ? 'badge-green' : status === 'progress' ? 'badge' : '';
+        cards.push(`<div class="ep-card" onclick="ep=${e};navTo('pipeline')"><div class="ep-card-num">EP ${e}</div><div class="ep-card-meta">${ss.length} ${t('ep.shots')} · ${totalDur}s</div><div class="ep-card-status"><span class="badge ${badgeClass}">${t(statusKey)}</span></div></div>`);
+      } catch {
+        cards.push(`<div class="ep-card" onclick="ep=${e};navTo('pipeline')"><div class="ep-card-num">EP ${e}</div><div class="ep-card-meta">0 ${t('ep.shots')}</div><div class="ep-card-status"><span class="badge">${t('ep.status_none')}</span></div></div>`);
+      }
+    }
+    el.innerHTML = `<div class="card" style="margin-top:1rem"><h2>${t('ep.title')}</h2><div class="ep-grid">${cards.join('')}</div></div>`;
+  } catch (e) { el.innerHTML = `<div class="dim">${e.message}</div>`; }
+}
+
+// ══════════════════════════════════════════════════════════
+// 4.4 Worker 实时状态
+// ══════════════════════════════════════════════════════════
+
+async function _updateWorkerStatus() {
+  const el = document.getElementById('sidebar-worker');
+  if (!el) return;
+  try {
+    const r = await api('/system/workers').catch(() => ({ active: 0, status: 'offline' }));
+    if (r.status === 'offline') {
+      el.innerHTML = `<span class="status-dot err"></span> ${t('worker.offline')}`;
+    } else if (r.active > 0) {
+      el.innerHTML = `<span class="status-dot ok"></span> ${t('worker.running')} · ${t('worker.tasks', { n: r.active })}`;
+    } else {
+      el.innerHTML = `<span class="status-dot ok"></span> ${t('worker.idle')}`;
+    }
+  } catch {
+    el.innerHTML = `<span class="status-dot err"></span> ${t('worker.offline')}`;
+  }
+}
+
+// Poll worker status every 15 seconds
+setInterval(_updateWorkerStatus, 15000);
+
 applyI18n();
+_updateWorkerStatus();
 loadDashboard();
