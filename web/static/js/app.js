@@ -1580,6 +1580,10 @@ async function loadSettings() {
     const ttsBackends = Object.keys(backends.tts || {}).length ? Object.keys(backends.tts) : ['mimo-voicedesign', 'mimo-voiceclone', 'gpt-sovits', 'cosyvoice', 'fish-speech'];
     const lsBackends = Object.keys(backends.lipsync || {}).length ? Object.keys(backends.lipsync) : ['musetalk', 'sadtalker', 'wav2lip'];
     const llmBackends = Object.keys(backends.llm || {}).length ? Object.keys(backends.llm) : ['openai', 'ollama'];
+    const imageBackends = Object.keys(backends.image || {});
+    const videoBackends = Object.keys(backends.video || {});
+    const curImageBackend = sysCfg.models?.image_backend || 'sd15';
+    const curVideoBackend = sysCfg.models?.video_backend || 'animatediff';
     el.innerHTML = `
       <div class="card"><h2>🌐 语言 / Language</h2><div class="form-row"><label>Language</label>
         <select id="cfg-lang" onchange="setLang(this.value);loadSettings()"><option value="zh" ${lang === 'zh' ? 'selected' : ''}>中文</option><option value="en" ${lang === 'en' ? 'selected' : ''}>English</option></select></div></div>
@@ -1597,6 +1601,8 @@ async function loadSettings() {
         <div class="config-section"><h3>🎨 ComfyUI</h3>
           <div class="form-row"><label>${t('set.address')}</label><input id="cfg-comfyui" value="${esc(sysCfg.comfyui?.url || '')}"></div>
           <div class="form-row"><label>API Key</label><input id="cfg-comfyui-key" value="${esc(sysCfg.comfyui?.api_key || '')}" placeholder="${t('set.optional')}"></div>
+          ${imageBackends.length ? `<div class="form-row"><label>${t('set.image_backend')}</label><select id="cfg-image-backend">${imageBackends.map(b => `<option value="${b}" ${curImageBackend===b?'selected':''}>${b}</option>`).join('')}</select></div>` : ''}
+          ${videoBackends.length ? `<div class="form-row"><label>${t('set.video_backend')}</label><select id="cfg-video-backend">${videoBackends.map(b => `<option value="${b}" ${curVideoBackend===b?'selected':''}>${b}</option>`).join('')}</select></div>` : ''}
           <div class="tool-status-inline"><span class="status-dot ${tools.comfyui?.available ? 'ok' : 'err'}"></span>${tools.comfyui?.available ? t('dash.available') : tools.comfyui?.reason || t('dash.unavailable')}
             <button class="btn btn-xs btn-outline" onclick="testTool('comfyui')" id="test-btn-comfyui">🔌 ${t('set.test')}</button>
             <span id="test-result-comfyui" class="dim" style="font-size:0.8rem;margin-left:0.3rem"></span></div></div>
@@ -1653,6 +1659,11 @@ async function saveCfg() {
     if (lsUrl) sys.models[lsKey] = { api_url: lsUrl };
     // ComfyUI
     sys.comfyui = { url: $val('cfg-comfyui'), api_key: $val('cfg-comfyui-key') };
+    // Image / Video backend
+    const imageBackend = $val('cfg-image-backend');
+    const videoBackend = $val('cfg-video-backend');
+    if (imageBackend) sys.models.image_backend = imageBackend;
+    if (videoBackend) sys.models.video_backend = videoBackend;
     // LLM
     const llmEnabled = $val('cfg-llm-enabled') === 'true';
     sys.llm = { enabled: llmEnabled, backend: $val('cfg-llm-backend'), base_url: $val('cfg-llm-url'), model: $val('cfg-llm-model'), api_key: $val('cfg-llm-key') };
@@ -1947,18 +1958,21 @@ const CONFIG_PRESETS = {
     tts: { backend: 'gpt-sovits', url: 'http://127.0.0.1:9880' },
     lipsync: { backend: 'sadtalker', url: 'http://127.0.0.1:7860' },
     comfyui: { url: 'http://127.0.0.1:8188', api_key: '' },
+    image_backend: 'sd15', video_backend: 'animatediff',
     llm: { enabled: false, backend: 'ollama', base_url: 'http://127.0.0.1:11434', model: 'qwen2.5:7b', api_key: '' },
   },
   cloud_siliconflow: {
     tts: { backend: 'mimo-voicedesign', url: 'https://api.siliconflow.cn/v1' },
     lipsync: { backend: 'musetalk', url: 'http://127.0.0.1:7860' },
     comfyui: { url: 'http://127.0.0.1:8188', api_key: '' },
+    image_backend: 'sd15', video_backend: 'animatediff',
     llm: { enabled: true, backend: 'openai', base_url: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen2.5-7B-Instruct', api_key: '' },
   },
   ollama_local: {
     tts: { backend: 'mimo-voicedesign', url: '' },
     lipsync: { backend: 'musetalk', url: 'http://127.0.0.1:7860' },
     comfyui: { url: 'http://127.0.0.1:8188', api_key: '' },
+    image_backend: 'sd15', video_backend: 'animatediff',
     llm: { enabled: true, backend: 'ollama', base_url: 'http://127.0.0.1:11434', model: 'qwen2.5:7b', api_key: '' },
   },
 };
@@ -1981,6 +1995,11 @@ function applyPreset(key) {
   if (cuUrl) cuUrl.value = p.comfyui.url;
   const cuKey = document.getElementById('cfg-comfyui-key');
   if (cuKey) cuKey.value = p.comfyui.api_key || '';
+  // Image / Video backend
+  const imgSel = document.getElementById('cfg-image-backend');
+  if (imgSel && p.image_backend) imgSel.value = p.image_backend;
+  const vidSel = document.getElementById('cfg-video-backend');
+  if (vidSel && p.video_backend) vidSel.value = p.video_backend;
   // LLM
   const llmEnabled = document.getElementById('cfg-llm-enabled');
   if (llmEnabled) llmEnabled.value = String(p.llm.enabled);

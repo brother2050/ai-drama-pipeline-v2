@@ -226,6 +226,8 @@ const I18N = {
   'set.tts_prompt_text': { zh: '提示文本', en: 'Prompt Text' },
 
   // 训练
+  'set.image_backend': { zh: '生图后端', en: 'Image Backend' },
+  'set.video_backend': { zh: '视频后端', en: 'Video Backend' },
   'set.training': { zh: 'LoRA 训练', en: 'LoRA Training' },
   'set.training_timeout': { zh: '训练超时(秒)', en: 'Train Timeout(s)' },
   'set.training_poll': { zh: '轮询间隔(秒)', en: 'Poll Interval(s)' },
