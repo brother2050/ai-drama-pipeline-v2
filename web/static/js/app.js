@@ -1569,7 +1569,7 @@ async function loadSettings() {
   try {
     const [sysCfg, env, td, backends] = await Promise.all([
       api('/system/config'), api('/system/env'), api('/tools'),
-      api('/backends').catch(() => ({ tts: {}, lipsync: {}, llm: {}, music: {} })),
+      api('/backends').catch(() => ({ tts: {}, lipsync: {}, llm: {}, music: {}, image: {}, video: {} })),
     ]);
     _cache.set('sysconfig', { data: sysCfg, ts: Date.now() });
     const tools = td.tools || {}, lang = localStorage.getItem('drama_lang') || 'zh';
