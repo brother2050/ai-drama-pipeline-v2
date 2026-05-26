@@ -1470,13 +1470,15 @@ async function doImport() {
 
 async function _getRefCounts(type) {
   try {
-    const d = await cachedFetch(`storyboard/${ep}`, () => api(`/storyboard/${ep}`));
-    const ss = d.shots || [];
+    const eps = await loadEpisodeSelector();
     const counts = {};
-    ss.forEach(s => {
-      const names = (type === 'characters' ? s.characters : s.scene) || '';
-      names.split(/[,、]/).map(n => n.trim()).filter(Boolean).forEach(n => { counts[n] = (counts[n] || 0) + 1; });
-    });
+    for (const e of eps) {
+      const d = await cachedFetch(`storyboard/${e}`, () => api(`/storyboard/${e}`));
+      (d.shots || []).forEach(s => {
+        const names = (type === 'characters' ? s.characters : s.scene) || '';
+        names.split(/[,、]/).map(n => n.trim()).filter(Boolean).forEach(n => { counts[n] = (counts[n] || 0) + 1; });
+      });
+    }
     return counts;
   } catch { return {}; }
 }
@@ -1550,6 +1552,7 @@ function applyPreset(key) {
   const llmModel = document.getElementById('cfg-llm-model');
   if (llmModel) llmModel.value = p.llm.model;
   toast(t('set.preset_applied'));
+  saveCfg();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1629,7 +1632,15 @@ async function sendChatMsg() {
     if (result.status === 'success' && result.result?.status === 'done') {
       const r = result.result;
       _chatHistory.push({ role: 'ai', text: `${t('chat.success')}\n${r.message || ''}` });
-      if (r.shots) {
+      if (r.shots && Array.isArray(r.shots)) {
+        // 校验并补全缺失字段
+        const defaults = { shot_id: '', scene: '', characters: '', action: '', dialogue: '', camera: '固定', shot_type: '中景', duration: 4, emotion: 'neutral', outfit: '', action_en: '', dialogue_en: '' };
+        r.shots = r.shots.map((s, i) => {
+          const merged = { ...defaults, ...s };
+          if (!merged.shot_id) merged.shot_id = String(i + 1).padStart(3, '0');
+          merged.duration = parseInt(merged.duration) || 4;
+          return merged;
+        });
         shots = r.shots;
         await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } });
         invalidateCache(`storyboard/${ep}`);
