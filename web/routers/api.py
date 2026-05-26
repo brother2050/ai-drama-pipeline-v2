@@ -460,6 +460,85 @@ def gen_portraits():
     return _submit_task(portraits_task, _cfg_path())
 
 
+@router.post("/characters/{char_id}/generate-portrait")
+async def generate_character_portrait(char_id: str):
+    """为单个角色 AI 生成定妆照（强制重新生成，完成后更新 reference_images）"""
+    _check_id(char_id, "角色 ID")
+
+    import yaml
+    from infra.config import Config
+    from api import _ensure_registered; _ensure_registered()
+    from api.registry import Container
+
+    cfg_path = _cfg_path()
+    cfg = Config(cfg_path)
+
+    # 读取角色配置
+    char_yaml_path = _proj() / "config" / "characters" / f"{char_id}.yaml"
+    if not char_yaml_path.exists():
+        raise HTTPException(404, f"角色 {char_id} 不存在")
+
+    with open(char_yaml_path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    char = data.get("character", {})
+    appearance = char.get("appearance", char_id)
+
+    # 获取 ComfyUI 后端
+    try:
+        cont = Container(cfg.data)
+        comfyui = cont.get("image")
+    except Exception as e:
+        raise HTTPException(503, f"ComfyUI 不可用: {e}")
+
+    # 生成定妆照
+    from engines.workflow_builder import WorkflowBuilder
+    portrait_dir = _proj() / "assets" / "characters" / char_id
+    portrait_dir.mkdir(parents=True, exist_ok=True)
+
+    # 清除旧图（强制重新生成）
+    for old in portrait_dir.glob("*.png"):
+        old.unlink()
+    for old in portrait_dir.glob("*.jpg"):
+        old.unlink()
+
+    models = cfg.get("models", {})
+    wb = WorkflowBuilder(cfg.data, models, str(_proj()), comfyui=comfyui)
+    wb.load_workflows()
+    fake_shot = {"characters": char_id, "emotion": "neutral",
+                 "shot_type": "特写", "camera": "固定"}
+    _, wf = wb.build_first_frame(fake_shot, character_desc=appearance)
+    if not wf:
+        raise HTTPException(500, "首帧工作流为空（缺少模板）")
+
+    try:
+        files = comfyui.generate(wf, str(portrait_dir))
+    except Exception as e:
+        raise HTTPException(500, f"ComfyUI 生成失败: {e}")
+
+    if not files:
+        raise HTTPException(500, "ComfyUI 未返回任何图片")
+
+    # 更新 YAML reference_images
+    img_url = f"/api/assets/characters/{char_id}/{Path(files[0]).name}"
+    char.setdefault("reference_images", [])
+    prefix = f"/api/assets/characters/{char_id}/cover"
+    char["reference_images"] = [u for u in char["reference_images"] if not u.startswith(prefix)]
+    char["reference_images"].append(img_url)
+    data["character"] = char
+    with open(char_yaml_path, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+
+    # 同步数据库
+    try:
+        from infra.database.characters import upsert as db_up
+        from infra.database.pool import get_pool
+        db_up(get_pool(), char_id, char)
+    except Exception:
+        pass
+
+    return {"status": "ok", "url": img_url, "char_id": char_id}
+
+
 @router.post("/tools/post")
 def run_post(req: PostRequest):
     """后期合成"""

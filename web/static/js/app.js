@@ -942,6 +942,34 @@ function newChar() {
 async function saveNewChar() { /* handled by _newEntityPanel */ }
 function deleteChar(id) { deleteCharWithRef(id); }
 
+async function generatePortrait(charId) {
+  const btn = document.getElementById('gen-portrait-btn');
+  const status = document.getElementById('gen-portrait-status');
+  const reset = _btnLoad(btn, '⏳ 生成中...');
+  _html(status, '⏳ AI 正在生成定妆照...');
+  try {
+    const r = await api(`/characters/${charId}/generate-portrait`, { method: 'POST' });
+    _html(status, '✅ 生成完成');
+    toast('✅ 定妆照已生成');
+    // 更新预览图
+    const preview = document.getElementById('ec-img-preview');
+    if (preview && r.url) {
+      preview.src = r.url + '?t=' + Date.now(); // cache bust
+    } else if (r.url) {
+      // 从 upload-area 切换到预览模式
+      const wrap = document.getElementById('ec-img-wrap');
+      if (wrap) {
+        wrap.innerHTML = `<div class="upload-preview"><img src="${r.url}?t=${Date.now()}" id="ec-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="ecRemoveImg('${charId}')">✕</button></div>`;
+      }
+    }
+    invalidateCache('characters');
+  } catch (e) {
+    _html(status, `❌ ${e.message}`);
+    toast(`❌ ${e.message}`, 'error');
+  }
+  reset();
+}
+
 async function editChar(id) {
   await _getTtsBackend();
   _editEntityPanel('characters', id, {
@@ -949,7 +977,7 @@ async function editChar(id) {
     reload: loadCharacters,
     deleteFn: deleteCharWithRef,
     buildExtra() { return { voice: _collectVoiceConfig('ec'), outfits: $val('ec-outfits') ? { default: $val('ec-outfits') } : null }; },
-    extraHtml: (item) => _ttsVoiceFieldsHtml('ec', item.voice || {}),
+    extraHtml: (item) => `<div class="edit-field"><button class="btn btn-ai btn-sm" onclick="generatePortrait('${esc(id)}')" id="gen-portrait-btn">🎨 AI 生成定妆照</button><span id="gen-portrait-status" class="dim" style="font-size:.8rem;margin-left:.5rem"></span></div>` + _ttsVoiceFieldsHtml('ec', item.voice || {}),
     fields: [
       { key: 'name', label: t('char.name') },
       { key: 'gender', label: t('char.gender'), type: 'select', options: [{ value: '', label: '-' }, { value: 'male', label: t('char.gender.male') }, { value: 'female', label: t('char.gender.female') }] },
