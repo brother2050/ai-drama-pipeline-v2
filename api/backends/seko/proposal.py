@@ -46,7 +46,7 @@ def generate_proposal(prompt: str, *, api_key: str = "", config: dict | None = N
         return {"code": 500, "msg": "SEKO_API_KEY 未配置"}
 
     api_base = _API_BASE
-    conn = http.client.HTTPSConnection(api_base)
+    conn = http.client.HTTPSConnection(api_base, timeout=30)
     payload = json.dumps({"input": prompt})
     headers = {
         "Seko-API-Key": key,
@@ -85,7 +85,7 @@ def check_proposal_status(task_id: str, *, api_key: str = "", config: dict | Non
         return {"code": 500, "msg": "SEKO_API_KEY 未配置"}
 
     api_base = _API_BASE
-    conn = http.client.HTTPSConnection(api_base)
+    conn = http.client.HTTPSConnection(api_base, timeout=30)
     headers = {
         "Seko-API-Key": key,
         "Accept": "*/*",
@@ -170,7 +170,7 @@ def modify_proposal(
         return {"code": 500, "msg": "SEKO_API_KEY 未配置"}
 
     api_base = _API_BASE
-    conn = http.client.HTTPSConnection(api_base)
+    conn = http.client.HTTPSConnection(api_base, timeout=30)
     payload = json.dumps({
         "input": prompt,
         "updateCtx": {"taskId": task_id},
@@ -221,7 +221,7 @@ def download_image(url: str, output_path: str) -> str:
         url,
         headers={"User-Agent": "Mozilla/5.0 (compatible; ai-drama-pipeline/2.0)"},
     )
-    with urllib.request.urlopen(req) as response, open(output_path, "wb") as out_file:
+    with urllib.request.urlopen(req, timeout=60) as response, open(output_path, "wb") as out_file:
         while True:
             chunk = response.read(64 * 1024)
             if not chunk:

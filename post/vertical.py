@@ -55,14 +55,13 @@ def to_vertical(video: str, output: str, mode: str = "face_track") -> str:
     Returns:
         输出文件路径
     """
+    from infra.ffmpeg import probe as ffprobe
+
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
 
     # 获取原始尺寸
-    import json
-    r = subprocess.run(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_streams", video],
-                       capture_output=True, text=True, timeout=30)
-    info = json.loads(r.stdout)
+    info = ffprobe(video)
     stream = next((s for s in info.get("streams", []) if s.get("codec_type") == "video"), {})
     w = int(stream.get("width", 1280))
     h = int(stream.get("height", 720))
