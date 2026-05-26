@@ -5,7 +5,7 @@
 
 ---
 
-## ✅ 已完成（第一轮）
+## ✅ 已完成（第一轮）— UI/UX 基础改造
 
 | # | 模块 | 改造内容 | 状态 |
 |---|------|----------|------|
@@ -179,6 +179,49 @@
 
 ---
 
+## ✅ 已完成（代码重构）— 消除冗余 + 结构优化
+
+> 原则：提取工具函数，消除 if-null / 重复初始化 / 长 if-else 链
+> 涉及文件：`app.js`、`api.py`、`tasks.py`
+
+### 前端 — app.js 工具函数提取
+
+| # | 改动 | 效果 | 状态 |
+|---|------|------|------|
+| J1 | `_editEntityPanel()` 通用编辑器 | 消除 editChar/editScene 编辑面板重复 | ✅ |
+| J2 | `_loadEntityPage()` 通用列表渲染 | 消除 loadCharacters/loadScenes 卡片渲染重复 | ✅ |
+| J3 | `_newEntityPanel()` 通用新建面板 | 消除 newChar/newScene 新建面板重复 | ✅ |
+| — | `_html()` / `_btnLoad()` | 消除 if(el) el.innerHTML 冗余（19→0） | ✅ |
+| — | `_runTool()` 通用工具执行 | 合并 runPortraits/runPost/runSubtitle | ✅ |
+| — | `_runAIGen()` 通用 AI 生成 | 合并 doAIGenCharacter/doAIGenScene | ✅ |
+| — | `_uploadImg()` + `_handleImgDrop()` | 合并 ec/es 图片上传 | ✅ |
+
+**净减 ~200 行重复代码**
+
+### 后端 — api.py 校验工具提取
+
+| # | 改动 | 效果 | 状态 |
+|---|------|------|------|
+| A1 | `_proj()` + mtime 缓存 | 避免每次请求读文件 | ✅ |
+| A2 | `_parse_entity()` | 统一 Pydantic → dict 转换 | ✅ |
+| — | `_check_id/_check_uuid/_check_filename/_check_episode/_check_entity_type` | 消除 12 处 re.match 重复 | ✅ |
+| — | `_active_project_dir()` → `_proj()` | 别名统一 | ✅ |
+
+### 后端 — tasks.py 初始化统一
+
+| # | 改动 | 效果 | 状态 |
+|---|------|------|------|
+| T1 | ai_characters_task / ai_scenes_task | 用 `_init_ctx` 替换 6 行样板 | ✅ |
+| T2 | music_task | 用 `_init_ctx` 替换重复初始化 | ✅ |
+| T3 | tts_single_task | 用 `_init_ctx` 替换重复初始化 | ✅ |
+| T4 | `_run_subtitle` | 用 `_cfg_dir` 替换路径构建 | ✅ |
+| T5 | `_shot_dir` | 用 `_cfg_dir` 替换路径构建 | ✅ |
+| T6 | `_load_episode_shots()` | 统一 preview/produce 加载逻辑 | ✅ |
+
+**净减 ~50 行重复代码，19 项重构全部完成**
+
+---
+
 ## 📐 设计规范
 
 ### 色彩系统（已有，保持一致）
@@ -223,6 +266,7 @@
 |------|----------|--------|------|
 | 第一轮（基础修复） | 8 | 8 | 0 |
 | 第二轮（核心体验） | 5 | 5 | 0 |
+| 代码重构（消除冗余） | 19 | 19 | 0 |
 | 第三轮（效率提升） | 5 | 0 | 5 |
 | 第四轮（高级功能） | 4 | 0 | 4 |
-| **合计** | **22** | **13** | **9** |
+| **合计** | **41** | **32** | **9** |
