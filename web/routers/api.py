@@ -189,10 +189,13 @@ def system_status():
 
 @router.get("/system/env")
 def system_env():
-    # GPU 检测已移除 — 由三方工具管理
+    from infra.gpu import get_generation_config
     import platform
+    gen = get_generation_config()
     return {"os": f"{platform.system()} {platform.release()}",
-            "python": platform.python_version(), "gpu": {"name": "N/A", "available": false, "note": "由三方工具管理"}}
+            "python": platform.python_version(),
+            "gpu": {"name": "N/A", "available": False, "note": "由三方工具管理"},
+            "generation": gen}
 
 
 # ══════════════════════════════════════════════════════════

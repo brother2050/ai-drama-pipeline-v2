@@ -399,10 +399,14 @@ def project_delete(name):
 def env():
     """显示环境信息"""
     import platform
-    # GPU 检测已移除 — 由三方工具管理
+    from infra.gpu import get_generation_config
+    gen = get_generation_config()
     console.print(f"[cyan]OS:[/cyan]     {platform.system()} {platform.release()}")
     console.print(f"[cyan]Python:[/cyan] {platform.python_version()}")
     console.print("[cyan]GPU:[/cyan]    由三方工具管理（本地不检测）")
+    console.print(f"[cyan]生成参数:[/cyan] {gen.get('resolution')} / steps={gen.get('image_steps')} / frames={gen.get('video_frames')}")
+    if gen.get("note", "").startswith("未配置"):
+        console.print(f"[yellow]提示:[/yellow] 建议在 config/system.yaml 中添加 generation 段自定义参数")
     console.print(f"[cyan]Redis:[/cyan]  {'✅ 运行中' if _port_open(6379) else '❌ 未运行'}")
 
 

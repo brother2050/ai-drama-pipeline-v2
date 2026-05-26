@@ -69,3 +69,14 @@ timeouts:
   lipsync: 120
   llm: 300
   music: 120
+
+# ============================================================
+# 生成参数 — 用户自定义（不检测本地 GPU）
+# 未配置则使用合理默认值；三方工具（ComfyUI 等）自行管理 GPU
+# ============================================================
+generation:
+  resolution: [512, 512]    # [宽, 高] — 根据你的 ComfyUI 后端能力调整
+  image_steps: 20           # 生图步数（越高越精细，越慢）
+  video_frames: 8           # 视频帧数
+  # image_backend: sd15     # 图像后端（sd15 / flux）
+  # video_backend: animatediff  # 视频后端（animatediff / cogvideox）

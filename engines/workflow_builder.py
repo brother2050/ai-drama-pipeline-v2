@@ -82,7 +82,7 @@ class WorkflowBuilder:
         self.video_wf = resolve_node_aliases(self.video_wf, available_nodes)
 
         # 应用 GPU 适配
-        gpu_cfg = get_gpu_config()
+        gpu_cfg = get_gpu_config(config=self.config)
         if self.first_frame_wf:
             self._apply_gpu(self.first_frame_wf, "first_frame", gpu_cfg)
         if self.video_wf:
