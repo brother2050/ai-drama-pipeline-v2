@@ -1267,7 +1267,7 @@ async function loadSettings() {
         ${_backendSection(t('set.lipsync'), '👄', 'lipsync', ['musetalk', 'sadtalker', 'wav2lip'], ls.backend, ls.url, tools.lipsync?.available, tools.lipsync?.reason)}
         <div class="config-section"><h3>🎨 ComfyUI</h3>
           <div class="form-row"><label>${t('set.address')}</label><input id="cfg-comfyui" value="${esc(sysCfg.comfyui?.url || '')}"></div>
-          <div class="form-row"><label>API Key</label><div style="display:flex;gap:.3rem;flex:1"><input id="cfg-comfyui-key" type="password" value="${esc(sysCfg.comfyui?.api_key || '')}" style="flex:1" placeholder="${t('set.optional')}"><button class="btn btn-xs btn-outline" onclick="_toggleKeyVis('cfg-comfyui-key','cfg-comfyui-key-toggle')" id="cfg-comfyui-key-toggle">👁</button></div></div>
+          <div class="form-row"><label>API Key</label><input id="cfg-comfyui-key" value="${esc(sysCfg.comfyui?.api_key || '')}" placeholder="${t('set.optional')}"></div>
           <div class="tool-status-inline"><span class="status-dot ${tools.comfyui?.available ? 'ok' : 'err'}"></span>${tools.comfyui?.available ? t('dash.available') : tools.comfyui?.reason || t('dash.unavailable')}
             <button class="btn btn-xs btn-outline" onclick="testTool('comfyui')" id="test-btn-comfyui">🔌 ${t('set.test')}</button>
             <span id="test-result-comfyui" class="dim" style="font-size:0.8rem;margin-left:0.3rem"></span></div></div>
