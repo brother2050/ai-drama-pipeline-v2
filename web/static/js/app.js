@@ -1567,16 +1567,19 @@ function _resolveBackendUrl(cfg, prefix) {
 async function loadSettings() {
   const el = document.getElementById('page-settings');
   try {
-    const [sysCfg, env, td, backends] = await Promise.all([api('/system/config'), api('/system/env'), api('/tools'), api('/backends')]);
+    const [sysCfg, env, td, backends] = await Promise.all([
+      api('/system/config'), api('/system/env'), api('/tools'),
+      api('/backends').catch(() => ({ tts: {}, lipsync: {}, llm: {}, music: {} })),
+    ]);
     _cache.set('sysconfig', { data: sysCfg, ts: Date.now() });
     const tools = td.tools || {}, lang = localStorage.getItem('drama_lang') || 'zh';
     const tts = _resolveBackendUrl(sysCfg, 'tts'), ls = _resolveBackendUrl(sysCfg, 'lip_sync');
     const llm = sysCfg.llm || {};
     const training = sysCfg.training || {};
-    // 从模型注册表动态获取后端列表
-    const ttsBackends = Object.keys(backends.tts || {});
-    const lsBackends = Object.keys(backends.lipsync || {});
-    const llmBackends = Object.keys(backends.llm || {});
+    // 从模型注册表动态获取后端列表（降级为硬编码兜底）
+    const ttsBackends = Object.keys(backends.tts || {}).length ? Object.keys(backends.tts) : ['mimo-voicedesign', 'mimo-voiceclone', 'gpt-sovits', 'cosyvoice', 'fish-speech'];
+    const lsBackends = Object.keys(backends.lipsync || {}).length ? Object.keys(backends.lipsync) : ['musetalk', 'sadtalker', 'wav2lip'];
+    const llmBackends = Object.keys(backends.llm || {}).length ? Object.keys(backends.llm) : ['openai', 'ollama'];
     el.innerHTML = `
       <div class="card"><h2>🌐 语言 / Language</h2><div class="form-row"><label>Language</label>
         <select id="cfg-lang" onchange="setLang(this.value);loadSettings()"><option value="zh" ${lang === 'zh' ? 'selected' : ''}>中文</option><option value="en" ${lang === 'en' ? 'selected' : ''}>English</option></select></div></div>

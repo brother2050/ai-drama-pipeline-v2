@@ -250,17 +250,21 @@ def list_tools():
 @router.get("/backends")
 def list_backends():
     """列出所有可用后端（从模型注册表读取）"""
-    from flow.model_registry import ModelRegistry
-    cfg_path = _cfg_path()
-    reg = ModelRegistry(cfg_path)
-    return {
-        "tts": reg.get_tts_backends(),
-        "lipsync": reg.get_lipsync_backends(),
-        "llm": reg.get_llm_backends(),
-        "music": reg.get_music_backends(),
-        "image": {k: {"workflow": v.get("workflow", "")} for k, v in reg._data.get("image_backends", {}).items()},
-        "video": {k: {"workflow": v.get("workflow", "")} for k, v in reg._data.get("video_backends", {}).items()},
-    }
+    try:
+        from flow.model_registry import ModelRegistry
+        cfg_path = _cfg_path()
+        reg = ModelRegistry(cfg_path)
+        return {
+            "tts": reg.get_tts_backends(),
+            "lipsync": reg.get_lipsync_backends(),
+            "llm": reg.get_llm_backends(),
+            "music": reg.get_music_backends(),
+            "image": {k: {"workflow": v.get("workflow", "")} for k, v in reg._data.get("image_backends", {}).items()},
+            "video": {k: {"workflow": v.get("workflow", "")} for k, v in reg._data.get("video_backends", {}).items()},
+        }
+    except Exception as e:
+        logger.debug(f"加载模型注册表失败: {e}")
+        return {"tts": {}, "lipsync": {}, "llm": {}, "music": {}, "image": {}, "video": {}}
 
 
 @router.get("/tools/{name}")
