@@ -23,7 +23,7 @@ class FluxGymTrainer:
 
     def __init__(self, config: dict):
         self._api_url = config.get("api_url", "http://127.0.0.1:7860")
-        self._timeout = config.get("timeout") or config.get("timeouts", {}).get("training", 3600)
+        self._timeout = config.get("timeout", 3600)
         self._poll_interval = config.get("poll_interval", 10)
         self._project_dir = config.get("project_dir", "")
         self._client = None
