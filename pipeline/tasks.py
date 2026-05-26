@@ -583,9 +583,10 @@ def subtitle_task(self, config_path: str, episode: int):
 @app.task(bind=True, name="pipeline.ai.storyboard", soft_time_limit=600)
 def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                        duration: int = 90, append: bool = False):
-    """AI 生成分镜表（异步）"""
-    from engines.llm_generator import generate_storyboard
+    """AI 生成分镜表 + 自动补全角色/场景（面向新用户）"""
+    from engines.llm_generator import generate_storyboard, generate_characters, generate_scenes
     from engines.storyboard import save_storyboard
+    import yaml as _yaml
 
     self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 10, "message": "正在初始化 LLM..."})
 
@@ -595,69 +596,51 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
     except Exception as e:
         return {"status": "error", "reason": f"LLM 初始化失败: {e}"}
 
+    project_dir = _cfg_dir(config_path)
+
+    # ── 1. 生成分镜（不传已有角色/场景，新用户没有） ──
     self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 30, "message": "AI 正在生成分镜..."})
 
-    # 加载已有角色和场景
-    project_dir = _cfg_dir(config_path)
-    characters = _load_yaml_entities(project_dir / "config" / "characters", "character")
-    scenes = _load_yaml_entities(project_dir / "config" / "scenes", "scene")
-
     try:
-        shots = generate_storyboard(llm, outline, characters, scenes, episode, duration)
+        shots = generate_storyboard(llm, outline, [], [], episode, duration)
     except Exception as e:
         return {"status": "error", "reason": f"LLM 生成失败: {e}"}
 
     if not shots:
         return {"status": "error", "reason": "LLM 未能生成有效分镜"}
 
-    self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 70, "message": "正在保存分镜..."})
-
-    sb_path = project_dir / "storyboard" / "episodes.csv"
-
-    # ── 自动补全缺失的角色和场景 ──
-    existing_char_ids = {c.get("id") for c in characters}
-    existing_scene_ids = {s.get("id") for s in scenes}
-
-    used_char_ids = set()
-    used_scene_ids = set()
+    # ── 2. 提取分镜中引用的所有角色/场景 ID ──
+    char_ids = set()
+    scene_ids = set()
     for shot in shots:
         for cid in (shot.get("characters") or "").split("+"):
             cid = cid.strip()
             if cid:
-                used_char_ids.add(cid)
+                char_ids.add(cid)
         sid = (shot.get("scene") or "").strip()
         if sid:
-            used_scene_ids.add(sid)
-
-    missing_chars = sorted(used_char_ids - existing_char_ids)
-    missing_scenes = sorted(used_scene_ids - existing_scene_ids)
+            scene_ids.add(sid)
 
     generated_chars = []
     generated_scenes = []
-    id_remap = {}  # old_id → hash_id，用于回写分镜表
+    id_remap = {}
 
-    if missing_chars or missing_scenes:
+    if char_ids or scene_ids:
         self.update_state(state="PROGRESS", meta={
-            "step": "ai_storyboard", "progress": 80,
-            "message": f"正在生成 {len(missing_chars)} 个角色、{len(missing_scenes)} 个场景..."})
+            "step": "ai_storyboard", "progress": 60,
+            "message": f"正在生成 {len(char_ids)} 个角色、{len(scene_ids)} 个场景..."})
 
-    # 生成缺失角色
-    if missing_chars:
-        from engines.llm_generator import generate_characters
-        import yaml as _yaml
+    # ── 3. 批量生成角色 ──
+    if char_ids:
         char_dir = project_dir / "config" / "characters"
         char_dir.mkdir(parents=True, exist_ok=True)
 
         char_descriptions = []
-        for cid in missing_chars:
+        for cid in sorted(char_ids):
             char_shots = [s for s in shots if cid in (s.get("characters") or "").split("+")]
             actions = [s.get("action", "") for s in char_shots[:5]]
             dialogues = [s.get("dialogue", "") for s in char_shots[:5] if s.get("dialogue") and s.get("dialogue") != "......"]
-            desc_parts = [
-                f"根据以下信息生成一个角色配置。",
-                f"剧情大纲: {outline}",
-                f"该角色在分镜中的表现:",
-            ]
+            desc_parts = [f"根据以下信息生成一个角色配置。", f"剧情大纲: {outline}", f"该角色在分镜中的表现:"]
             if actions:
                 for idx, a in enumerate(actions, 1):
                     desc_parts.append(f"  镜头{idx}: {a}")
@@ -667,15 +650,15 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
 
         try:
             new_chars = generate_characters(llm, char_descriptions)
+            sorted_ids = sorted(char_ids)
             for i, char in enumerate(new_chars):
                 if char is None:
-                    logger.warning(f"  ⚠ 角色 {missing_chars[i]} 生成失败，跳过")
+                    logger.warning(f"  ⚠ 角色 {sorted_ids[i]} 生成失败，跳过")
                     continue
-                old_id = missing_chars[i] if i < len(missing_chars) else char.get("id", "")
+                old_id = sorted_ids[i]
                 chinese_name = char.get("name", "").strip()
                 if not chinese_name:
                     chinese_name = old_id
-                    logger.warning(f"  ⚠ 角色 {old_id} 未生成中文名，使用旧 ID 作为名称")
                 new_id = _unique_hash_id("ch", chinese_name, id_remap)
                 char["id"] = new_id
                 char["name"] = chinese_name
@@ -691,26 +674,20 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                 except Exception:
                     pass
                 generated_chars.append(new_id)
-                logger.info(f"  ✅ 自动生成角色: {chinese_name} ({old_id} → {new_id})")
+                logger.info(f"  ✅ 角色: {chinese_name} ({old_id} → {new_id})")
         except Exception as e:
-            logger.warning(f"  ⚠ 自动生成角色失败: {e}")
+            logger.warning(f"  ⚠ 角色生成失败: {e}")
 
-    # 生成缺失场景
-    if missing_scenes:
-        from engines.llm_generator import generate_scenes
-        import yaml as _yaml
+    # ── 4. 批量生成场景 ──
+    if scene_ids:
         scene_dir = project_dir / "config" / "scenes"
         scene_dir.mkdir(parents=True, exist_ok=True)
 
         scene_descriptions = []
-        for sid in missing_scenes:
+        for sid in sorted(scene_ids):
             scene_shots = [s for s in shots if (s.get("scene") or "").strip() == sid]
             actions = [s.get("action", "") for s in scene_shots[:5]]
-            desc_parts = [
-                f"根据以下信息生成一个场景配置。",
-                f"剧情大纲: {outline}",
-                f"该场景在分镜中的画面:",
-            ]
+            desc_parts = [f"根据以下信息生成一个场景配置。", f"剧情大纲: {outline}", f"该场景在分镜中的画面:"]
             if actions:
                 for idx, a in enumerate(actions, 1):
                     desc_parts.append(f"  镜头{idx}: {a}")
@@ -718,15 +695,15 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
 
         try:
             new_scenes_list = generate_scenes(llm, scene_descriptions)
+            sorted_ids = sorted(scene_ids)
             for i, scene in enumerate(new_scenes_list):
                 if scene is None:
-                    logger.warning(f"  ⚠ 场景 {missing_scenes[i]} 生成失败，跳过")
+                    logger.warning(f"  ⚠ 场景 {sorted_ids[i]} 生成失败，跳过")
                     continue
-                old_id = missing_scenes[i] if i < len(missing_scenes) else scene.get("id", "")
+                old_id = sorted_ids[i]
                 scene_name = scene.get("name", "").strip()
                 if not scene_name:
                     scene_name = old_id
-                    logger.warning(f"  ⚠ 场景 {old_id} 未生成名称，使用旧 ID 作为名称")
                 new_id = _unique_hash_id("sc", scene_name, id_remap)
                 scene["id"] = new_id
                 scene["name"] = scene_name
@@ -742,11 +719,11 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                 except Exception:
                     pass
                 generated_scenes.append(new_id)
-                logger.info(f"  ✅ 自动生成场景: {scene_name} ({old_id} → {new_id})")
+                logger.info(f"  ✅ 场景: {scene_name} ({old_id} → {new_id})")
         except Exception as e:
-            logger.warning(f"  ⚠ 自动生成场景失败: {e}")
+            logger.warning(f"  ⚠ 场景生成失败: {e}")
 
-    # ── 回写分镜表：替换旧 ID 为 hash ID ──
+    # ── 5. 回写分镜：旧 ID → hash ID ──
     if id_remap:
         for shot in shots:
             chars = shot.get("characters", "")
@@ -757,12 +734,13 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
             scene = shot.get("scene", "")
             if scene in id_remap:
                 shot["scene"] = id_remap[scene]
-        logger.info(f"  ✅ 分镜表已回写 {len(id_remap)} 个 ID 映射")
 
-    # 保存分镜（回写后再保存，只写一次）
+    # ── 6. 保存分镜 + DB 同步 ──
+    self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 90, "message": "正在保存..."})
+
+    sb_path = project_dir / "storyboard" / "episodes.csv"
     save_storyboard(sb_path, shots, episode, append)
 
-    # 同步数据库（回写后再同步，只写一次）
     try:
         from infra.database.pool import get_pool
         from infra.database.shots import upsert as db_upsert_shot
