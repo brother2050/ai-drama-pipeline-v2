@@ -300,7 +300,6 @@ timeouts:
   music: 120
 
 seko:
-  api_base_url: seko.sensetime.com
   # api_key: ''  # 或设置环境变量 SEKO_API_KEY
 ```
 

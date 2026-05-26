@@ -37,7 +37,6 @@ server:
   host: 0.0.0.0
   cors_origin: '*'
 seko:
-  api_base_url: seko.sensetime.com
   api_key: ''
 post_production:
   transition: crossfade
