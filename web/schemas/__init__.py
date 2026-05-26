@@ -9,6 +9,7 @@ __all__ = [
     "SubtitleRequest", "PipelineRequest", "CharacterData", "SceneData",
     "ProjectCreate", "ProjectSwitch", "ConfigUpdate",
     "StoryboardGenRequest", "CharacterGenRequest", "SceneGenRequest", "ChatEditRequest",
+    "SekoProposalRequest", "SekoProposalStatusRequest", "SekoProposalModifyRequest",
 ]
 
 
@@ -175,3 +176,24 @@ class ChatEditRequest(BaseModel):
     episode: int = Field(1, ge=1, description="集数")
     message: str = Field(..., min_length=1, description="编辑指令")
     shots: list = Field(default_factory=list, description="当前分镜表")
+
+
+# ── Seko 影视策划案 ──
+
+class SekoProposalRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=10000, description="策划案描述/故事梗概")
+    api_key: str = Field("", description="Seko API Key（可选，默认从环境变量读取）")
+
+
+class SekoProposalStatusRequest(BaseModel):
+    task_id: str = Field(..., min_length=1, description="策划案任务 ID")
+    api_key: str = Field("", description="Seko API Key（可选）")
+    wait: bool = Field(False, description="是否轮询等待完成")
+    interval: int = Field(10, ge=5, le=120, description="轮询间隔（秒）")
+    download_dir: str = Field("", description="图片下载目录（留空则不下载）")
+
+
+class SekoProposalModifyRequest(BaseModel):
+    task_id: str = Field(..., min_length=1, description="原策划案任务 ID")
+    prompt: str = Field(..., min_length=1, max_length=10000, description="修改指令")
+    api_key: str = Field("", description="Seko API Key（可选）")

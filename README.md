@@ -15,6 +15,7 @@
 | **DI 容器** | 后端自注册 + 按需创建 + 热重载 + 懒加载 |
 | **人性化工作台** | 内联编辑、撤销重做、批量执行、资源预览 |
 | **多语言界面** | 中文/English 双语支持 |
+| **Seko 策划案** | 集成 seko.sensetime.com 影视策划案生成/修改 |
 | **安全加固** | 输入校验、路径遍历防护、速率限制 |
 | **96 项测试** | 集成测试 + Celery Mock + 前端 E2E |
 
@@ -113,7 +114,9 @@ cp .env.example .env
 # 编辑 .env，必填:
 #   AI_DRAMA_DB_DSN=postgresql://drama:drama123@127.0.0.1:5432/ai_drama
 #   MIMO_API_KEY=（语音合成免费）
+#   SEKO_API_KEY=（影视策划案，可选）
 # 获取 MIMO_API_KEY: https://api.xiaomimimo.com
+# 获取 SEKO_API_KEY: https://seko.sensetime.com/explore
 ```
 
 ### 5. 启动
@@ -181,7 +184,7 @@ drama clean --cache                    # 清理缓存
 | 📝 分镜表 | 内联编辑表格 + 🤖 AI 从大纲一键生成 |
 | 🎬 生产管线 | 按镜头逐步执行：TTS → 首帧 → 视频 → 口型同步 |
 | 📂 项目管理 | 多项目切换 |
-| ⚙️ 系统设置 | TTS/ComfyUI/LipSync/**LLM** 配置、语言切换 |
+| ⚙️ 系统设置 | TTS/ComfyUI/LipSync/**LLM**/**Seko** 配置、语言切换 |
 
 ### 工作台快捷键
 
@@ -295,6 +298,10 @@ timeouts:
   lipsync: 120
   llm: 300
   music: 120
+
+seko:
+  api_base_url: seko.sensetime.com
+  # api_key: ''  # 或设置环境变量 SEKO_API_KEY
 ```
 
 ### LLM 配置示例

@@ -95,6 +95,7 @@ from web.schemas import (
     ProjectCreate, ProjectSwitch, ConfigUpdate,
     StoryboardGenRequest, CharacterGenRequest, SceneGenRequest,
     ChatEditRequest,
+    SekoProposalRequest, SekoProposalStatusRequest, SekoProposalModifyRequest,
 )
 
 # ── 工具函数 ──
@@ -216,7 +217,7 @@ def system_status():
 def _collect_tools(cfg: dict) -> dict:
     """收集所有工具状态"""
     tools = {}
-    for name in ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg"]:
+    for name in ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg", "seko"]:
         tools[name] = _check_tool(name, cfg)
     return tools
 
@@ -1230,3 +1231,65 @@ def llm_chat_edit(req: ChatEditRequest):
 
     from pipeline.tasks import ai_chat_edit_task
     return _submit_task(ai_chat_edit_task, cfg, req.episode, req.message, req.shots)
+
+
+# ══════════════════════════════════════════════════════════
+# Seko 影视策划案（seko.sensetime.com）
+# ══════════════════════════════════════════════════════════
+
+@router.post("/seko/proposal")
+def seko_generate_proposal(req: SekoProposalRequest):
+    """生成影视策划案（异步提交，返回 task_id）"""
+    from api.backends.seko.proposal import generate_proposal
+    cfg = _merged_cfg()
+    seko_cfg = cfg.get("seko", {})
+    result = generate_proposal(req.prompt, api_key=req.api_key, config=seko_cfg)
+    if result.get("code") == 200:
+        data = result.get("data", {})
+        return {"status": "submitted", "task_id": data.get("taskId"), "raw": result}
+    raise HTTPException(502, result.get("msg", "策划案生成失败"))
+
+
+@router.post("/seko/proposal/status")
+def seko_proposal_status(req: SekoProposalStatusRequest):
+    """查询策划案任务状态（支持轮询等待 + 图片下载）"""
+    from api.backends.seko.proposal import (
+        check_proposal_status, wait_for_proposal, download_elements_images,
+    )
+    cfg = _merged_cfg()
+    seko_cfg = cfg.get("seko", {})
+
+    if req.wait:
+        result = wait_for_proposal(
+            req.task_id, api_key=req.api_key, config=seko_cfg, interval=req.interval,
+        )
+    else:
+        result = check_proposal_status(req.task_id, api_key=req.api_key, config=seko_cfg)
+
+    # 任务成功 + 指定下载目录 → 自动下载图片
+    downloaded = []
+    if req.download_dir and result.get("code") == 200:
+        data = result.get("data", {})
+        if data.get("taskStatus") == "OK":
+            download_dir = os.path.join(req.download_dir, req.task_id)
+            downloaded = download_elements_images(data, download_dir)
+
+    return {
+        "status": result.get("data", {}).get("taskStatus", "UNKNOWN"),
+        "task_id": req.task_id,
+        "downloaded": downloaded,
+        "raw": result,
+    }
+
+
+@router.post("/seko/proposal/modify")
+def seko_modify_proposal(req: SekoProposalModifyRequest):
+    """修改已有策划案（返回新 task_id）"""
+    from api.backends.seko.proposal import modify_proposal
+    cfg = _merged_cfg()
+    seko_cfg = cfg.get("seko", {})
+    result = modify_proposal(req.task_id, req.prompt, api_key=req.api_key, config=seko_cfg)
+    if result.get("code") == 200:
+        data = result.get("data", {})
+        return {"status": "submitted", "task_id": data.get("taskId"), "raw": result}
+    raise HTTPException(502, result.get("msg", "策划案修改失败"))

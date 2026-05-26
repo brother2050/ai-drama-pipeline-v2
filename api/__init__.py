@@ -25,6 +25,7 @@ _BACKEND_MODULES = [
     ("llm", "api.backends.llm.ollama", 10),
     ("music", "api.backends.music.template", 10),
     ("training", "api.backends.training.fluxgym", 10),
+    ("seko", "api.backends.seko", 10),
 ]
 
 _loaded = False

@@ -128,4 +128,11 @@ def check_tool(name: str, cfg: dict) -> dict:
             return {"available": False, "backend": "celery", "type": "infra",
                     "reason": "Celery 连接失败"}
 
+    elif name == "seko":
+        seko_cfg = cfg.get("seko", {})
+        api_key = seko_cfg.get("api_key") or os.environ.get("SEKO_API_KEY", "")
+        ok = bool(api_key)
+        return {"available": ok, "backend": "seko", "type": "cloud",
+                "reason": "" if ok else "SEKO_API_KEY 未配置"}
+
     return {"available": False, "backend": "unknown", "type": "unknown", "reason": "未知工具"}
