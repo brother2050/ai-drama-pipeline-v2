@@ -21,13 +21,27 @@ def _port_ok(port: int, host: str = "127.0.0.1") -> bool:
 
 
 def _url_ok(url: str, path: str = "/", headers: dict | None = None) -> bool:
+    """检测 URL 是否可达（httpx 优先，urllib 回退）"""
     try:
         import httpx
         from infra.retry import retry
         def _check():
             r = httpx.get(f"{url}{path}", headers=headers, timeout=3)
-            return r.status_code in (200, 401, 403)  # 401/403 = 服务在线但认证问题
+            return r.status_code in (200, 401, 403)
         return retry(_check, max_retries=2, base_delay=0.5)
+    except ImportError:
+        pass
+    except Exception:
+        return False
+    # httpx 不可用时用 urllib 回退
+    try:
+        import urllib.request
+        req = urllib.request.Request(f"{url}{path}")
+        if headers:
+            for k, v in headers.items():
+                req.add_header(k, v)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.status in (200, 401, 403)
     except Exception:
         return False
 
@@ -58,8 +72,11 @@ def check_tool(name: str, cfg: dict) -> dict:
                     "url": api_url, "reason": "" if ok else f"{backend} 服务不可达"}
 
     elif name == "comfyui":
-        url = cfg.get("comfyui", {}).get("url", "http://127.0.0.1:8188")
-        ok = _url_ok(url, "/system_stats")
+        comfyui_cfg = cfg.get("comfyui", {})
+        url = comfyui_cfg.get("url", "http://127.0.0.1:8188")
+        api_key = comfyui_cfg.get("api_key", "")
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+        ok = _url_ok(url, "/system_stats", headers=headers)
         return {"available": ok, "backend": "comfyui", "type": "gpu",
                 "url": url, "reason": "" if ok else "ComfyUI 不可达"}
 
