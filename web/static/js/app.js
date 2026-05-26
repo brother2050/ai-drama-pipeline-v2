@@ -1217,6 +1217,7 @@ async function loadSeko() {
           <span>${t('seko.status_' + (task.status || 'RUNNING'))}</span>
           <button class="btn btn-xs btn-outline" onclick="sekoCheckStatus(${i})">${t('seko.check_btn')}</button>
           ${task.status === 'OK' ? `<button class="btn btn-xs btn-outline" onclick="sekoDownload(${i})">${t('seko.download_btn')}</button>` : ''}
+          ${task.status === 'OK' ? `<button class="btn btn-xs btn-primary" onclick="sekoImport(${i})">${t('seko.import_btn') || '📥 导入项目'}</button>` : ''}
           <button class="btn btn-xs btn-outline" onclick="sekoModify(${i})">${t('seko.modify_btn')}</button>
         </div>
       </div>
@@ -1304,6 +1305,68 @@ async function sekoModify(idx) {
     toast(t('seko.task_added'));
     loadSeko();
   } catch (e) { toast(e.message, 'error'); }
+}
+
+async function sekoImport(idx) {
+  const task = _sekoTasks[idx];
+  if (!task?.result) return;
+  // 确认导入
+  const ok = await modalConfirm(
+    (t('seko.import_confirm') || '确认将策划案导入当前项目？') + '\n\n' +
+    (t('seko.import_desc') || '将导入角色、场景、分镜，并在后台下载图片。')
+  );
+  if (!ok) return;
+  try {
+    toast(t('seko.import_submitting') || '正在提交导入任务...');
+    const r = await api('/seko/proposal/import', {
+      method: 'POST',
+      body: {
+        proposal_data: task.result,
+        episode: 1,
+        import_characters: true,
+        import_scenes: true,
+        import_storyboard: true,
+        download_images: true,
+      }
+    });
+    // 轮询任务状态
+    const taskId = r.task_id;
+    toast((t('seko.import_submitted') || '导入任务已提交') + ` (${taskId})`);
+    _pollSekoImportTask(taskId);
+  } catch (e) {
+    toast((t('seko.import_fail') || '导入失败') + `: ${e.message}`, 'error');
+  }
+}
+
+async function _pollSekoImportTask(taskId) {
+  const maxWait = 600; // 最长等 10 分钟
+  const interval = 3;
+  let waited = 0;
+  while (waited < maxWait) {
+    await new Promise(r => setTimeout(r, interval * 1000));
+    waited += interval;
+    try {
+      const info = await api(`/tasks/${taskId}`);
+      if (info.status === 'success') {
+        const res = info.result || {};
+        const msg = [
+          res.characters ? `角色 ${res.characters}` : '',
+          res.scenes ? `场景 ${res.scenes}` : '',
+          res.shots ? `分镜 ${res.shots}` : '',
+          res.images_downloaded ? `图片 ${res.images_downloaded}` : '',
+        ].filter(Boolean).join('、');
+        toast((t('seko.import_done') || '导入完成！') + (msg ? ` (${msg})` : ''));
+        return;
+      } else if (info.status === 'failed') {
+        toast((t('seko.import_fail') || '导入失败') + `: ${info.error || ''}`, 'error');
+        return;
+      }
+      // running → 继续等
+    } catch {
+      // 网络抖动，继续等
+    }
+  }
+  toast(t('seko.import_timeout') || '导入任务超时，请稍后查看结果');
 }
 
 // ══════════════════════════════════════════════════════════

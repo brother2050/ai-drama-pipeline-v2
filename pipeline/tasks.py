@@ -5,6 +5,7 @@ import csv
 import json
 import logging
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -764,3 +765,368 @@ def ai_chat_edit_task(self, config_path: str, episode: int, message: str, curren
         return {"status": "error", "reason": "LLM 返回的不是有效 JSON"}
     except Exception as e:
         return {"status": "error", "reason": f"LLM 执行失败: {e}"}
+
+
+# ══════════════════════════════════════════════════════════
+#  Seko 策划案导入（异步，含图片下载）
+# ══════════════════════════════════════════════════════════
+
+def _parse_seko_characters(steps: list[dict]) -> list[dict]:
+    """从 Seko steps 中解析角色列表"""
+    char_step = next((s for s in steps if s.get("step") == "character_design"), None)
+    if not char_step:
+        return []
+
+    output = char_step.get("stepOutput", "")
+    characters = []
+    # 按 "- 角色名" 分割
+    blocks = re.split(r"\n(?=- )", output)
+    for block in blocks:
+        block = block.strip()
+        if not block.startswith("- "):
+            continue
+        # 提取角色名和描述（第一行）
+        first_line = block.split("\n")[0]
+        match = re.match(r"^- ([^：:]+)[：:](.*)", first_line)
+        if not match:
+            continue
+        char_name = match.group(1).strip()
+        char_desc = match.group(2).strip()
+
+        # 提取 Prompt
+        prompt_match = re.search(r"<Prompt>(.*?)</Prompt>", block, re.DOTALL)
+        prompt_text = prompt_match.group(1).strip() if prompt_match else ""
+
+        # 生成 ID：中文名转拼音风格的 safe id
+        safe_id = "".join(c for c in char_name if c.isalnum() or c in ("-", "_")).strip()
+        if not safe_id:
+            safe_id = f"char_{len(characters) + 1:02d}"
+
+        characters.append({
+            "id": safe_id,
+            "name": char_name,
+            "appearance": char_desc,
+            "prompt": prompt_text,
+            "source": "seko",
+        })
+
+    return characters
+
+
+def _parse_seko_scenes(steps: list[dict]) -> list[dict]:
+    """从 Seko steps 中解析场景列表"""
+    scene_step = next((s for s in steps if s.get("step") == "scene_design"), None)
+    if not scene_step:
+        return []
+
+    output = scene_step.get("stepOutput", "")
+    scenes = []
+    blocks = re.split(r"\n(?=- )", output)
+    for block in blocks:
+        block = block.strip()
+        if not block.startswith("- "):
+            continue
+        first_line = block.split("\n")[0]
+        match = re.match(r"^- ([^：:]+)[：:](.*)", first_line)
+        if not match:
+            continue
+        scene_name = match.group(1).strip()
+        scene_desc = match.group(2).strip()
+
+        prompt_match = re.search(r"<Prompt>(.*?)</Prompt>", block, re.DOTALL)
+        prompt_text = prompt_match.group(1).strip() if prompt_match else ""
+
+        safe_id = "".join(c for c in scene_name if c.isalnum() or c in ("-", "_")).strip()
+        if not safe_id:
+            safe_id = f"scene_{len(scenes) + 1:02d}"
+
+        scenes.append({
+            "id": safe_id,
+            "name": scene_name,
+            "description": scene_desc,
+            "prompt": prompt_text,
+            "source": "seko",
+        })
+
+    return scenes
+
+
+def _parse_seko_storyboard(steps: list[dict], episode: int) -> list[dict]:
+    """从 Seko steps 中解析分镜表"""
+    sb_step = next((s for s in steps if s.get("step") == "storyboard"), None)
+    if not sb_step:
+        return []
+
+    output = sb_step.get("stepOutput", "")
+    shots = []
+
+    # 按 :::shot{name="..."} 分割
+    shot_blocks = re.findall(r':::shot\{name="([^"]+)"\}(.*?):::', output, re.DOTALL)
+    for shot_name, block in shot_blocks:
+        shot_id_match = re.search(r"镜头(\d+)", shot_name)
+        shot_id = shot_id_match.group(1).zfill(3) if shot_id_match else f"{len(shots) + 1:03d}"
+
+        # 提取镜头描述
+        desc_match = re.search(r":editable\[(.*?)\]", block, re.DOTALL)
+        desc_raw = desc_match.group(1).strip() if desc_match else ""
+
+        # 解析描述中的各字段
+        scene = ""
+        characters = ""
+        action = ""
+        dialogue = ""
+        camera = ""
+        shot_type = ""
+        duration = 4
+
+        # 场景
+        scene_match = re.search(r"场景[：:]\s*(.+?)(?:\\n|$)", desc_raw)
+        if scene_match:
+            scene = scene_match.group(1).strip()
+
+        # 画面描述
+        action_match = re.search(r"画面[：:]\s*\[(.+?)\]\s*(.+?)(?:\\n运镜|$)", desc_raw, re.DOTALL)
+        if action_match:
+            shot_type = action_match.group(1).strip()
+            action = action_match.group(2).strip().replace("\\n", " ").strip()
+
+        # 运镜
+        camera_match = re.search(r"运镜[：:]\s*(.+?)(?:\\n|$)", desc_raw)
+        if camera_match:
+            camera = camera_match.group(1).strip()
+
+        # 台词
+        dialogue_match = re.search(r"中文配音[：:]\s*\[([^\]]+)\]\s*(.+?)(?:\\n|$)", block)
+        if dialogue_match:
+            char_name = dialogue_match.group(1).strip()
+            dialogue = dialogue_match.group(2).strip()
+            characters = char_name
+
+        shots.append({
+            "episode": str(episode),
+            "shot_id": shot_id,
+            "scene": scene,
+            "characters": characters,
+            "action": action,
+            "dialogue": dialogue,
+            "camera": camera,
+            "shot_type": shot_type,
+            "duration": str(duration),
+            "outfit": "",
+            "emotion": "",
+            "action_en": "",
+            "dialogue_en": "",
+        })
+
+    return shots
+
+
+def _download_seko_image(url: str, output_path: str, timeout: int = 60) -> bool:
+    """下载单张 Seko 图片"""
+    import urllib.request
+    import urllib.parse
+
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; ai-drama-pipeline/2.0)"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, "wb") as f:
+                while True:
+                    chunk = response.read(64 * 1024)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+        logger.info(f"Seko 图片下载成功: {output_path}")
+        return True
+    except Exception as e:
+        logger.warning(f"Seko 图片下载失败 {url}: {e}")
+        return False
+
+
+@app.task(bind=True, name="pipeline.seko.import", soft_time_limit=600)
+def seko_import_task(
+    self,
+    config_path: str,
+    proposal_data: dict,
+    episode: int = 1,
+    import_characters: bool = True,
+    import_scenes: bool = True,
+    import_storyboard: bool = True,
+    download_images: bool = True,
+):
+    """Seko 策划案导入任务（异步）
+
+    解析 Seko 返回的策划案 JSON，将角色/场景/分镜导入项目，
+    并异步下载关联图片。
+    """
+    _ensure_path()
+    import yaml
+
+    steps = proposal_data.get("steps", [])
+    elements = proposal_data.get("elements", [])
+    project_dir = _cfg_dir(config_path)
+    result = {"characters": 0, "scenes": 0, "shots": 0, "images_downloaded": 0, "images_failed": 0}
+
+    # ── 1. 导入角色 ──
+    if import_characters:
+        self.update_state(state="PROGRESS", meta={"step": "seko_import", "progress": 10, "message": "解析角色..."})
+        chars = _parse_seko_characters(steps)
+        char_dir = project_dir / "config" / "characters"
+        char_dir.mkdir(parents=True, exist_ok=True)
+
+        for char in chars:
+            cid = char["id"]
+            # 构建 YAML 数据
+            char_yaml = {
+                "id": cid,
+                "name": char.get("name", ""),
+                "appearance": char.get("appearance", ""),
+                "reference_images": [],
+                "source": "seko",
+            }
+            # 查找对应的 element 图片
+            char_element = next(
+                (e for e in elements if e.get("elementType") == "CHARACTER" and e.get("elementName") == char.get("name")),
+                None,
+            )
+            if char_element and char_element.get("elementUrl"):
+                char_yaml["seko_image_url"] = char_element["elementUrl"]
+
+            path = char_dir / f"{cid}.yaml"
+            with open(path, "w", encoding="utf-8") as f:
+                yaml.dump({"character": char_yaml}, f, allow_unicode=True, default_flow_style=False)
+
+            # 同步数据库
+            try:
+                from infra.database.characters import upsert as db_up
+                from infra.database.pool import get_pool
+                db_up(get_pool(), cid, char_yaml)
+            except Exception:
+                pass
+
+            result["characters"] += 1
+
+    # ── 2. 导入场景 ──
+    if import_scenes:
+        self.update_state(state="PROGRESS", meta={"step": "seko_import", "progress": 30, "message": "解析场景..."})
+        scenes = _parse_seko_scenes(steps)
+        scene_dir = project_dir / "config" / "scenes"
+        scene_dir.mkdir(parents=True, exist_ok=True)
+
+        for scene in scenes:
+            sid = scene["id"]
+            scene_yaml = {
+                "id": sid,
+                "name": scene.get("name", ""),
+                "description": scene.get("description", ""),
+                "reference_images": [],
+                "source": "seko",
+            }
+            scene_element = next(
+                (e for e in elements if e.get("elementType") == "SCENE" and e.get("elementName") == scene.get("name")),
+                None,
+            )
+            if scene_element and scene_element.get("elementUrl"):
+                scene_yaml["seko_image_url"] = scene_element["elementUrl"]
+
+            path = scene_dir / f"{sid}.yaml"
+            with open(path, "w", encoding="utf-8") as f:
+                yaml.dump({"scene": scene_yaml}, f, allow_unicode=True, default_flow_style=False)
+
+            try:
+                from infra.database.scenes import upsert as db_up
+                from infra.database.pool import get_pool
+                db_up(get_pool(), sid, scene_yaml)
+            except Exception:
+                pass
+
+            result["scenes"] += 1
+
+    # ── 3. 导入分镜 ──
+    if import_storyboard:
+        self.update_state(state="PROGRESS", meta={"step": "seko_import", "progress": 50, "message": "解析分镜..."})
+        shots = _parse_seko_storyboard(steps, episode)
+        if shots:
+            sb_path = project_dir / "storyboard" / "episodes.csv"
+            from engines.storyboard import save_storyboard
+            save_storyboard(sb_path, shots, episode, append=True)
+
+            # 同步数据库
+            try:
+                from infra.database.pool import get_pool
+                from infra.database.shots import upsert as db_upsert_shot
+                pool = get_pool()
+                for shot in shots:
+                    sid = shot.get("shot_id", "")
+                    if sid:
+                        db_upsert_shot(pool, episode, sid, shot)
+            except Exception:
+                pass
+
+            result["shots"] = len(shots)
+
+    # ── 4. 异步下载图片 ──
+    if download_images and elements:
+        self.update_state(state="PROGRESS", meta={"step": "seko_import", "progress": 70, "message": "下载图片..."})
+        total = len(elements)
+        for idx, elem in enumerate(elements):
+            url = elem.get("elementUrl")
+            name = elem.get("elementName")
+            elem_type = elem.get("elementType", "")
+            if not url or not name:
+                continue
+
+            # 确定保存路径
+            if elem_type == "CHARACTER":
+                safe_name = "".join(c for c in name if c.isalnum() or c in ("-", "_")).strip()
+                if not safe_name:
+                    safe_name = f"char_{idx + 1:02d}"
+                img_dir = project_dir / "assets" / "characters" / safe_name
+            elif elem_type == "SCENE":
+                safe_name = "".join(c for c in name if c.isalnum() or c in ("-", "_")).strip()
+                if not safe_name:
+                    safe_name = f"scene_{idx + 1:02d}"
+                img_dir = project_dir / "assets" / "scenes" / safe_name
+            else:
+                img_dir = project_dir / "assets" / "seko"
+
+            img_dir.mkdir(parents=True, exist_ok=True)
+            img_path = img_dir / "cover.png"
+
+            progress = int(70 + (idx + 1) / total * 25)
+            self.update_state(state="PROGRESS", meta={
+                "step": "seko_import", "progress": progress,
+                "message": f"下载图片 [{idx + 1}/{total}] {name}...",
+            })
+
+            if _download_seko_image(url, str(img_path)):
+                result["images_downloaded"] += 1
+                # 更新 YAML 中的 reference_images
+                if elem_type == "CHARACTER":
+                    yaml_path = project_dir / "config" / "characters" / f"{safe_name}.yaml"
+                elif elem_type == "SCENE":
+                    yaml_path = project_dir / "config" / "scenes" / f"{safe_name}.yaml"
+                else:
+                    yaml_path = None
+
+                if yaml_path and yaml_path.exists():
+                    try:
+                        with open(yaml_path, encoding="utf-8") as f:
+                            data = yaml.safe_load(f) or {}
+                        entity_key = "character" if elem_type == "CHARACTER" else "scene"
+                        entity = data.get(entity_key, {})
+                        entity["reference_images"] = [f"/api/assets/{entity_type}/{safe_name}/cover.png"
+                                                      for entity_type in [("characters" if elem_type == "CHARACTER" else "scenes")]]
+                        data[entity_key] = entity
+                        with open(yaml_path, "w", encoding="utf-8") as f:
+                            yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+                    except Exception as e:
+                        logger.debug(f"更新 YAML reference_images 失败: {e}")
+            else:
+                result["images_failed"] += 1
+
+    self.update_state(state="PROGRESS", meta={"step": "seko_import", "progress": 100, "message": "导入完成"})
+    return {"status": "done", **result}

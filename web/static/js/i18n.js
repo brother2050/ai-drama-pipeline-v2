@@ -392,6 +392,14 @@ const I18N = {
   'seko.result_title': { zh: '📄 策划案结果', en: '📄 Proposal Result' },
   'seko.downloaded': { zh: '✅ 已下载 {n} 张图片', en: '✅ Downloaded {n} images' },
   'seko.task_added': { zh: '任务已添加到列表', en: 'Task added to list' },
+  'seko.import_btn': { zh: '📥 导入项目', en: '📥 Import to Project' },
+  'seko.import_confirm': { zh: '确认将策划案导入当前项目？', en: 'Import this proposal into the current project?' },
+  'seko.import_desc': { zh: '将导入角色、场景、分镜，并在后台下载图片', en: 'Imports characters, scenes, storyboard and downloads images in background' },
+  'seko.import_submitting': { zh: '正在提交导入任务...', en: 'Submitting import task...' },
+  'seko.import_submitted': { zh: '✅ 导入任务已提交', en: '✅ Import task submitted' },
+  'seko.import_done': { zh: '✅ 导入完成！', en: '✅ Import complete!' },
+  'seko.import_fail': { zh: '❌ 导入失败', en: '❌ Import failed' },
+  'seko.import_timeout': { zh: '⏰ 导入任务超时，请稍后查看结果', en: '⏰ Import task timed out, check results later' },
 };
 
 // 当前语言（默认中文）

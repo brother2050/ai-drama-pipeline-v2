@@ -10,6 +10,7 @@ __all__ = [
     "ProjectCreate", "ProjectSwitch", "ConfigUpdate",
     "StoryboardGenRequest", "CharacterGenRequest", "SceneGenRequest", "ChatEditRequest",
     "SekoProposalRequest", "SekoProposalStatusRequest", "SekoProposalModifyRequest",
+    "SekoImportRequest",
 ]
 
 
@@ -197,3 +198,13 @@ class SekoProposalModifyRequest(BaseModel):
     task_id: str = Field(..., min_length=1, description="原策划案任务 ID")
     prompt: str = Field(..., min_length=1, max_length=10000, description="修改指令")
     api_key: str = Field("", description="Seko API Key（可选）")
+
+
+class SekoImportRequest(BaseModel):
+    """Seko 策划案导入请求"""
+    proposal_data: dict = Field(..., description="Seko 策划案完整 JSON（含 steps + elements）")
+    episode: int = Field(1, ge=1, description="导入到第几集")
+    import_characters: bool = Field(True, description="是否导入角色")
+    import_scenes: bool = Field(True, description="是否导入场景")
+    import_storyboard: bool = Field(True, description="是否导入分镜")
+    download_images: bool = Field(True, description="是否下载角色/场景图片")

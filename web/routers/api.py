@@ -96,6 +96,7 @@ from web.schemas import (
     StoryboardGenRequest, CharacterGenRequest, SceneGenRequest,
     ChatEditRequest,
     SekoProposalRequest, SekoProposalStatusRequest, SekoProposalModifyRequest,
+    SekoImportRequest,
 )
 
 # ── 工具函数 ──
@@ -1297,3 +1298,20 @@ def seko_modify_proposal(req: SekoProposalModifyRequest):
         data = result.get("data", {})
         return {"status": "submitted", "task_id": data.get("taskId"), "raw": result}
     raise HTTPException(502, result.get("msg", "策划案修改失败"))
+
+
+@router.post("/seko/proposal/import")
+def seko_import_proposal(req: SekoImportRequest):
+    """导入 Seko 策划案到项目（异步，含图片下载）
+
+    解析 Seko 返回的策划案 JSON，将角色/场景/分镜异步导入当前项目，
+    并在后台下载关联图片，避免 HTTP 超时。
+    """
+    from pipeline.tasks import seko_import_task
+    cfg = _cfg_path()
+    return _submit_task(
+        seko_import_task, cfg,
+        req.proposal_data, req.episode,
+        req.import_characters, req.import_scenes,
+        req.import_storyboard, req.download_images,
+    )
