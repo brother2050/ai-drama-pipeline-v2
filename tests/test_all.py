@@ -554,7 +554,6 @@ def test_model_registry():
     assert "sd15" in reg.valid_image_backends()
     assert "animatediff" in reg.valid_video_backends()
     assert reg.get_image_workflow("sd15") == "01_first_frame_sd15.json"
-    assert reg.is_flux_backend("sd15") is False
     print("✅ 模型注册表正常")
 
 

@@ -19,9 +19,9 @@ __all__ = ["ModelRegistry"]
 def _builtin_defaults() -> dict:
     return {
         "image_backends": {
-            "sd15": {"workflow": "01_first_frame_sd15.json", "is_flux": False,
+            "sd15": {"workflow": "01_first_frame_sd15.json",
                      "default_params": {"width": 512, "height": 512, "steps": 20, "cfg_scale": 7.5}},
-            "flux": {"workflow": "01_first_frame_flux.json", "is_flux": True,
+            "flux": {"workflow": "01_first_frame_flux.json",
                      "default_params": {"width": 1024, "height": 576, "steps": 28, "cfg_scale": 3.5}},
         },
         "video_backends": {
@@ -95,9 +95,6 @@ class ModelRegistry:
 
     def get_video_defaults(self, backend: str) -> dict:
         return dict(self._data.get("video_backends", {}).get(backend, {}).get("default_params", {}))
-
-    def is_flux_backend(self, backend: str) -> bool:
-        return bool(self._data.get("image_backends", {}).get(backend, {}).get("is_flux", False))
 
     def get_sampler_node(self, backend: str) -> str:
         # 检查 image_backends 和 video_backends 两个字典

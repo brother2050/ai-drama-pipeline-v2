@@ -49,7 +49,6 @@ music_backends:
 image_backends:
   sd15:
     workflow: "01_first_frame_sd15.json"
-    is_flux: false
     default_params:
       width: 512
       height: 512
@@ -57,7 +56,6 @@ image_backends:
       cfg_scale: 7.5
   flux:
     workflow: "01_first_frame_flux.json"
-    is_flux: true
     default_params:
       width: 1024
       height: 576
@@ -65,7 +63,6 @@ image_backends:
       cfg_scale: 3.5
   cosmos:
     workflow: "cosmos_predict2_2B_t2i.json"
-    is_flux: true
     default_params:
       width: 1024
       height: 1024
