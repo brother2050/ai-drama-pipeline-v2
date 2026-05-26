@@ -97,13 +97,30 @@ class WorkflowBuilder:
         return {}
 
     def _apply_gpu(self, wf: dict, stage: str, gpu_cfg: dict) -> None:
-        """应用 GPU 适配参数到工作流"""
+        """应用生成参数到工作流（分辨率 + 步数）"""
         resolution = gpu_cfg.get("resolution")
-        if resolution and len(resolution) == 2:
-            for nid, node in wf.items():
-                if node.get("class_type") in ("EmptyLatentImage", "EmptySD3LatentImage"):
-                    node["inputs"]["width"] = resolution[0]
-                    node["inputs"]["height"] = resolution[1]
+        image_steps = gpu_cfg.get("image_steps")
+        video_frames = gpu_cfg.get("video_frames")
+
+        for nid, node in wf.items():
+            ct = node.get("class_type", "")
+            inp = node.get("inputs", {})
+
+            # 分辨率 → EmptyLatentImage
+            if ct in ("EmptyLatentImage", "EmptySD3LatentImage"):
+                if resolution and len(resolution) == 2:
+                    inp["width"] = resolution[0]
+                    inp["height"] = resolution[1]
+
+            # 步数 → KSampler（仅首帧）
+            if ct == "KSampler" and stage == "first_frame":
+                if image_steps:
+                    inp["steps"] = image_steps
+
+            # 视频帧数 → ADE_StandardStaticContextOptions.context_length
+            if ct == "ADE_StandardStaticContextOptions" and stage == "video":
+                if video_frames:
+                    inp["context_length"] = video_frames
 
     # ── 构建首帧工作流 ──────────────────────────────────────
 

@@ -84,13 +84,6 @@ class ModelRegistry:
     def get_video_sampler_node(self, backend: str) -> str:
         return self._data.get("video_backends", {}).get(backend, {}).get("sampler_node", "KSampler")
 
-    def get_gpu_profile(self, key: str) -> dict:
-        profiles = self._data.get("gpu_profiles", {})
-        return dict(profiles.get(key, profiles.get("t4", {})))
-
-    def get_all_gpu_profiles(self) -> dict[str, dict]:
-        return {k: dict(v) for k, v in self._data.get("gpu_profiles", {}).items()}
-
     def register_image_backend(self, name: str, workflow: str, params: dict, **kw):
         self._data.setdefault("image_backends", {})[name] = {
             "workflow": workflow, "default_params": params, **kw}
