@@ -23,6 +23,23 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["MimoVoiceDesign"]
 
+# 情绪标签 → 中文风格描述（用于 MiMo TTS user 消息）
+_EMOTION_STYLE_MAP = {
+    "happy": "开心愉悦的语气",
+    "sad": "悲伤低沉的语气",
+    "angry": "愤怒生气的语气",
+    "worried": "担忧焦虑的语气",
+    "surprised": "惊讶意外的语气",
+    "smug": "得意傲慢的语气",
+    "serious": "严肃认真的语气",
+    "calm": "平静从容的语气",
+    "determined": "坚定果断的语气",
+    "fearful": "害怕恐惧的语气",
+    "romantic": "温柔深情的语气",
+    "action": "紧张激烈的语气",
+    "neutral": "",
+}
+
 
 class MimoVoiceDesign:
     """MiMo VoiceDesign TTS 后端（云 API，免费）"""
@@ -58,6 +75,17 @@ class MimoVoiceDesign:
         voice_desc = voice_config.get("voice_description", "")
         voice_id = voice_config.get("voice_id", "")
 
+        # 情绪 → 中文风格描述
+        emotion_style = _EMOTION_STYLE_MAP.get(emotion, "")
+
+        # 组合风格：voice_description + 情绪
+        style_parts = []
+        if voice_desc:
+            style_parts.append(voice_desc)
+        if emotion_style:
+            style_parts.append(emotion_style)
+        combined_style = "，".join(style_parts) if style_parts else ""
+
         Path(output).parent.mkdir(parents=True, exist_ok=True)
 
         # 构建 messages（遵循官方文档格式）
@@ -65,8 +93,8 @@ class MimoVoiceDesign:
 
         # voicedesign 模型必须有 user 消息（风格描述）
         # 其他模型可选
-        if voice_desc:
-            messages.append({"role": "user", "content": voice_desc})
+        if combined_style:
+            messages.append({"role": "user", "content": combined_style})
         elif "voicedesign" in self.MODEL:
             # voicedesign 无风格时用默认描述
             messages.append({"role": "user", "content": "自然流畅的语音"})

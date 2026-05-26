@@ -24,6 +24,23 @@ from api.registry import BackendMeta, registry
 
 logger = logging.getLogger(__name__)
 
+# 情绪标签 → 中文风格描述
+_EMOTION_STYLE_MAP = {
+    "happy": "开心愉悦的语气",
+    "sad": "悲伤低沉的语气",
+    "angry": "愤怒生气的语气",
+    "worried": "担忧焦虑的语气",
+    "surprised": "惊讶意外的语气",
+    "smug": "得意傲慢的语气",
+    "serious": "严肃认真的语气",
+    "calm": "平静从容的语气",
+    "determined": "坚定果断的语气",
+    "fearful": "害怕恐惧的语气",
+    "romantic": "温柔深情的语气",
+    "action": "紧张激烈的语气",
+    "neutral": "",
+}
+
 
 class MimoVoiceClone:
     """MiMo VoiceClone TTS 后端（云 API）"""
@@ -66,6 +83,15 @@ class MimoVoiceClone:
         with open(ref_audio, "rb") as f:
             audio_b64 = base64.b64encode(f.read()).decode("ascii")
 
+        # 情绪 → 中文风格描述
+        emotion_style = _EMOTION_STYLE_MAP.get(emotion, "")
+
+        # 构建 messages
+        messages = []
+        if emotion_style:
+            messages.append({"role": "user", "content": emotion_style})
+        messages.append({"role": "assistant", "content": text})
+
         # 构建 audio 参数（根据模型选择不同格式）
         audio_params: dict = {"format": "wav"}
         if "voiceclone" in self.MODEL:
@@ -78,7 +104,7 @@ class MimoVoiceClone:
         payload = {
             "model": self.MODEL,
             "audio": audio_params,
-            "messages": [{"role": "assistant", "content": text}],
+            "messages": messages,
         }
 
         with httpx.Client(timeout=self._timeout) as client:
