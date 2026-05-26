@@ -54,10 +54,16 @@ class PgPool:
 
     @contextmanager
     def connection(self):
-        """安全连接上下文管理器 — connect 失败时不会 NameError"""
+        """安全连接上下文管理器 — 异常时自动 rollback，防止连接处于错误状态"""
         conn = self.connect()
         try:
             yield conn
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
         finally:
             self.release(conn)
 

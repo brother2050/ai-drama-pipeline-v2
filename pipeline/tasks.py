@@ -250,7 +250,10 @@ def _run_tts(config_path: str, episode: int, shot_id: str) -> dict:
     from engines.shot_manager import ShotManager
     sm = ShotManager(str(Path(cfg.project_dir) / "storyboard" / "episodes.csv"),
                      str(Path(cfg.project_dir) / "config"))
-    voice_config = sm.get_character(char_ids[0]).get("voice", {}) if char_ids else {}
+    char_data = sm.get_character(char_ids[0]) if char_ids else {}
+    if char_ids and not char_data:
+        logger.warning(f"[{shot_id}] 角色 {char_ids[0]} 不存在，使用默认声音")
+    voice_config = char_data.get("voice", {})
     emotion = shot.get("emotion", "neutral")
     language = shot.get("language", "zh")
 
@@ -455,7 +458,7 @@ def _iterate_shots(self, config_path: str, episode: int, shots: list[dict], prog
             "progress": int(progress_base + i / total * progress_range), "current": i + 1, "total": total,
             "message": f"[{i+1}/{total}] 镜头 {shot_id}"})
         try:
-            results.append(shot_task.apply(args=[config_path, episode, shot]).get())
+            results.append(shot_task.apply(args=[config_path, episode, shot]).get(timeout=1800))
         except Exception as e:
             results.append({"shot_id": shot_id, "error": str(e)})
     return results

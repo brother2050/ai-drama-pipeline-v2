@@ -402,8 +402,8 @@ def _postprocess_shots(shots: list[dict], episode: int) -> list[dict]:
         # 确保 shot_id
         if not shot.get("shot_id"):
             shot["shot_id"] = f"{i+1:03d}"
-        # 确保 episode
-        shot["episode"] = episode
+        # 确保 episode（统一为字符串，与 CSV 读取行为一致）
+        shot["episode"] = str(episode)
         # 限制 duration 范围
         try:
             d = int(shot.get("duration", 4))
