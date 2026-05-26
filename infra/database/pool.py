@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from pathlib import Path
 from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)

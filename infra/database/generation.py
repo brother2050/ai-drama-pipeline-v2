@@ -1,8 +1,5 @@
 """生成状态数据库操作 — PostgreSQL"""
 from __future__ import annotations
-import json
-import time
-from typing import Any
 
 
 def _row_to_dict(row) -> dict:

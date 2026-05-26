@@ -1,7 +1,6 @@
 """角色数据库操作 — PostgreSQL"""
 from __future__ import annotations
 import json
-from typing import Any
 
 
 def _row_to_dict(row) -> dict:

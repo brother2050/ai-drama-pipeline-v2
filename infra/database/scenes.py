@@ -1,6 +1,5 @@
 """场景数据库操作 — PostgreSQL"""
 from __future__ import annotations
-import json
 
 
 def _row_to_dict(row) -> dict:

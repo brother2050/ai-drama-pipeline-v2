@@ -1,6 +1,6 @@
 """模板配乐 — ffmpeg 生成简单 BGM（开箱即用）"""
 from __future__ import annotations
-import logging, os, subprocess, shutil
+import logging, subprocess, shutil
 from pathlib import Path
 from api.registry import BackendMeta, registry
 

@@ -12,7 +12,6 @@ import time
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
