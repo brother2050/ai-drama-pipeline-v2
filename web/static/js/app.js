@@ -1310,17 +1310,31 @@ async function sekoModify(idx) {
 async function sekoImport(idx) {
   const task = _sekoTasks[idx];
   if (!task?.result) return;
-  // 确认导入
-  const ok = await modalConfirm(
-    (t('seko.import_confirm') || '确认将策划案导入当前项目？') + '\n\n' +
-    (t('seko.import_desc') || '将导入角色、场景、分镜，并在后台下载图片。')
+
+  // 从策划案中提取标题作为默认项目名
+  const outlineStep = task.result.steps?.find(s => s.step === 'outline');
+  const outlineText = outlineStep?.stepOutput || task.prompt || '';
+  const titleMatch = outlineText.match(/剧[本名][：:]\s*(.+)/);
+  const defaultName = titleMatch ? titleMatch[1].trim().slice(0, 30) : '';
+
+  // 选择导入方式
+  const importMode = await modalPrompt(
+    (t('seko.import_mode_title') || '导入方式') + '\n\n' +
+    (t('seko.import_mode_desc') || '输入新项目名创建项目并导入，留空则导入到当前项目'),
+    defaultName,
+    { type: 'text', placeholder: t('seko.import_mode_ph') || '留空 = 导入当前项目' }
   );
-  if (!ok) return;
+  if (importMode === null) return; // 取消
+
+  const projectName = importMode.trim();
+
   // 防重入：禁用按钮
   const btn = document.querySelector(`#seko-task-${idx} .btn-primary`);
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 导入中...'; }
   try {
-    toast(t('seko.import_submitting') || '正在提交导入任务...');
+    toast(projectName
+      ? (t('seko.import_creating') || '正在创建项目并导入...')
+      : (t('seko.import_submitting') || '正在提交导入任务...'));
     const r = await api('/seko/proposal/import', {
       method: 'POST',
       body: {
@@ -1330,12 +1344,12 @@ async function sekoImport(idx) {
         import_scenes: true,
         import_storyboard: true,
         download_images: true,
+        project_name: projectName,
       }
     });
-    // 轮询任务状态
     const taskId = r.task_id;
     toast((t('seko.import_submitted') || '导入任务已提交') + ` (${taskId})`);
-    await _pollSekoImportTask(taskId);
+    await _pollSekoImportTask(taskId, projectName);
   } catch (e) {
     toast((t('seko.import_fail') || '导入失败') + `: ${e.message}`, 'error');
   } finally {
@@ -1343,7 +1357,7 @@ async function sekoImport(idx) {
   }
 }
 
-async function _pollSekoImportTask(taskId) {
+async function _pollSekoImportTask(taskId, projectName) {
   const maxWait = 960; // 最长等 16 分钟（对齐 Celery soft_time_limit 900s + 余量）
   const interval = 3;
   let waited = 0;
@@ -1360,7 +1374,13 @@ async function _pollSekoImportTask(taskId) {
           res.shots ? `分镜 ${res.shots}` : '',
           res.images_downloaded ? `图片 ${res.images_downloaded}` : '',
         ].filter(Boolean).join('、');
-        toast((t('seko.import_done') || '导入完成！') + (msg ? ` (${msg})` : ''));
+        let doneMsg = (t('seko.import_done') || '导入完成！') + (msg ? ` (${msg})` : '');
+        if (projectName) {
+          doneMsg += ` | ${t('seko.import_switch_hint') || '已创建项目'}: ${projectName}`;
+          // 刷新项目列表
+          try { loadProjects(); } catch {}
+        }
+        toast(doneMsg);
         return;
       } else if (info.status === 'failed') {
         toast((t('seko.import_fail') || '导入失败') + `: ${info.error || ''}`, 'error');

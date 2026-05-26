@@ -208,3 +208,4 @@ class SekoImportRequest(BaseModel):
     import_scenes: bool = Field(True, description="是否导入场景")
     import_storyboard: bool = Field(True, description="是否导入分镜")
     download_images: bool = Field(True, description="是否下载角色/场景图片")
+    project_name: str = Field("", max_length=100, description="创建新项目并导入（留空则导入当前项目）")

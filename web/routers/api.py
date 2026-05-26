@@ -1304,10 +1304,23 @@ def seko_modify_proposal(req: SekoProposalModifyRequest):
 def seko_import_proposal(req: SekoImportRequest):
     """导入 Seko 策划案到项目（异步，含图片下载）
 
-    解析 Seko 返回的策划案 JSON，将角色/场景/分镜异步导入当前项目，
+    解析 Seko 返回的策划案 JSON，将角色/场景/分镜异步导入项目，
     并在后台下载关联图片，避免 HTTP 超时。
+
+    若指定 project_name，则先创建新项目再导入。
     """
     from pipeline.tasks import seko_import_task
+    from scripts.project_mgr import create_project
+    from rich.console import Console
+
+    # 如果指定了项目名，先创建新项目
+    if req.project_name:
+        projects_dir = ROOT / "projects"
+        project_dir = projects_dir / req.project_name
+        if project_dir.exists():
+            raise HTTPException(409, f"项目 '{req.project_name}' 已存在")
+        create_project(req.project_name, ROOT, Console())
+
     cfg = _cfg_path()
     return _submit_task(
         seko_import_task, cfg,
