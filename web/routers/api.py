@@ -552,7 +552,7 @@ def get_system_config():
     return _redact_sensitive(cfg)
 
 
-_SENSITIVE_KEYS = {"api_key", "api_secret", "password", "token", "dsn", "secret", "api_key", "access_key", "private_key"}
+_SENSITIVE_KEYS = {"api_key", "api_secret", "password", "token", "dsn", "secret", "access_key", "private_key"}
 
 
 def _redact_sensitive(d: dict) -> dict:
