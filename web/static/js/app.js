@@ -1261,7 +1261,7 @@ async function loadSettings() {
     el.innerHTML = `
       <div class="card"><h2>🌐 语言 / Language</h2><div class="form-row"><label>Language</label>
         <select id="cfg-lang" onchange="setLang(this.value);loadSettings()"><option value="zh" ${lang === 'zh' ? 'selected' : ''}>中文</option><option value="en" ${lang === 'en' ? 'selected' : ''}>English</option></select></div></div>
-      <div class="card"><h2>💻 ${t('set.env')}</h2><div class="info-grid"><div><span class="dim">${t('set.os')}:</span> ${env.os}</div><div><span class="dim">${t('set.python')}:</span> ${env.python}</div><div><span class="dim">${t('set.gpu')}:</span> ${env.gpu.available ? env.gpu.name + ' (' + env.gpu.vram_mb + 'MB)' : t('set.gpu_unavailable')}</div></div></div>
+      <div class="card"><h2>💻 ${t('set.env')}</h2><div class="info-grid"><div><span class="dim">${t('set.os')}:</span> ${env.os}</div><div><span class="dim">${t('set.python')}:</span> ${env.python}</div></div></div>
       <div class="card"><h2>${t('set.presets')}</h2>
         <div class="preset-btns">
           <button class="preset-btn" onclick="applyPreset('local_comfyui')">${t('set.preset_local')}</button>
