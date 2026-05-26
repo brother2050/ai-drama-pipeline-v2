@@ -74,13 +74,13 @@ class Config:
     DEFAULTS: dict[str, Any] = {
         "project": {"episodes": 1, "fps": 24,
                      "style": "cinematic", "genre": "urban"},
-        "comfyui": {"url": "http://127.0.0.1:8188", "timeout": 300, "api_key": ""},
+        "comfyui": {"url": "http://127.0.0.1:8188", "timeout": 900, "api_key": ""},
         "models": {"tts_backend": "mimo-voicedesign", "lip_sync_backend": "musetalk",
                    "music_backend": "template", "image_backend": "sd15", "video_backend": "animatediff"},
         "llm": {"enabled": False, "backend": "openai", "base_url": "https://api.siliconflow.cn",
                 "model": "Qwen/Qwen2.5-7B-Instruct", "api_key": ""},
         "server": {"port": 8888, "host": "0.0.0.0", "cors_origin": "*"},
-        "timeouts": {"comfyui": 300, "tts": 60, "lipsync": 120, "llm": 300, "music": 120},
+        "timeouts": {"comfyui": 900, "tts": 60, "lipsync": 120, "llm": 300, "music": 120},
     }
 
     # 必填字段校验规则

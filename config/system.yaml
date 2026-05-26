@@ -1,6 +1,6 @@
 comfyui:
   url: http://127.0.0.1:8188
-  timeout: 300
+  timeout: 900
   api_key: ''
 models:
   image_backend: sd15
@@ -44,7 +44,7 @@ post_production:
   bgm_volume: 0.15
   subtitle_platform: douyin
 timeouts:
-  comfyui: 300
+  comfyui: 900
   tts: 60
   lipsync: 120
   llm: 300
