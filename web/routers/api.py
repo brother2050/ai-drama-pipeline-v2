@@ -247,6 +247,22 @@ def list_tools():
     return {"tools": _collect_tools(cfg)}
 
 
+@router.get("/backends")
+def list_backends():
+    """列出所有可用后端（从模型注册表读取）"""
+    from flow.model_registry import ModelRegistry
+    cfg_path = _cfg_path()
+    reg = ModelRegistry(cfg_path)
+    return {
+        "tts": reg.get_tts_backends(),
+        "lipsync": reg.get_lipsync_backends(),
+        "llm": reg.get_llm_backends(),
+        "music": reg.get_music_backends(),
+        "image": {k: {"workflow": v.get("workflow", "")} for k, v in reg._data.get("image_backends", {}).items()},
+        "video": {k: {"workflow": v.get("workflow", "")} for k, v in reg._data.get("video_backends", {}).items()},
+    }
+
+
 @router.get("/tools/{name}")
 def check_tool(name: str):
     """检测单个工具状态"""

@@ -3,6 +3,49 @@
 # 修改此文件即可切换模型，无需改代码
 # ============================================================
 
+tts_backends:
+  mimo-voicedesign:
+    description: "MiMo VoiceDesign（云API，免费，自然语言描述生成声音）"
+    requires_api_key: true
+    api_key_env: "MIMO_API_KEY"
+  mimo-voiceclone:
+    description: "MiMo VoiceClone（云API，参考音频克隆声音）"
+    requires_api_key: true
+    api_key_env: "MIMO_API_KEY"
+  gpt-sovits:
+    description: "GPT-SoVITS（本地部署，开源）"
+    requires_api_key: false
+  cosyvoice:
+    description: "CosyVoice（本地部署，多语言）"
+    requires_api_key: false
+  fish-speech:
+    description: "Fish-Speech（本地部署，轻量）"
+    requires_api_key: false
+
+lipsync_backends:
+  musetalk:
+    description: "MuseTalk（本地部署，效果好）"
+    requires_api_key: false
+  sadtalker:
+    description: "SadTalker（本地部署）"
+    requires_api_key: false
+  wav2lip:
+    description: "Wav2Lip（本地部署，轻量）"
+    requires_api_key: false
+
+llm_backends:
+  openai:
+    description: "OpenAI 兼容 API（SiliconFlow / Zhipu / ...）"
+    requires_api_key: true
+  ollama:
+    description: "Ollama（本地部署）"
+    requires_api_key: false
+
+music_backends:
+  template:
+    description: "ffmpeg 模板配乐（开箱即用）"
+    requires_api_key: false
+
 image_backends:
   sd15:
     workflow: "01_first_frame_sd15.json"

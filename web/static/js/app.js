@@ -1567,12 +1567,16 @@ function _resolveBackendUrl(cfg, prefix) {
 async function loadSettings() {
   const el = document.getElementById('page-settings');
   try {
-    const [sysCfg, env, td] = await Promise.all([api('/system/config'), api('/system/env'), api('/tools')]);
+    const [sysCfg, env, td, backends] = await Promise.all([api('/system/config'), api('/system/env'), api('/tools'), api('/backends')]);
     _cache.set('sysconfig', { data: sysCfg, ts: Date.now() });
     const tools = td.tools || {}, lang = localStorage.getItem('drama_lang') || 'zh';
     const tts = _resolveBackendUrl(sysCfg, 'tts'), ls = _resolveBackendUrl(sysCfg, 'lip_sync');
     const llm = sysCfg.llm || {};
     const training = sysCfg.training || {};
+    // 从模型注册表动态获取后端列表
+    const ttsBackends = Object.keys(backends.tts || {});
+    const lsBackends = Object.keys(backends.lipsync || {});
+    const llmBackends = Object.keys(backends.llm || {});
     el.innerHTML = `
       <div class="card"><h2>🌐 语言 / Language</h2><div class="form-row"><label>Language</label>
         <select id="cfg-lang" onchange="setLang(this.value);loadSettings()"><option value="zh" ${lang === 'zh' ? 'selected' : ''}>中文</option><option value="en" ${lang === 'en' ? 'selected' : ''}>English</option></select></div></div>
@@ -1585,8 +1589,8 @@ async function loadSettings() {
         </div>
       </div>
       <div class="card"><h2>🔧 系统配置</h2>
-        ${_backendSection(t('set.tts'), '🎤', 'tts', ['mimo-voicedesign', 'mimo-voiceclone', 'gpt-sovits', 'cosyvoice', 'fish-speech'], tts.backend, tts.url, tools.tts?.available, tools.tts?.reason, { showApiKey: true, apiKey: sysCfg.models?.[tts.backend.replace(/-/g, '_')]?.api_key || '', showTest: true })}
-        ${_backendSection(t('set.lipsync'), '👄', 'lipsync', ['musetalk', 'sadtalker', 'wav2lip'], ls.backend, ls.url, tools.lipsync?.available, tools.lipsync?.reason)}
+        ${_backendSection(t('set.tts'), '🎤', 'tts', ttsBackends, tts.backend, tts.url, tools.tts?.available, tools.tts?.reason, { showApiKey: true, apiKey: sysCfg.models?.[tts.backend.replace(/-/g, '_')]?.api_key || '', showTest: true })}
+        ${_backendSection(t('set.lipsync'), '👄', 'lipsync', lsBackends, ls.backend, ls.url, tools.lipsync?.available, tools.lipsync?.reason)}
         <div class="config-section"><h3>🎨 ComfyUI</h3>
           <div class="form-row"><label>${t('set.address')}</label><input id="cfg-comfyui" value="${esc(sysCfg.comfyui?.url || '')}"></div>
           <div class="form-row"><label>API Key</label><input id="cfg-comfyui-key" value="${esc(sysCfg.comfyui?.api_key || '')}" placeholder="${t('set.optional')}"></div>
@@ -1595,7 +1599,7 @@ async function loadSettings() {
             <span id="test-result-comfyui" class="dim" style="font-size:0.8rem;margin-left:0.3rem"></span></div></div>
         <div class="config-section"><h3>🧠 ${t('set.llm')}</h3>
           <div class="form-row"><label>${t('set.llm_enabled')}</label><select id="cfg-llm-enabled"><option value="false" ${!llm.enabled ? 'selected' : ''}>${lang==='zh'?'关闭':'Off'}</option><option value="true" ${llm.enabled ? 'selected' : ''}>${lang==='zh'?'开启':'On'}</option></select></div>
-          <div class="form-row"><label>${t('set.backend')}</label><select id="cfg-llm-backend"><option value="openai" ${llm.backend==='openai'?'selected':''}>OpenAI 兼容 (SiliconFlow / Zhipu / ...)</option><option value="ollama" ${llm.backend==='ollama'?'selected':''}>Ollama</option></select></div>
+          <div class="form-row"><label>${t('set.backend')}</label><select id="cfg-llm-backend">${llmBackends.map(b => `<option value="${b}" ${llm.backend===b?'selected':''}>${b}</option>`).join('')}</select></div>
           <div class="form-row"><label>API URL</label><input id="cfg-llm-url" value="${esc(llm.base_url || '')}"></div>
           <div class="form-row"><label>${t('set.llm_model')}</label><input id="cfg-llm-model" value="${esc(llm.model || '')}"></div>
           <div class="form-row"><label>API Key</label><div style="display:flex;gap:.3rem;flex:1"><input id="cfg-llm-key" type="password" value="${esc(llm.api_key || '')}" style="flex:1"><button class="btn btn-xs btn-outline" onclick="_toggleKeyVis()" id="cfg-llm-key-toggle">👁</button></div></div>
