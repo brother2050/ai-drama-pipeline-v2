@@ -65,12 +65,46 @@ sudo apt install postgresql && sudo systemctl start postgresql
 
 # macOS
 brew install redis && brew services start redis
-brew install postgresql && brew services start postgresql
+brew install postgresql@16 && brew services start postgresql@16
 
 # Docker
 docker run -d -p 6379:6379 redis:7-alpine
 docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=drama123 -e POSTGRES_USER=drama -e POSTGRES_DB=ai_drama postgres:16-alpine
 ```
+
+#### 初始化数据库（Ubuntu / macOS 手动安装）
+
+安装完成后，创建用户和数据库:
+
+```bash
+# 1. 创建 drama 用户（若尚不存在）
+sudo -u postgres psql -c "CREATE USER drama WITH PASSWORD 'drama123';"
+
+# 2. 创建 ai_drama 数据库（属主为 drama）
+sudo -u postgres psql -c "CREATE DATABASE ai_drama OWNER drama;"
+
+# 3. 授予 drama 用户建表权限
+sudo -u postgres psql -c "GRANT ALL ON DATABASE ai_drama TO drama;"
+```
+
+> **macOS 注意**：Homebrew 安装后默认用户为系统用户名。若 `sudo -u postgres` 无效，可先用系统用户连接创建：
+> ```bash
+> psql -h 127.0.0.1 -U $(whoami) -d postgres -c "CREATE USER drama WITH PASSWORD 'drama123' SUPERUSER;"
+> psql -h 127.0.0.1 -U $(whoami) -d postgres -c "CREATE DATABASE ai_drama OWNER drama;"
+> ```
+
+> **PostgreSQL 启动失败？（macOS 僵尸锁文件）**
+>
+> 若 `brew services` 显示 `error`，日志提示 `lock file "postmaster.pid" already exists`：
+> ```bash
+> # 检查是否有残留 postgres 进程
+> ps aux | grep postgres | grep -v grep
+> # 无运行进程则可安全删除锁文件
+> rm /usr/local/var/postgresql@16/postmaster.pid
+> # Apple Silicon 路径可能是 /opt/homebrew/var/postgresql@16/postmaster.pid
+> # 重启服务
+> brew services restart postgresql@16
+> ```
 
 ### 4. 配置
 
