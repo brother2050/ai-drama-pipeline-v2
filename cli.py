@@ -644,25 +644,9 @@ def _load_yaml_entities(directory: Path, key: str) -> list[dict]:
 
 
 def _save_storyboard_csv(path: Path, shots: list[dict], episode: int, append: bool):
-    """保存分镜到 CSV"""
-    import csv
-    fieldnames = ["episode", "shot_id", "scene", "characters", "action", "dialogue",
-                  "camera", "shot_type", "duration", "outfit", "emotion",
-                  "action_en", "dialogue_en"]
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    existing = []
-    if append and path.exists():
-        with open(path, encoding="utf-8") as f:
-            for row in csv.DictReader(f):
-                if int(row.get("episode", 0) or 0) != episode:
-                    existing.append(row)
-
-    with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(existing + shots)
+    """保存分镜到 CSV（委托给 engines.storyboard）"""
+    from engines.storyboard import save_storyboard
+    save_storyboard(path, shots, episode, append)
 
 
 def _print_shots_preview(shots: list[dict]):

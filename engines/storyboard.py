@@ -1,4 +1,4 @@
-"""分镜表读取器 — CSV 解析 + 数据验证"""
+"""分镜表读取器 — CSV 解析 + 数据验证 + 保存"""
 from __future__ import annotations
 import csv
 import logging
@@ -7,9 +7,15 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["load_storyboard", "validate_shot", "get_dominant_emotion"]
+__all__ = ["load_storyboard", "validate_shot", "get_dominant_emotion", "save_storyboard"]
 
 REQUIRED_FIELDS = ["episode", "shot_id", "scene", "characters", "action", "dialogue"]
+
+STORYBOARD_FIELDNAMES = [
+    "episode", "shot_id", "scene", "characters", "action", "dialogue",
+    "camera", "shot_type", "duration", "outfit", "emotion",
+    "action_en", "dialogue_en",
+]
 
 
 def load_storyboard(path: str, episode: int | None = None) -> list[dict[str, Any]]:
@@ -34,6 +40,34 @@ def load_storyboard(path: str, episode: int | None = None) -> list[dict[str, Any
     shots.sort(key=lambda s: s.get("shot_id", "000"))
     logger.info(f"加载分镜: {len(shots)} 个镜头" + (f" (第{episode}集)" if episode else ""))
     return shots
+
+
+def save_storyboard(path: Path, shots: list[dict], episode: int, append: bool = False) -> None:
+    """保存分镜到 CSV
+
+    Args:
+        path: CSV 文件路径
+        shots: 要保存的镜头列表
+        episode: 集数
+        append: True 时保留其他集的镜头，False 时替换当前集
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    existing = []
+    if append and path.exists():
+        with open(path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                try:
+                    ep = int(row.get("episode", 0) or 0)
+                except (ValueError, TypeError):
+                    ep = 0
+                if ep != episode:
+                    existing.append(row)
+
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=STORYBOARD_FIELDNAMES, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(existing + shots)
 
 
 def validate_shot(shot: dict) -> list[str]:

@@ -185,8 +185,7 @@ class WorkflowBuilder:
             if chars_without_lora:
                 wf = self._inject_character_refs(wf, chars_without_lora, ip_config)
 
-        # 注入风格 LoRA
-        genre = self.config.get("project", {}).get("genre", "")
+        # 注入风格 LoRA（复用上方已读取的 genre）
         if genre:
             style_lora = self._find_style_lora(genre)
             if style_lora:
