@@ -63,6 +63,14 @@ image_backends:
       height: 576
       steps: 28
       cfg_scale: 3.5
+  cosmos:
+    workflow: "cosmos_predict2_2B_t2i.json"
+    is_flux: true
+    default_params:
+      width: 1024
+      height: 1024
+      steps: 35
+      cfg_scale: 4
 
 video_backends:
   animatediff:
