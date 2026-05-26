@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import shutil
 import sys
 from pathlib import Path
 
@@ -97,7 +98,6 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
     final_out = out_dir / f"episode_{episode:02d}_final.mp4"
     final_copied = False
     try:
-        import shutil
         shutil.copy2(str(concat_out), str(final_out))
         logger.info(f"最终输出: {final_out}")
         final_copied = True

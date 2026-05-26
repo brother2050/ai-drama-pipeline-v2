@@ -60,10 +60,6 @@ def run_portraits(config_path: str):
 
         # 构建 prompt
         appearance = char.get("appearance", "")
-        outfits = char.get("outfits", {})
-        outfit_desc = list(outfits.values())[0] if outfits else ""
-        prompt = f"portrait photo, {appearance}, {outfit_desc}, high quality, detailed face, 4k"
-
         if cont:
             try:
                 comfyui = cont.get("image")
@@ -74,7 +70,7 @@ def run_portraits(config_path: str):
                 wb.load_workflows()
                 fake_shot = {"characters": char_id, "emotion": "neutral",
                              "shot_type": "特写", "camera": "固定"}
-                prompt, wf = wb.build_first_frame(fake_shot, character_desc=appearance)
+                _, wf = wb.build_first_frame(fake_shot, character_desc=appearance)
                 if wf:
                     files = comfyui.generate(wf, str(portrait_dir))
                     if files:

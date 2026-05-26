@@ -656,7 +656,7 @@ def _save_storyboard_csv(path: Path, shots: list[dict], episode: int, append: bo
     if append and path.exists():
         with open(path, encoding="utf-8") as f:
             for row in csv.DictReader(f):
-                if int(row.get("episode", 0)) != episode:
+                if int(row.get("episode", 0) or 0) != episode:
                     existing.append(row)
 
     with open(path, "w", newline="", encoding="utf-8") as f:

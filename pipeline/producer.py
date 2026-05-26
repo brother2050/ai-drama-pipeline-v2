@@ -89,7 +89,6 @@ def run_produce(config_path: str, episode: int):
 def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path):
     """生产单个镜头"""
     from engines.prompt import translate_to_english
-    from engines.camera import normalize_camera, normalize_shot_type
 
     char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
 

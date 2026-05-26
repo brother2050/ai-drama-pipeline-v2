@@ -89,7 +89,6 @@ def run_preview(config_path: str, episode: int, level: str = "draft"):
 def _process_shot(shot: dict, sm, container, cfg, shot_out: Path, preset: dict):
     """处理单个镜头"""
     from engines.prompt import build_prompt, translate_to_english
-    from engines.camera import normalize_camera, normalize_shot_type
 
     shot_id = shot.get("shot_id", "001")
     char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]

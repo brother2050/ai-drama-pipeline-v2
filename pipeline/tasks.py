@@ -472,7 +472,7 @@ def _run_subtitle(config_path: str, episode: int) -> dict:
     if not sb.exists():
         return {"error": "分镜表不存在"}
     with open(sb, encoding="utf-8") as f:
-        shots = [dict(r) for r in csv.DictReader(f) if int(r.get("episode", 0)) == episode]
+        shots = [dict(r) for r in csv.DictReader(f) if _safe_int(r.get("episode", 0)) == episode]
     if not shots:
         return {"error": f"第{episode}集没有镜头"}
     out_dir = Path(cfg.project_dir) / "output" / f"e{episode:02d}"

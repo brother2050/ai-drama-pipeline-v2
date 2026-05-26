@@ -1,7 +1,6 @@
 """Prompt 工程引擎 — 中文→英文翻译 + ComfyUI Prompt 构建"""
 from __future__ import annotations
 import logging
-from typing import Any
 
 logger = logging.getLogger(__name__)
 

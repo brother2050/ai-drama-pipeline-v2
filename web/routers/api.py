@@ -181,10 +181,16 @@ def _submit_task(task, *args, **kwargs) -> dict:
 def system_status():
     """全量服务状态"""
     cfg = _merged_cfg()
+    tools = _collect_tools(cfg)
+    return {"version": "2.0.0", "tools": tools}
+
+
+def _collect_tools(cfg: dict) -> dict:
+    """收集所有工具状态"""
     tools = {}
     for name in ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg"]:
         tools[name] = _check_tool(name, cfg)
-    return {"version": "2.0.0", "tools": tools}
+    return tools
 
 
 @router.get("/system/env")
@@ -206,10 +212,7 @@ def system_env():
 def list_tools():
     """列出所有工具及其可用状态"""
     cfg = _merged_cfg()
-    tools = {}
-    for name in ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg"]:
-        tools[name] = _check_tool(name, cfg)
-    return {"tools": tools}
+    return {"tools": _collect_tools(cfg)}
 
 
 @router.get("/tools/{name}")
@@ -764,7 +767,7 @@ def get_storyboard(episode: int):
     shots = []
     with open(sb_path, encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            if int(row.get("episode", 0)) == episode:
+            if int(row.get("episode", 0) or 0) == episode:
                 shots.append(row)
     return {"episode": episode, "shots": shots}
 
@@ -798,7 +801,7 @@ def save_storyboard(episode: int, data: dict):
             if sb_path.exists():
                 with open(sb_path, encoding="utf-8") as f:
                     for row in csv.DictReader(f):
-                        if int(row.get("episode", 0)) != episode:
+                        if int(row.get("episode", 0) or 0) != episode:
                             existing.append(row)
             with open(sb_path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
@@ -959,7 +962,7 @@ def _save_storyboard_for_api(path: Path, shots: list[dict], episode: int, append
     if append and path.exists():
         with open(path, encoding="utf-8") as f:
             for row in csv.DictReader(f):
-                if int(row.get("episode", 0)) != episode:
+                if int(row.get("episode", 0) or 0) != episode:
                     existing.append(row)
 
     with open(path, "w", newline="", encoding="utf-8") as f:
