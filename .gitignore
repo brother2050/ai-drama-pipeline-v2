@@ -16,3 +16,5 @@ projects/*
 !projects/default/
 
 .vscode/
+# 测试产物
+test_tts*.wav
