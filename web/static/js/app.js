@@ -1312,12 +1312,14 @@ async function saveCfg() {
     sys.models = sys.models || {};
     sys.models.tts_backend = ttsBackend;
     const ttsKey = ttsBackend.replace(/-/g, '_');
-    sys.models[ttsKey] = { api_url: $val('cfg-tts-url') };
+    const ttsUrl = $val('cfg-tts-url');
+    if (ttsUrl) sys.models[ttsKey] = { api_url: ttsUrl };
     // LipSync
     const lsBackend = $val('cfg-lipsync');
     sys.models.lip_sync_backend = lsBackend;
     const lsKey = lsBackend.replace(/-/g, '_');
-    sys.models[lsKey] = { api_url: $val('cfg-lipsync-url') };
+    const lsUrl = $val('cfg-lipsync-url');
+    if (lsUrl) sys.models[lsKey] = { api_url: lsUrl };
     // ComfyUI
     sys.comfyui = { url: $val('cfg-comfyui'), api_key: $val('cfg-comfyui-key') };
     // LLM
