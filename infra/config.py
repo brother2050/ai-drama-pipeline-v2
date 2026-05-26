@@ -231,6 +231,11 @@ class Config:
             self._reloading = False
 
     def _do_reload(self) -> None:
+        # 清除 load_config 的 mtime 缓存，强制重新读取文件
+        for p in (getattr(Config, 'SYSTEM_CONFIG', None), self._path):
+            if p:
+                abspath = str(Path(p).resolve())
+                _cache.pop(abspath, None)
         self._data = self._merge(self._path)
         self._data["_project_dir"] = self._project_dir
         self._warnings = []
