@@ -1205,22 +1205,22 @@ async function loadSeko() {
     sekoAvailable = tools.tools?.seko?.available || false;
   } catch {}
 
-  const taskRows = _sekoTasks.length ? _sekoTasks.map((t, i) => `
+  const taskRows = _sekoTasks.length ? _sekoTasks.map((task, i) => `
     <div class="card" style="margin-bottom:.5rem" id="seko-task-${i}">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
         <div>
-          <span class="dim" style="font-size:.8rem">${t.task_id}</span>
-          <span style="margin-left:.5rem">${esc(t.prompt.slice(0, 60))}${t.prompt.length > 60 ? '...' : ''}</span>
+          <span class="dim" style="font-size:.8rem">${task.task_id}</span>
+          <span style="margin-left:.5rem">${esc(task.prompt.slice(0, 60))}${task.prompt.length > 60 ? '...' : ''}</span>
         </div>
         <div style="display:flex;gap:.3rem;align-items:center">
-          <span class="status-dot ${t.status === 'OK' ? 'ok' : t.status === 'FAIL' ? 'err' : ''}"></span>
-          <span>${t('seko.status_' + (t.status || 'RUNNING'))}</span>
+          <span class="status-dot ${task.status === 'OK' ? 'ok' : task.status === 'FAIL' ? 'err' : ''}"></span>
+          <span>${t('seko.status_' + (task.status || 'RUNNING'))}</span>
           <button class="btn btn-xs btn-outline" onclick="sekoCheckStatus(${i})">${t('seko.check_btn')}</button>
-          ${t.status === 'OK' ? `<button class="btn btn-xs btn-outline" onclick="sekoDownload(${i})">${t('seko.download_btn')}</button>` : ''}
+          ${task.status === 'OK' ? `<button class="btn btn-xs btn-outline" onclick="sekoDownload(${i})">${t('seko.download_btn')}</button>` : ''}
           <button class="btn btn-xs btn-outline" onclick="sekoModify(${i})">${t('seko.modify_btn')}</button>
         </div>
       </div>
-      ${t.result ? `<details style="margin-top:.5rem"><summary>${t('seko.result_title')}</summary><pre style="max-height:400px;overflow:auto;font-size:.8rem;background:var(--bg-secondary,#f5f5f5);padding:.5rem;border-radius:4px">${esc(JSON.stringify(t.result, null, 2))}</pre></details>` : ''}
+      ${task.result ? `<details style="margin-top:.5rem"><summary>${t('seko.result_title')}</summary><pre style="max-height:400px;overflow:auto;font-size:.8rem;background:var(--bg-secondary,#f5f5f5);padding:.5rem;border-radius:4px">${esc(JSON.stringify(task.result, null, 2))}</pre></details>` : ''}
     </div>
   `).join('') : `<div class="card"><p style="color:var(--text-dim,#888)">${t('seko.no_tasks')}</p></div>`;
 
@@ -1286,7 +1286,7 @@ async function sekoDownload(idx) {
   try {
     const r = await api('/seko/proposal/status', {
       method: 'POST',
-      body: { task_id: task.task_id, download_dir: './projects/default/assets' }
+      body: { task_id: task.task_id, download_dir: '__project_assets__' }
     });
     const count = r.downloaded?.length || 0;
     toast(t('seko.downloaded', { n: count }));
@@ -1296,7 +1296,7 @@ async function sekoDownload(idx) {
 async function sekoModify(idx) {
   const task = _sekoTasks[idx];
   if (!task) return;
-  const prompt = await modalPrompt(t('seko.modify_ph'), '', { inputType: 'textarea', placeholder: t('seko.modify_ph') });
+  const prompt = await modalPrompt(t('seko.modify_ph'), '', { type: 'textarea', placeholder: t('seko.modify_ph') });
   if (!prompt) return;
   try {
     const r = await api('/seko/proposal/modify', { method: 'POST', body: { task_id: task.task_id, prompt } });

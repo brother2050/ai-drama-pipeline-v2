@@ -1271,7 +1271,11 @@ def seko_proposal_status(req: SekoProposalStatusRequest):
     if req.download_dir and result.get("code") == 200:
         data = result.get("data", {})
         if data.get("taskStatus") == "OK":
-            download_dir = os.path.join(req.download_dir, req.task_id)
+            # 特殊值 __project_assets__ → 使用当前项目的 assets 目录
+            if req.download_dir == "__project_assets__":
+                download_dir = str(_proj() / "assets" / "seko" / req.task_id)
+            else:
+                download_dir = os.path.join(req.download_dir, req.task_id)
             downloaded = download_elements_images(data, download_dir)
 
     return {
