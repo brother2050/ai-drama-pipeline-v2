@@ -381,8 +381,8 @@ function _resetPipelineSteps() {
   document.querySelectorAll('.pipeline-arrow').forEach(el => el.classList.remove('done'));
 }
 
-const STEP_BTNS = [
-  { step: 'tts', icon: '🎤', label: 'TTS' },
+const _stepBtns = () => [
+  { step: 'tts', icon: '🎤', label: t('step.tts') },
   { step: 'first-frame', icon: '🎨', label: t('step.first_frame') },
   { step: 'video', icon: '🎬', label: t('step.video') },
   { step: 'lipsync', icon: '👄', label: t('step.lipsync') },
@@ -391,7 +391,7 @@ const STEP_BTNS = [
 function _shotId(s, i) { return s.shot_id || String(i + 1).padStart(3, '0'); }
 function _actionBtns(idx) {
   return `<button class="btn btn-xs" onclick="editShot(${idx})" title="${t('btn.edit')}">✏️</button>` +
-    STEP_BTNS.map(b => `<button class="btn btn-xs" onclick="runOne('${b.step}',${idx})" title="${b.label}">${b.icon}</button>`).join('') +
+    STEP_BTNS().map(b => `<button class="btn btn-xs" onclick="runOne('${b.step}',${idx})" title="${b.label}">${b.icon}</button>`).join('') +
     `<button class="btn btn-xs btn-danger" onclick="deleteShot(${idx})" title="${t('btn.delete')}">🗑️</button>`;
 }
 
@@ -428,7 +428,7 @@ function renderWB(episodes) {
     <div class="wb-batch-btns">
       <button class="btn btn-outline" onclick="undo()" title="Ctrl+Z">↩ ${t('undo.undo')}</button>
       <button class="btn btn-outline" onclick="redo()" title="Ctrl+Shift+Z">↪ ${t('undo.redo')}</button>
-      ${STEP_BTNS.map(b => `<button class="btn btn-outline" onclick="batchRun('${b.step}')">${b.icon} ${t('wb.batch_label')} ${b.label}</button>`).join('')}
+      ${_stepBtns().map(b => `<button class="btn btn-outline" onclick="batchRun('${b.step}')">${b.icon} ${t('wb.batch_label')} ${b.label}</button>`).join('')}
       <span class="dim" style="margin:0 0.3rem">|</span>
       <button class="btn btn-outline" onclick="runPortraits()">📸 ${t('wb.gen_portraits')}</button>
       <button class="btn btn-outline" onclick="runPost()">🎞️ ${t('wb.post_process')}</button>
@@ -479,7 +479,7 @@ async function loadResources(idx) {
       r.audio && `<div class="res-chip res-audio" onclick="previewRes('${sid}','audio')">🎤</div>`,
       r.frame && `<div class="res-chip res-img" onclick="previewRes('${sid}','frame')"><img src="/api/files/${ep}/${sid}/frame.png" loading="lazy"></div>`,
       r.video && `<div class="res-chip res-video" onclick="previewRes('${sid}','video')">🎬</div>`,
-      r.synced && `<div class="res-chip res-video" onclick="previewRes('${sid}','synced')">👄</div>`,
+      r.synced && `<div class="res-chip res-synced" onclick="previewRes('${sid}','synced')">👄</div>`,
     ].filter(Boolean).join('');
     el.innerHTML = chips || `<span class="dim" style="font-size:0.7rem">${t('wb.no_resource')}</span>`;
     // 更新卡片头部状态徽章
@@ -494,8 +494,8 @@ async function loadResources(idx) {
 
 function previewRes(sid, type) {
   const types = ['audio', 'frame', 'video', 'synced'].filter(t => {
-    const el = document.querySelector(`#res-${sid} .res-${t === 'frame' ? 'img' : t === 'audio' ? 'audio' : 'video'}`);
-    return !!el;
+    const cls = t === 'frame' ? 'img' : t === 'audio' ? 'audio' : t === 'synced' ? 'synced' : 'video';
+    return !!document.querySelector(`#res-${sid} .res-${cls}`);
   });
   let currentType = type;
 
@@ -538,8 +538,8 @@ function previewRes(sid, type) {
 
 // ── 镜头编辑 ──
 
-const CAMERAS = [t('camera.fixed'), t('camera.push_in'), t('camera.pan'), t('camera.handheld'), t('camera.orbit'), t('camera.top'), t('camera.bottom')];
-const SHOT_TYPES = [t('shot.closeup'), t('shot.medium_close'), t('shot.medium'), t('shot.over_shoulder'), t('shot.full'), t('shot.wide'), t('shot.extreme_wide')];
+const _cameras = () => [t('camera.fixed'), t('camera.push_in'), t('camera.pan'), t('camera.handheld'), t('camera.orbit'), t('camera.top'), t('camera.bottom')];
+const _shotTypes = () => [t('shot.closeup'), t('shot.medium_close'), t('shot.medium'), t('shot.over_shoulder'), t('shot.full'), t('shot.wide'), t('shot.extreme_wide')];
 const EMOTIONS = ['neutral', 'happy', 'sad', 'angry', 'worried', 'surprised', 'calm', 'determined'];
 
 function _selectOpts(options, current) { return options.map(o => `<option ${current === o ? 'selected' : ''}>${o}</option>`).join(''); }
@@ -569,8 +569,8 @@ async function editShot(idx) {
     <div class="edit-field"><label>${t('sb.dialogue_en')} <span class="char-count" id="cc-dialogue-en">0</span></label><textarea id="ed-dialogue-en" rows="2" oninput="updateCharCount('ed-dialogue-en','cc-dialogue-en')">${esc(s.dialogue_en || '')}</textarea></div>
     <div class="edit-field"><label>${t('edit.outfit')}</label><input id="ed-outfit" value="${esc(s.outfit || '')}" placeholder="${t('edit.outfit_ph')}"></div>
     <div class="edit-field-row">
-      <div class="edit-field"><label>${t('edit.camera')}</label><select id="ed-camera">${_selectOpts(CAMERAS, s.camera)}</select></div>
-      <div class="edit-field"><label>${t('edit.shot_type')}</label><select id="ed-shottype">${_selectOpts(SHOT_TYPES, s.shot_type)}</select></div>
+      <div class="edit-field"><label>${t('edit.camera')}</label><select id="ed-camera">${_selectOpts(_cameras(), s.camera)}</select></div>
+      <div class="edit-field"><label>${t('edit.shot_type')}</label><select id="ed-shottype">${_selectOpts(_shotTypes(), s.shot_type)}</select></div>
       <div class="edit-field"><label>${t('edit.duration')}</label><input id="ed-dur" type="number" value="${s.duration || 4}" min="1" max="30"></div>
       <div class="edit-field"><label>${t('edit.emotion')}</label><select id="ed-emo">${_selectOpts(EMOTIONS, s.emotion)}</select></div>
     </div>
@@ -777,11 +777,6 @@ async function runSubtitle() { await _runTool('/tools/subtitle', { episode: ep }
 // 角色管理
 // ══════════════════════════════════════════════════════════
 
-const CHAR_COLS = [
-  { key: 'id', label: 'ID' }, { key: 'name', label: t('char.name') }, { key: 'gender', label: t('char.gender') },
-  { key: 'appearance', label: t('char.appearance'), render: c => (c.appearance || '').substring(0, 40) },
-];
-
 /** 通用实体列表渲染 */
 function _loadEntityPage(type, { pageId, icon, titleKey, emptyHintKey, emptyDescKey, editFn, newFn, aiFn, card }) {
   const el = document.getElementById(pageId);
@@ -926,10 +921,6 @@ function _handleImgDrop(e, entityType, id) {
 // 场景管理
 // ══════════════════════════════════════════════════════════
 
-const SCENE_COLS = [
-  { key: 'id', label: 'ID' }, { key: 'name', label: t('scene.name') },
-  { key: 'description', label: t('scene.desc'), render: s => (s.description || '').substring(0, 40) },
-];
 
 async function loadScenes() {
   _loadEntityPage('scenes', {
@@ -1119,8 +1110,8 @@ async function loadStoryboard() {
         <td><span class="drag-handle" title="拖拽排序">⠿</span></td>
         <td>${_shotId(s, i)}</td>
         ${SB_FIELDS.slice(0, 4).map(f => `<td><input class="sb-inline-input" value="${esc(s[f] || '')}" data-idx="${i}" data-field="${f}" onchange="updateShotField(this)"></td>`).join('')}
-        <td><select class="sb-inline-input" data-idx="${i}" data-field="camera" onchange="updateShotField(this)">${_selectOpts(CAMERAS, s.camera)}</select></td>
-        <td><select class="sb-inline-input" data-idx="${i}" data-field="shot_type" onchange="updateShotField(this)">${_selectOpts(SHOT_TYPES, s.shot_type)}</select></td>
+        <td><select class="sb-inline-input" data-idx="${i}" data-field="camera" onchange="updateShotField(this)">${_selectOpts(_cameras(), s.camera)}</select></td>
+        <td><select class="sb-inline-input" data-idx="${i}" data-field="shot_type" onchange="updateShotField(this)">${_selectOpts(_shotTypes(), s.shot_type)}</select></td>
         <td><input class="sb-inline-input" type="number" value="${s.duration || 4}" min="1" max="30" data-idx="${i}" data-field="duration" onchange="updateShotField(this)"></td>
         <td><select class="sb-inline-input" data-idx="${i}" data-field="emotion" onchange="updateShotField(this)">${_selectOpts(EMOTIONS, s.emotion)}</select></td>
         <td><button class="btn btn-xs btn-danger" onclick="deleteShotFromSB(${i})">🗑️</button></td></tr>`).join('');
@@ -1154,27 +1145,39 @@ const _debouncedSaveSB = debounce(async () => {
   if (!_sbDirty || _sbSaving) return;
   _sbSaving = true;
   try {
-    const current = (await api(`/storyboard/${ep}`)).shots || [];
-    document.querySelectorAll('.sb-inline-input').forEach(inp => { const i = parseInt(inp.dataset.idx); if (current[i]) current[i][inp.dataset.field] = inp.value; });
-    await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: current } }); invalidateCache(`storyboard/${ep}`); _sbDirty = false; toast(t('toast.saved'));
+    // 直接从 DOM 同步到内存中的 shots，避免 GET→POST 竞态
+    document.querySelectorAll('.sb-inline-input').forEach(inp => {
+      const i = parseInt(inp.dataset.idx);
+      if (shots[i]) shots[i][inp.dataset.field] = inp.value;
+    });
+    await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } });
+    invalidateCache(`storyboard/${ep}`);
+    _sbDirty = false;
+    toast(t('toast.saved'));
   } catch (e) { toast(e.message, 'error'); }
   finally { _sbSaving = false; }
 }, 1000);
-function updateShotField() { _sbDirty = true; _debouncedSaveSB(); }
+function updateShotField() {
+  if (!_sbDirty) pushUndo(t('sb.title')); // 首次修改时保存快照用于 undo
+  _sbDirty = true;
+  _debouncedSaveSB();
+}
 
 async function deleteShotFromSB(idx) {
-  const current = (await api(`/storyboard/${ep}`)).shots || [];
-  if (!await modalConfirm(t('confirm.delete_shot', { id: current[idx]?.shot_id || idx + 1 }))) return;
-  pushUndo(`${t('btn.delete')} ${current[idx]?.shot_id || idx + 1}`); current.splice(idx, 1);
-  try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: current } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.deleted')); loadStoryboard(); } catch (e) { toast(e.message, 'error'); }
+  const sid = shots[idx]?.shot_id || idx + 1;
+  if (!await modalConfirm(t('confirm.delete_shot', { id: sid }))) return;
+  pushUndo(`${t('btn.delete')} ${sid}`);
+  shots.splice(idx, 1);
+  try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.deleted')); loadStoryboard(); } catch (e) { toast(e.message, 'error'); }
 }
 
 async function addShot() {
-  const existing = (await api(`/storyboard/${ep}`)).shots || [];
-  const maxNum = Math.max(0, ...existing.map(s => parseInt(s.shot_id, 10)).filter(n => !isNaN(n)));
+  const maxNum = Math.max(0, ...shots.map(s => parseInt(s.shot_id, 10)).filter(n => !isNaN(n)));
   const newId = String(maxNum + 1).padStart(3, '0');
   pushUndo(`${t('btn.add')} ${newId}`);
-  try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: [...existing, { episode: ep, shot_id: newId, scene: '', characters: '', action: '', dialogue: '', camera: CAMERAS[0], shot_type: SHOT_TYPES[2], duration: 4, emotion: 'neutral', outfit: '', action_en: '', dialogue_en: '' }] } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.created')); loadStoryboard(); } catch (e) { toast(e.message, 'error'); }
+  const newShot = { episode: ep, shot_id: newId, scene: '', characters: '', action: '', dialogue: '', camera: _cameras()[0], shot_type: _shotTypes()[2], duration: 4, emotion: 'neutral', outfit: '', action_en: '', dialogue_en: '' };
+  shots.push(newShot);
+  try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.created')); loadStoryboard(); } catch (e) { toast(e.message, 'error'); }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1404,11 +1407,46 @@ function _initTimelineSortable() {
 // 3.2 批量导入/导出
 // ══════════════════════════════════════════════════════════
 
+/** CSV 字段转义（处理换行、逗号、引号） */
+function _csvEscape(s) {
+  const v = String(s || '');
+  if (v.includes('"') || v.includes(',') || v.includes('\n') || v.includes('\r')) {
+    return `"${v.replace(/"/g, '""')}"`;
+  }
+  return v;
+}
+
+/** CSV 解析（支持多行字段、含引号/逗号的字段） */
+function _parseCSV(text) {
+  const rows = []; let row = []; let field = ''; let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += ch;
+    } else {
+      if (ch === '"') inQuotes = true;
+      else if (ch === ',') { row.push(field.trim()); field = ''; }
+      else if (ch === '\n' || (ch === '\r' && text[i + 1] === '\n')) {
+        if (ch === '\r') i++;
+        row.push(field.trim()); field = '';
+        if (row.some(f => f)) rows.push(row);
+        row = [];
+      } else field += ch;
+    }
+  }
+  row.push(field.trim());
+  if (row.some(f => f)) rows.push(row);
+  return rows;
+}
+
 function exportStoryboard() {
   const headers = ['shot_id', 'scene', 'characters', 'action', 'action_en', 'dialogue', 'dialogue_en', 'camera', 'shot_type', 'duration', 'emotion', 'outfit'];
-  const csv = [headers.join(',')];
+  const csv = [headers.map(h => _csvEscape(h)).join(',')];
   shots.forEach(s => {
-    csv.push(headers.map(h => `"${(s[h] || '').replace(/"/g, '""')}"`).join(','));
+    csv.push(headers.map(h => _csvEscape(s[h])).join(','));
   });
   const blob = new Blob(['\uFEFF' + csv.join('\n')], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -1441,14 +1479,13 @@ async function doImport() {
       const data = JSON.parse(text);
       newShots = Array.isArray(data) ? data : (data.shots || []);
     } else {
-      // CSV
-      const lines = text.split('\n').filter(l => l.trim());
-      if (lines.length < 2) throw new Error('Empty CSV');
-      const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-      for (let i = 1; i < lines.length; i++) {
-        const vals = lines[i].match(/(".*?"|[^,]*)/g) || [];
+      // CSV（支持多行字段）
+      const rows = _parseCSV(text);
+      if (rows.length < 2) throw new Error('Empty CSV');
+      const headers = rows[0];
+      for (let i = 1; i < rows.length; i++) {
         const shot = {};
-        headers.forEach((h, j) => { shot[h] = (vals[j] || '').replace(/^"|"$/g, '').replace(/""/g, '"'); });
+        headers.forEach((h, j) => { shot[h] = rows[i][j] || ''; });
         if (shot.shot_id) newShots.push(shot);
       }
     }
