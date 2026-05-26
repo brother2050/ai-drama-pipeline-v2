@@ -828,28 +828,42 @@ async function loadCharacters() {
     }
   });
 }
+/** 通用新建面板 */
+function _newEntityPanel(type, { titleKey, fields, buildExtra, reload }) {
+  const p = `n${type[0]}`; // nc / ns
+  const body = `<div class="edit-field"><label>ID</label><input id="${p}-id" placeholder="a-z, 0-9, _-"></div>` +
+    fields.map(f => {
+      if (f.type === 'select') return `<div class="edit-field"><label>${f.label}</label><select id="${p}-${f.key}">${f.options.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}</select></div>`;
+      if (f.type === 'textarea') return `<div class="edit-field"><label>${f.label}</label><textarea id="${p}-${f.key}" rows="3"></textarea></div>`;
+      return `<div class="edit-field"><label>${f.label}</label><input id="${p}-${f.key}"${f.placeholder ? ` placeholder="${f.placeholder}"` : ''}></div>`;
+    }).join('');
+  _showOverlay(`new-${type.slice(0,-1)}-overlay`, `+ ${t(titleKey).replace(/.\s?/, '')}`, body, `save_${p}New()`);
+  window[`save_${p}New`] = async function() {
+    const id = val(`${p}-id`);
+    if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) { toast(t('common.id_invalid'), 'error'); return; }
+    const data = buildExtra ? { id, ...buildExtra() } : { id };
+    fields.forEach(f => { if (!f.getValue) data[f.key] = val(`${p}-${f.key}`); });
+    try {
+      await api(`/${type}`, { method: 'POST', body: data });
+      invalidateCache(type); document.getElementById(`new-${type.slice(0,-1)}-overlay`)?.remove(); toast(t('toast.created')); reload();
+    } catch (e) { toast(e.message, 'error'); }
+  };
+}
+
 function newChar() {
-  _showOverlay('new-char-overlay', `+ ${t('char.title').replace(/👤\s?/, '')}`, `
-    <div class="edit-field"><label>ID</label><input id="nc-id" placeholder="a-z, 0-9, _-"></div>
-    <div class="edit-field"><label>${t('char.name')}</label><input id="nc-name"></div>
-    <div class="edit-field"><label>${t('char.gender')}</label><select id="nc-gender"><option value="">-</option><option value="male">${t('char.gender.male')}</option><option value="female">${t('char.gender.female')}</option></select></div>
-    <div class="edit-field"><label>${t('char.appearance')}</label><textarea id="nc-appearance" rows="3"></textarea></div>
-    <div class="edit-field"><label>${t('char.voice_key')}</label><input id="nc-voice" placeholder="e.g. male-1"></div>
-    <div class="edit-field"><label>${t('char.outfit_desc')}</label><textarea id="nc-outfits" rows="2"></textarea></div>`, `saveNewChar()`);
+  _newEntityPanel('characters', {
+    titleKey: 'char.title', reload: loadCharacters,
+    buildExtra() { return { voice: val('nc-voice') ? { key: val('nc-voice') } : null, outfits: val('nc-outfits') ? { default: val('nc-outfits') } : null }; },
+    fields: [
+      { key: 'name', label: t('char.name') },
+      { key: 'gender', label: t('char.gender'), type: 'select', options: [{ value: '', label: '-' }, { value: 'male', label: t('char.gender.male') }, { value: 'female', label: t('char.gender.female') }] },
+      { key: 'appearance', label: t('char.appearance'), type: 'textarea' },
+      { key: 'voice_key', label: t('char.voice_key'), placeholder: 'e.g. male-1', getValue: true },
+      { key: 'outfits', label: t('char.outfit_desc'), type: 'textarea', getValue: true },
+    ],
+  });
 }
-async function saveNewChar() {
-  const id = val('nc-id');
-  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) { toast(t('common.id_invalid'), 'error'); return; }
-  const voiceVal = val('nc-voice'), outfitVal = val('nc-outfits');
-  try {
-    await api('/characters', { method: 'POST', body: {
-      id, name: val('nc-name'), gender: val('nc-gender'), appearance: val('nc-appearance'),
-      voice: voiceVal ? { key: voiceVal } : null,
-      outfits: outfitVal ? { default: outfitVal } : null,
-    }});
-    invalidateCache('characters'); document.getElementById('new-char-overlay')?.remove(); toast(t('toast.created')); loadCharacters();
-  } catch (e) { toast(e.message, 'error'); }
-}
+async function saveNewChar() { /* handled by _newEntityPanel */ }
 function deleteChar(id) { _crudDelete('characters', id, t('char.title').replace(/👤\s?/, ''), loadCharacters); }
 
 async function editChar(id) {
@@ -915,21 +929,14 @@ async function loadScenes() {
   });
 }
 function newScene() {
-  _showOverlay('new-scene-overlay', `+ ${t('scene.title').replace(/🏔️\s?/, '')}`, `
-    <div class="edit-field"><label>ID</label><input id="ns-id" placeholder="a-z, 0-9, _-"></div>
-    <div class="edit-field"><label>${t('scene.name')}</label><input id="ns-name"></div>
-    <div class="edit-field"><label>${t('scene.desc')}</label><textarea id="ns-desc" rows="3"></textarea></div>
-    <div class="edit-field"><label>${t('scene.lighting')}</label><input id="ns-lighting"></div>`, `saveNewScene()`);
-}
-async function saveNewScene() {
-  const id = val('ns-id');
-  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) { toast(t('common.id_invalid'), 'error'); return; }
-  try {
-    await api('/scenes', { method: 'POST', body: {
-      id, name: val('ns-name'), description: val('ns-desc'), lighting: val('ns-lighting'),
-    }});
-    invalidateCache('scenes'); document.getElementById('new-scene-overlay')?.remove(); toast(t('toast.created')); loadScenes();
-  } catch (e) { toast(e.message, 'error'); }
+  _newEntityPanel('scenes', {
+    titleKey: 'scene.title', reload: loadScenes,
+    fields: [
+      { key: 'name', label: t('scene.name') },
+      { key: 'description', label: t('scene.desc'), type: 'textarea' },
+      { key: 'lighting', label: t('scene.lighting') },
+    ],
+  });
 }
 function deleteScene(id) { _crudDelete('scenes', id, t('scene.title').replace(/🏔️\s?/, ''), loadScenes); }
 

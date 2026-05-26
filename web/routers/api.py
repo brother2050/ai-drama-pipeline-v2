@@ -654,14 +654,25 @@ def delete_project(name: str):
 
 # ── 通用 YAML CRUD 工厂 ──
 
+_proj_cache: tuple[float, Path] | None = None
+
 def _proj() -> Path:
-    """返回当前活动项目目录"""
+    """返回当前活动项目目录（带 mtime 缓存）"""
+    global _proj_cache
     active_file = ROOT / "projects" / ".active"
+    try:
+        mt = active_file.stat().st_mtime
+    except FileNotFoundError:
+        mt = 0.0
+    if _proj_cache and _proj_cache[0] == mt:
+        return _proj_cache[1]
+    d = ROOT / "projects" / "default"
     if active_file.exists():
-        d = Path(active_file.read_text().strip())
-        if d.exists():
-            return d
-    return ROOT / "projects" / "default"
+        p = Path(active_file.read_text().strip())
+        if p.exists():
+            d = p
+    _proj_cache = (mt, d)
+    return d
 
 
 def _yaml_list(yaml_dir: str, entity_key: str) -> list[dict]:
@@ -700,6 +711,12 @@ def _yaml_save(yaml_dir: str, entity_key: str, entity_id: str, data: dict,
             logger.debug(f"数据库同步跳过: {e}")
 
 
+def _parse_entity(req) -> tuple[str, dict]:
+    """Pydantic 模型 → (entity_id, data)"""
+    data = req.model_dump(exclude_none=True)
+    return data.pop("id"), data
+
+
 def _yaml_delete(yaml_dir: str, entity_id: str, label: str, db_delete=None) -> None:
     """通用 YAML 实体删除（文件 + DB）"""
     path = _proj() / "config" / yaml_dir / f"{entity_id}.yaml"
@@ -721,8 +738,7 @@ def list_characters():
 
 @router.post("/characters")
 def save_character(req: CharacterData):
-    data = req.model_dump(exclude_none=True)
-    char_id = data.pop("id")
+    char_id, data = _parse_entity(req)
     from infra.database.characters import upsert as db_up
     _yaml_save("characters", "character", char_id, data, db_upsert=db_up)
     return {"status": "ok", "id": char_id}
@@ -743,8 +759,7 @@ def list_scenes():
 
 @router.post("/scenes")
 def save_scene(req: SceneData):
-    data = req.model_dump(exclude_none=True)
-    scene_id = data.pop("id")
+    scene_id, data = _parse_entity(req)
     from infra.database.scenes import upsert as db_up
     _yaml_save("scenes", "scene", scene_id, data, db_upsert=db_up)
     return {"status": "ok", "id": scene_id}
