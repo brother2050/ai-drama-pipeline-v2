@@ -137,16 +137,17 @@ class Container:
         if service_type in ("image", "video"):
             comfyui_cfg = self._config.get("comfyui", {})
             if isinstance(comfyui_cfg, dict):
-                # url/api_key: 仅当显式配置为空时，从 comfyui 段继承
+                # 不覆盖已有的显式配置
                 for field in ("url", "api_key"):
-                    if not cfg.get(field):
+                    if field not in cfg or not cfg[field]:
                         cfg[field] = comfyui_cfg.get(field, "")
-                # timeout: 仅当显式配置为空时，从 comfyui.timeout 继承
-                cfg.setdefault("timeouts", {})
-                if not cfg["timeouts"].get("comfyui"):
+                # timeout 映射到 timeouts.comfyui
+                if "timeouts" not in cfg:
+                    cfg["timeouts"] = {}
+                if "comfyui" not in cfg["timeouts"] or not cfg["timeouts"]["comfyui"]:
                     cfg["timeouts"]["comfyui"] = comfyui_cfg.get("timeout", 300)
                 # video 后端需要 comfyui_url
-                if service_type == "video" and not cfg.get("comfyui_url"):
+                if service_type == "video" and "comfyui_url" not in cfg:
                     cfg["comfyui_url"] = comfyui_cfg.get("url", "http://127.0.0.1:8188")
         return cfg
 
