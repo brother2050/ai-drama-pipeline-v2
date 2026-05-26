@@ -11,6 +11,14 @@ def _row_to_dict(row) -> dict:
     return {}
 
 
+def _safe_float(val, default=0.0) -> float:
+    """安全的 float 转换，处理 CSV 字符串和非数字值"""
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
 def get_by_episode(pool, episode: int) -> list[dict]:
     with pool.connection() as conn:
         cur = conn.cursor()
@@ -35,5 +43,5 @@ def upsert(pool, episode: int, shot_id: str, data: dict):
               data.get("action", ""), data.get("dialogue", ""),
               data.get("action_en", ""), data.get("dialogue_en", ""),
               data.get("camera", ""), data.get("shot_type", ""),
-              data.get("duration", 0), data.get("emotion", ""), data.get("outfit", "")))
+              _safe_float(data.get("duration", 0)), data.get("emotion", ""), data.get("outfit", "")))
         conn.commit()

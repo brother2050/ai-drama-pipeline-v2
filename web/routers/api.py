@@ -78,8 +78,8 @@ def _get_client_ip(request: Request) -> str:
     """获取客户端 IP（仅在有反向代理时信任 X-Forwarded-For）"""
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        # 仅取最后一个代理 IP（最接近真实客户端）
-        ip = forwarded.split(",")[-1].strip()
+        # 取第一个 IP（最接近真实客户端，后续为代理链）
+        ip = forwarded.split(",")[0].strip()
         if ip:
             return ip
     return request.client.host if request.client else "unknown"
