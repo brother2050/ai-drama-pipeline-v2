@@ -23,7 +23,7 @@ class MimoVoiceClone:
     """MiMo VoiceClone TTS 后端（云 API）"""
 
     API_URL = os.environ.get("MIMO_API_ENDPOINT", "https://api-oc.xiaomimimo.com/v1/chat/completions")
-    MODEL = os.environ.get("MIMO_TTS_MODEL", "mimo-v2.5-tts")
+    MODEL = os.environ.get("MIMO_TTS_CLONE_MODEL", "mimo-v2-tts")
 
     def __init__(self, config: dict):
         self._api_key = config.get("api_key") or os.environ.get("MIMO_API_KEY", "")
