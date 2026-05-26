@@ -25,10 +25,14 @@ class ComfyUI:
     def upload_image(self, filepath: str, overwrite: bool = True) -> dict:
         """上传图片到 ComfyUI 服务器（用于 IP-Adapter 等需要参考图的节点）"""
         with httpx.Client(timeout=30) as c:
+            headers = {}
+            if self._api_key:
+                headers["Authorization"] = f"Bearer {self._api_key}"
             with open(filepath, "rb") as f:
                 r = c.post(f"{self._url}/upload/image",
                            files={"image": (Path(filepath).name, f)},
-                           data={"overwrite": str(overwrite).lower()})
+                           data={"overwrite": str(overwrite).lower()},
+                           headers=headers)
             r.raise_for_status()
             return r.json()
 

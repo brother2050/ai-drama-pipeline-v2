@@ -13,11 +13,13 @@ class AnimateDiff:
                              or config.get("url")
                              or "http://127.0.0.1:8188").rstrip("/")
         self._timeout = config.get("timeouts", {}).get("comfyui", 300)
+        self._api_key = config.get("api_key", "")
     @property
     def name(self): return "animatediff"
     def generate(self, workflow: dict, output_dir: str) -> list[str]:
         from api.backends.image.comfyui import ComfyUI
-        comfyui = ComfyUI({"url": self._comfyui_url, "timeout": self._timeout})
+        comfyui = ComfyUI({"url": self._comfyui_url, "timeout": self._timeout,
+                           "api_key": self._api_key})
         return comfyui.generate(workflow, output_dir)
     def health_check(self):
         import httpx
@@ -41,11 +43,13 @@ class CogVideoX:
                              or config.get("url")
                              or "http://127.0.0.1:8188").rstrip("/")
         self._timeout = config.get("timeouts", {}).get("comfyui", 300)
+        self._api_key = config.get("api_key", "")
     @property
     def name(self): return "cogvideox"
     def generate(self, workflow: dict, output_dir: str) -> list[str]:
         from api.backends.image.comfyui import ComfyUI
-        comfyui = ComfyUI({"url": self._comfyui_url, "timeout": self._timeout})
+        comfyui = ComfyUI({"url": self._comfyui_url, "timeout": self._timeout,
+                           "api_key": self._api_key})
         return comfyui.generate(workflow, output_dir)
     def health_check(self):
         import httpx

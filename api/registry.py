@@ -133,11 +133,22 @@ class Container:
         service_cfg = self._config.get(service_type, {})
         if isinstance(service_cfg, dict):
             cfg.update(service_cfg)
-        # video 后端自动继承 comfyui.url（animatediff / cogvideox 共用）
-        if service_type == "video" and "comfyui_url" not in cfg and "url" not in cfg:
-            comfyui_url = self._config.get("comfyui", {}).get("url", "")
-            if comfyui_url:
-                cfg["comfyui_url"] = comfyui_url
+        # image/video 后端自动继承 comfyui 顶层配置（url / timeout / api_key）
+        if service_type in ("image", "video"):
+            comfyui_cfg = self._config.get("comfyui", {})
+            if isinstance(comfyui_cfg, dict):
+                # 不覆盖已有的显式配置
+                for field in ("url", "api_key"):
+                    if field not in cfg or not cfg[field]:
+                        cfg[field] = comfyui_cfg.get(field, "")
+                # timeout 映射到 timeouts.comfyui
+                if "timeouts" not in cfg:
+                    cfg["timeouts"] = {}
+                if "comfyui" not in cfg["timeouts"] or not cfg["timeouts"]["comfyui"]:
+                    cfg["timeouts"]["comfyui"] = comfyui_cfg.get("timeout", 300)
+                # video 后端需要 comfyui_url
+                if service_type == "video" and "comfyui_url" not in cfg:
+                    cfg["comfyui_url"] = comfyui_cfg.get("url", "http://127.0.0.1:8188")
         return cfg
 
     def reload(self, new_config: dict) -> list[str]:
