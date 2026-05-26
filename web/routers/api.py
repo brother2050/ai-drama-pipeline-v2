@@ -735,7 +735,7 @@ def _yaml_save(yaml_dir: str, entity_key: str, entity_id: str, data: dict,
     """通用 YAML 实体保存（YAML + DB 双写）"""
     d = _proj() / "config" / yaml_dir
     d.mkdir(parents=True, exist_ok=True)
-    with open(d / f"{entity_id}.yaml", "w") as f:
+    with open(d / f"{entity_id}.yaml", "w", encoding="utf-8") as f:
         yaml.dump({entity_key: {**data, "id": entity_id}}, f,
                   allow_unicode=True, default_flow_style=False)
     if db_upsert:
@@ -847,7 +847,7 @@ async def upload_entity_image(entity_type: str, entity_id: str, file: UploadFile
         imgs.append(img_url)
         entity["reference_images"] = imgs
         data[entity_key] = entity
-        with open(yaml_path, "w") as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
 
     return {"status": "ok", "url": f"/api/assets/{entity_type}/{entity_id}/{filename}"}

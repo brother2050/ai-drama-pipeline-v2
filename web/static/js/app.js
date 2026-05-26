@@ -965,6 +965,9 @@ async function _uploadImg(entityType, id) {
     if (!r.ok) throw new Error(d.detail || '上传失败');
     _html(wrap, `<div class="upload-preview"><img src="${d.url}"><button class="btn btn-xs btn-danger upload-remove" onclick="${prefix}RemoveImg('${id}')">✕</button></div>`);
     invalidateCache(entityType); toast('✅ 图片已上传');
+    // 重新加载列表以刷新卡片缩略图
+    if (entityType === 'characters' && typeof loadCharacters === 'function') loadCharacters();
+    else if (entityType === 'scenes' && typeof loadScenes === 'function') loadScenes();
   } catch (e) { _html(wrap, `<span style="color:var(--red)">❌ ${e.message}</span>`); toast(e.message, 'error'); }
 }
 
