@@ -1,9 +1,15 @@
-"""MiMo VoiceClone TTS — 云 API，参考音频克隆声音"""
+"""MiMo VoiceClone TTS — 云 API，参考音频克隆声音
+
+使用 MiMo TTS API（chat completions 端点），通过参考音频克隆声音。
+"""
 
 from __future__ import annotations
 
+import base64
+import io
 import logging
 import os
+import struct
 from pathlib import Path
 
 import httpx
@@ -16,7 +22,8 @@ logger = logging.getLogger(__name__)
 class MimoVoiceClone:
     """MiMo VoiceClone TTS 后端（云 API）"""
 
-    API_URL = "https://api.xiaomimimo.com/v1/audio/speech"
+    API_URL = "https://api.xiaomimimo.com/v1/chat/completions"
+    MODEL = "mimo-v2-audio-tts"
 
     def __init__(self, config: dict):
         self._api_key = config.get("api_key") or os.environ.get("MIMO_API_KEY", "")
@@ -37,19 +44,59 @@ class MimoVoiceClone:
         if not ref_audio:
             raise RuntimeError("VoiceClone 需要 reference_audio 配置")
 
+        if not os.path.exists(ref_audio):
+            raise RuntimeError(f"参考音频不存在: {ref_audio}")
+
         Path(output).parent.mkdir(parents=True, exist_ok=True)
 
+        # 读取参考音频并 base64 编码
+        with open(ref_audio, "rb") as f:
+            audio_b64 = base64.b64encode(f.read()).decode("ascii")
+
+        payload = {
+            "model": self.MODEL,
+            "audio": {
+                "format": "wav",
+                "voice_audio": {"format": "wav", "data": audio_b64},
+            },
+            "messages": [{"role": "assistant", "content": text}],
+        }
+
         with httpx.Client(timeout=self._timeout) as client:
-            with open(ref_audio, "rb") as af:
-                r = client.post(
-                    self.API_URL,
-                    headers={"Authorization": f"Bearer {self._api_key}"},
-                    files={"reference": (Path(ref_audio).name, af, "audio/wav")},
-                    data={"model": "mimo-voice-clone", "input": text, "language": language, "emotion": emotion},
-                )
+            r = client.post(
+                self.API_URL,
+                headers={"api-key": self._api_key,
+                         "Content-Type": "application/json"},
+                json=payload,
+            )
             r.raise_for_status()
-            with open(output, "wb") as f:
-                f.write(r.content)
+            resp = r.json()
+
+        # 检查 API 错误
+        if resp.get("error"):
+            raise RuntimeError(f"MiMo TTS API 错误: {resp['error']}")
+
+        # 解码音频数据
+        try:
+            audio_data = resp["choices"][0]["message"]["audio"]["data"]
+            raw = base64.b64decode(audio_data)
+        except (KeyError, IndexError, TypeError) as e:
+            raise RuntimeError(f"MiMo TTS 响应格式异常: {e}") from e
+
+        # 写入文件
+        with open(output, "wb") as f:
+            if raw[:4] == b"RIFF":
+                f.write(raw)
+            else:
+                sr, bps, ch = 24000, 16, 1
+                br = sr * ch * bps // 8
+                f.write(b"RIFF")
+                f.write(struct.pack("<I", 36 + len(raw)))
+                f.write(b"WAVEfmt ")
+                f.write(struct.pack("<IHHIIHH", 16, 1, ch, sr, br, ch * bps // 8, bps))
+                f.write(b"data")
+                f.write(struct.pack("<I", len(raw)))
+                f.write(raw)
 
         return output
 
