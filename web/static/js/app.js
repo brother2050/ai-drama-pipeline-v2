@@ -528,6 +528,8 @@ function previewRes(sid, type) {
   bindNav();
 
   o._keyHandler = (e) => {
+    // 忽略输入框内的方向键（避免冲突）
+    if (e.target.matches('input, textarea, select')) return;
     if (e.key === 'ArrowLeft' && types.indexOf(currentType) > 0) switchTo(types[types.indexOf(currentType)-1]);
     if (e.key === 'ArrowRight' && types.indexOf(currentType) < types.length-1) switchTo(types[types.indexOf(currentType)+1]);
   };
@@ -813,7 +815,7 @@ function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, 
     const extra = window[`_${p}ImgRemoved`] ? { [imgKey]: [] } : {};
     window[`_${p}ImgRemoved`] = false;
     const data = buildExtra ? { ...buildExtra(), ...extra } : { ...extra };
-    fields.forEach(f => { if (!f.getValue) data[f.key] = val(`${p}-${f.key}`); });
+    fields.forEach(f => { if (!f.getValue) data[f.key] = $val(`${p}-${f.key}`); });
     _crudSave(type, eid, () => data, `edit-${type.slice(0,-1)}-overlay`, reload);
   };
   window[`${p}UploadImg`] = async function(eid) { await _uploadImg(type, eid); };
@@ -848,10 +850,10 @@ function _newEntityPanel(type, { titleKey, fields, buildExtra, reload }) {
     }).join('');
   _showOverlay(`new-${type.slice(0,-1)}-overlay`, `+ ${t(titleKey)}`, body, `save_${p}New()`);
   window[`save_${p}New`] = async function() {
-    const id = val(`${p}-id`);
+    const id = $val(`${p}-id`);
     if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) { toast(t('common.id_invalid'), 'error'); return; }
     const data = buildExtra ? { id, ...buildExtra() } : { id };
-    fields.forEach(f => { if (!f.getValue) data[f.key] = val(`${p}-${f.key}`); });
+    fields.forEach(f => { if (!f.getValue) data[f.key] = $val(`${p}-${f.key}`); });
     try {
       await api(`/${type}`, { method: 'POST', body: data });
       invalidateCache(type); document.getElementById(`new-${type.slice(0,-1)}-overlay`)?.remove(); toast(t('toast.created')); reload();
@@ -862,7 +864,7 @@ function _newEntityPanel(type, { titleKey, fields, buildExtra, reload }) {
 function newChar() {
   _newEntityPanel('characters', {
     titleKey: 'char.title', reload: loadCharacters,
-    buildExtra() { return { voice: val('nc-voice') ? { key: val('nc-voice') } : null, outfits: val('nc-outfits') ? { default: val('nc-outfits') } : null }; },
+    buildExtra() { return { voice: $val('nc-voice') ? { key: $val('nc-voice') } : null, outfits: $val('nc-outfits') ? { default: $val('nc-outfits') } : null }; },
     fields: [
       { key: 'name', label: t('char.name') },
       { key: 'gender', label: t('char.gender'), type: 'select', options: [{ value: '', label: '-' }, { value: 'male', label: t('char.gender.male') }, { value: 'female', label: t('char.gender.female') }] },
@@ -879,7 +881,7 @@ async function editChar(id) {
   _editEntityPanel('characters', id, {
     titleKey: 'char.edit_title', notFoundKey: 'char.not_found', imgPrefix: 'ec', imgLabel: t('char.upload_img'), confirmMsg: '删除定妆照？',
     reload: loadCharacters,
-    buildExtra() { return { voice: val('ec-voice') ? { key: val('ec-voice') } : null, outfits: val('ec-outfits') ? { default: val('ec-outfits') } : null }; },
+    buildExtra() { return { voice: $val('ec-voice') ? { key: $val('ec-voice') } : null, outfits: $val('ec-outfits') ? { default: $val('ec-outfits') } : null }; },
     fields: [
       { key: 'name', label: t('char.name') },
       { key: 'gender', label: t('char.gender'), type: 'select', options: [{ value: '', label: '-' }, { value: 'male', label: t('char.gender.male') }, { value: 'female', label: t('char.gender.female') }] },
@@ -958,7 +960,7 @@ async function editScene(id) {
 }
 
 // ── DOM 取值快捷 ──
-function val(id) { return document.getElementById(id)?.value || ''; }
+function $val(id) { return document.getElementById(id)?.value || ''; }
 
 // ══════════════════════════════════════════════════════════
 // 分镜表
@@ -1237,7 +1239,7 @@ function _backendSection(label, icon, idPrefix, backends, backend, url, availabl
 }
 
 function _updateUrl(prefix) {
-  const key = val(`cfg-${prefix}`).replace(/-/g, '_');
+  const key = $val(`cfg-${prefix}`).replace(/-/g, '_');
   const cfg = _cache.get('sysconfig')?.data || {};
   const inp = document.getElementById(`cfg-${prefix}-url`);
   if (inp) inp.value = cfg.models?.[key]?.api_url || '';
@@ -1300,21 +1302,21 @@ async function saveCfg() {
   try {
     const sys = {};
     // TTS
-    const ttsBackend = val('cfg-tts');
+    const ttsBackend = $val('cfg-tts');
     sys.models = sys.models || {};
     sys.models.tts_backend = ttsBackend;
     const ttsKey = ttsBackend.replace(/-/g, '_');
-    sys.models[ttsKey] = { api_url: val('cfg-tts-url') };
+    sys.models[ttsKey] = { api_url: $val('cfg-tts-url') };
     // LipSync
-    const lsBackend = val('cfg-lipsync');
+    const lsBackend = $val('cfg-lipsync');
     sys.models.lip_sync_backend = lsBackend;
     const lsKey = lsBackend.replace(/-/g, '_');
-    sys.models[lsKey] = { api_url: val('cfg-lipsync-url') };
+    sys.models[lsKey] = { api_url: $val('cfg-lipsync-url') };
     // ComfyUI
-    sys.comfyui = { url: val('cfg-comfyui'), api_key: val('cfg-comfyui-key') };
+    sys.comfyui = { url: $val('cfg-comfyui'), api_key: $val('cfg-comfyui-key') };
     // LLM
-    const llmEnabled = val('cfg-llm-enabled') === 'true';
-    sys.llm = { enabled: llmEnabled, backend: val('cfg-llm-backend'), base_url: val('cfg-llm-url'), model: val('cfg-llm-model'), api_key: val('cfg-llm-key') };
+    const llmEnabled = $val('cfg-llm-enabled') === 'true';
+    sys.llm = { enabled: llmEnabled, backend: $val('cfg-llm-backend'), base_url: $val('cfg-llm-url'), model: $val('cfg-llm-model'), api_key: $val('cfg-llm-key') };
 
     await api('/system/config', { method: 'POST', body: sys });
     toast(t('toast.saved'));
