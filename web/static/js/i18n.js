@@ -10,14 +10,14 @@ const I18N = {
   'btn.add': { zh: '+ 新建', en: '+ New' },
   'btn.confirm': { zh: '确认', en: 'Confirm' },
 
-  // 侧边栏
-  'nav.dashboard': { zh: '📊 仪表盘', en: '📊 Dashboard' },
-  'nav.characters': { zh: '👤 角色管理', en: '👤 Characters' },
-  'nav.scenes': { zh: '🏔️ 场景管理', en: '🏔️ Scenes' },
-  'nav.storyboard': { zh: '📝 分镜表', en: '📝 Storyboard' },
-  'nav.pipeline': { zh: '🎬 生产管线', en: '🎬 Pipeline' },
-  'nav.projects': { zh: '📂 项目管理', en: '📂 Projects' },
-  'nav.settings': { zh: '⚙️ 系统设置', en: '⚙️ Settings' },
+  // 侧边栏（纯文字，图标由 NAV_ICONS 控制）
+  'nav.dashboard': { zh: '仪表盘', en: 'Dashboard' },
+  'nav.characters': { zh: '角色管理', en: 'Characters' },
+  'nav.scenes': { zh: '场景管理', en: 'Scenes' },
+  'nav.storyboard': { zh: '分镜表', en: 'Storyboard' },
+  'nav.pipeline': { zh: '生产管线', en: 'Pipeline' },
+  'nav.projects': { zh: '项目管理', en: 'Projects' },
+  'nav.settings': { zh: '系统设置', en: 'Settings' },
 
   // 仪表盘
   'dash.title': { zh: '📊 系统状态', en: '📊 System Status' },
@@ -345,7 +345,7 @@ const I18N = {
   'chat.empty': { zh: '请输入指令', en: 'Please enter a command' },
 
   // 4.2 主体库
-  'nav.assets': { zh: '📦 主体库', en: '📦 Assets' },
+  'nav.assets': { zh: '主体库', en: 'Assets' },
   'asset.title': { zh: '📦 主体库', en: '📦 Asset Library' },
   'asset.desc': { zh: '全局共享的角色和场景，可跨项目复用', en: 'Global shared characters and scenes, reusable across projects' },
   'asset.copy_to_proj': { zh: '📋 复制到当前项目', en: '📋 Copy to Project' },
@@ -375,6 +375,18 @@ const I18N = {
 // 当前语言（默认中文）
 let _lang = localStorage.getItem('drama_lang') || 'zh';
 
+// 导航图标映射（与 i18n 文字分离，避免重复）
+const NAV_ICONS = {
+  'nav.dashboard': '📊',
+  'nav.characters': '👤',
+  'nav.scenes': '🏔️',
+  'nav.storyboard': '📝',
+  'nav.pipeline': '🎬',
+  'nav.projects': '📂',
+  'nav.settings': '⚙️',
+  'nav.assets': '📦',
+};
+
 function setLang(lang) {
   _lang = lang;
   localStorage.setItem('drama_lang', lang);
@@ -385,7 +397,11 @@ function applyI18n() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
     const entry = I18N[key];
-    if (entry) el.textContent = entry[_lang] || entry.zh || key;
+    if (entry) {
+      const icon = NAV_ICONS[key];
+      const text = entry[_lang] || entry.zh || key;
+      el.textContent = icon ? `${icon} ${text}` : text;
+    }
   });
 }
 

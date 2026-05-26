@@ -52,7 +52,7 @@ async function addEpisode() {
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 /** 去掉 i18n 文字开头的 emoji（用于已有图标的场景） */
-function noEmoji(s) { return String(s).replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\u200d\uFE0F\u20e3]+\s*/u, ''); }
+
 function debounce(fn, ms = 300) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 function toast(msg, type = 'success') { const el = document.createElement('div'); el.className = `toast toast-${type}`; el.textContent = msg; document.body.appendChild(el); setTimeout(() => el.remove(), 3500); }
 
@@ -294,8 +294,8 @@ async function loadDashboard() {
           <div id="dash-inspire-status" class="inspire-status"></div>
         </div>
         <div class="dash-hero-actions">
-          <button class="btn btn-primary" onclick="navTo('storyboard')">📝 ${noEmoji(t('nav.storyboard'))}</button>
-          <button class="btn btn-outline" onclick="navTo('pipeline')">🎬 ${noEmoji(t('nav.pipeline'))}</button>
+          <button class="btn btn-primary" onclick="navTo('storyboard')">📝 ${t('nav.storyboard')}</button>
+          <button class="btn btn-outline" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline')}</button>
           <button class="btn btn-outline btn-ai" onclick="navTo('storyboard');setTimeout(()=>showAIGenStoryboard(),300)">🤖 ${t('dash.ai_gen')}</button>
         </div>
       </div>
@@ -309,12 +309,12 @@ async function loadDashboard() {
 
       <div class="card"><h2>⚡ ${t('dash.quick_actions')}</h2>
         <div class="quick-entry-grid">
-          <div class="quick-entry" onclick="navTo('storyboard')"><span class="quick-entry-icon">📝</span><div><div class="quick-entry-text">${noEmoji(t('nav.storyboard'))}</div><div class="quick-entry-desc">${t('dash.qe_storyboard')}</div></div></div>
-          <div class="quick-entry" onclick="navTo('characters')"><span class="quick-entry-icon">👤</span><div><div class="quick-entry-text">${noEmoji(t('nav.characters'))}</div><div class="quick-entry-desc">${t('dash.qe_characters')}</div></div></div>
-          <div class="quick-entry" onclick="navTo('scenes')"><span class="quick-entry-icon">🏔️</span><div><div class="quick-entry-text">${noEmoji(t('nav.scenes'))}</div><div class="quick-entry-desc">${t('dash.qe_scenes')}</div></div></div>
-          <div class="quick-entry" onclick="navTo('pipeline')"><span class="quick-entry-icon">🎬</span><div><div class="quick-entry-text">${noEmoji(t('nav.pipeline'))}</div><div class="quick-entry-desc">${t('dash.qe_pipeline')}</div></div></div>
-          <div class="quick-entry" onclick="navTo('projects')"><span class="quick-entry-icon">📂</span><div><div class="quick-entry-text">${noEmoji(t('nav.projects'))}</div><div class="quick-entry-desc">${t('dash.qe_projects')}</div></div></div>
-          <div class="quick-entry" onclick="navTo('settings')"><span class="quick-entry-icon">⚙️</span><div><div class="quick-entry-text">${noEmoji(t('nav.settings'))}</div><div class="quick-entry-desc">${t('dash.qe_settings')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('storyboard')"><span class="quick-entry-icon">📝</span><div><div class="quick-entry-text">${t('nav.storyboard')}</div><div class="quick-entry-desc">${t('dash.qe_storyboard')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('characters')"><span class="quick-entry-icon">👤</span><div><div class="quick-entry-text">${t('nav.characters')}</div><div class="quick-entry-desc">${t('dash.qe_characters')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('scenes')"><span class="quick-entry-icon">🏔️</span><div><div class="quick-entry-text">${t('nav.scenes')}</div><div class="quick-entry-desc">${t('dash.qe_scenes')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('pipeline')"><span class="quick-entry-icon">🎬</span><div><div class="quick-entry-text">${t('nav.pipeline')}</div><div class="quick-entry-desc">${t('dash.qe_pipeline')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('projects')"><span class="quick-entry-icon">📂</span><div><div class="quick-entry-text">${t('nav.projects')}</div><div class="quick-entry-desc">${t('dash.qe_projects')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('settings')"><span class="quick-entry-icon">⚙️</span><div><div class="quick-entry-text">${t('nav.settings')}</div><div class="quick-entry-desc">${t('dash.qe_settings')}</div></div></div>
         </div>
       </div>
 
@@ -424,7 +424,7 @@ function renderWB(episodes) {
     return `<div class="pipeline-step" id="pf-${s.step}"><div class="pipeline-step-icon">${s.icon}</div><div class="pipeline-step-label">${s.label}</div></div>${arrow}`;
   }).join('')}</div>`;
 
-  el.innerHTML = `<div class="wb-top-bar"><div style="display:flex;align-items:center;gap:0.5rem"><h2>🎬 ${noEmoji(t('nav.pipeline'))}</h2>${epSelector}<span class="dim" style="font-size:.85rem">${shots.length} ${t('wb.shots_count')}</span></div>
+  el.innerHTML = `<div class="wb-top-bar"><div style="display:flex;align-items:center;gap:0.5rem"><h2>🎬 ${t('nav.pipeline')}</h2>${epSelector}<span class="dim" style="font-size:.85rem">${shots.length} ${t('wb.shots_count')}</span></div>
     <div class="wb-batch-btns">
       <button class="btn btn-outline" onclick="undo()" title="Ctrl+Z">↩ ${t('undo.undo')}</button>
       <button class="btn btn-outline" onclick="redo()" title="Ctrl+Shift+Z">↪ ${t('undo.redo')}</button>
@@ -1085,7 +1085,7 @@ async function loadStoryboard() {
     const ss = d.shots || [];
     const epSelector = _episodeSelectHtml(episodes, 'switchEpisode');
     const header = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${t('sb.title')}</h2>
-      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">${epSelector}${_sbViewToggle()}<button class="btn btn-outline btn-ai" onclick="showAIGenStoryboard()">🤖 AI 生成分镜</button><button class="btn btn-outline" onclick="exportStoryboard()">📤 ${t('sb.export')}</button><button class="btn btn-outline" onclick="showImportDialog()">📥 ${t('sb.import')}</button><button class="btn btn-primary" onclick="navTo('pipeline')">🎬 ${noEmoji(t('nav.pipeline'))}</button><button class="btn btn-success" onclick="addShot()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>
+      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">${epSelector}${_sbViewToggle()}<button class="btn btn-outline btn-ai" onclick="showAIGenStoryboard()">🤖 AI 生成分镜</button><button class="btn btn-outline" onclick="exportStoryboard()">📤 ${t('sb.export')}</button><button class="btn btn-outline" onclick="showImportDialog()">📥 ${t('sb.import')}</button><button class="btn btn-primary" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline')}</button><button class="btn btn-success" onclick="addShot()">+ ${t('btn.add').replace('+ ', '')}</button></div></div>
       <p class="dim" style="font-size:.76rem;margin-bottom:.5rem">${t('sb.drag_hint')}</p>`;
 
     if (!ss.length) {
