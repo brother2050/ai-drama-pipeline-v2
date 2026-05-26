@@ -54,17 +54,22 @@ function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 function debounce(fn, ms = 300) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 function toast(msg, type = 'success') { const el = document.createElement('div'); el.className = `toast toast-${type}`; el.textContent = msg; document.body.appendChild(el); setTimeout(() => el.remove(), 3500); }
 
-// ── 自定义模态框（替代原生 prompt/confirm）──
+// ── 简洁工具 ──
 
-function _btnLoading(btn, loadingText = '⏳ ...') {
+/** 安全设置元素 innerHTML（null 则跳过） */
+function _html(el, content) { if (el) el.innerHTML = content; }
+
+/** 安全设置按钮加载态 */
+function _btnLoad(btn, text) {
   if (!btn) return () => {};
   const orig = btn.innerHTML;
-  const origDisabled = btn.disabled;
-  btn.disabled = true;
-  btn.innerHTML = loadingText;
-  btn.style.opacity = '0.7';
-  return () => { btn.disabled = origDisabled; btn.innerHTML = orig; btn.style.opacity = ''; };
+  btn.disabled = true; btn.innerHTML = text; btn.style.opacity = '0.7';
+  return () => { btn.disabled = false; btn.innerHTML = orig; btn.style.opacity = ''; };
 }
+
+// ── 自定义模态框（替代原生 prompt/confirm）──
+
+function _btnLoading(btn, loadingText = '⏳ ...') { return _btnLoad(btn, loadingText); }
 
 function modalConfirm(message) {
   return new Promise(resolve => {
@@ -325,32 +330,31 @@ async function dashInspireGen() {
   const duration = parseInt(document.getElementById('dash-inspire-dur')?.value) || 90;
   const append = document.getElementById('dash-inspire-append')?.checked || false;
   const statusEl = document.getElementById('dash-inspire-status');
-  const btn = document.getElementById('dash-inspire-btn');
-  const resetBtn = _btnLoading(btn, '⏳ AI 生成中...');
+  const reset = _btnLoad(document.getElementById('dash-inspire-btn'), '⏳ AI 生成中...');
 
   try {
     const { task_id } = await api('/llm/storyboard', { method: 'POST', body: { episode, outline, duration, append } });
     const result = await pollTask(task_id, info => {
-      if (statusEl) statusEl.innerHTML = `<div class="inspire-progress"><div class="batch-bar"><div class="batch-fill" style="width:${info.progress || 0}%"></div></div><span>⏳ ${info.message || 'AI 生成中...'} (${info.progress || 0}%)</span></div>`;
+      _html(statusEl, `<div class="inspire-progress"><div class="batch-bar"><div class="batch-fill" style="width:${info.progress || 0}%"></div></div><span>⏳ ${info.message || 'AI 生成中...'} (${info.progress || 0}%)</span></div>`);
     });
 
     if (result.status === 'success' && result.result?.status === 'done') {
       const r = result.result;
-      if (statusEl) statusEl.innerHTML = `✅ 生成 ${r.count} 个镜头，共 ${r.total_duration} 秒`;
+      _html(statusEl, `✅ 生成 ${r.count} 个镜头，共 ${r.total_duration} 秒`);
       toast(`✅ 已生成 ${r.count} 个镜头`);
       invalidateCache(`storyboard/${episode}`);
       invalidateCache('episodes');
       setTimeout(() => { ep = episode; navTo('storyboard'); }, 1200);
     } else {
       const err = result.result?.reason || result.error || '生成失败';
-      if (statusEl) statusEl.innerHTML = `❌ ${err}`;
+      _html(statusEl, `❌ ${err}`);
       toast(`❌ ${err}`, 'error');
     }
   } catch (e) {
-    if (statusEl) statusEl.innerHTML = `❌ ${e.message}`;
+    _html(statusEl, `❌ ${e.message}`);
     toast(`❌ ${e.message}`, 'error');
   }
-  resetBtn();
+  reset();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -607,24 +611,25 @@ async function deleteShot(idx) {
 
 async function runOne(step, idx) {
   const sid = _shotId(shots[idx], idx);
-  const actionsEl = document.getElementById(`shot-${sid}`)?.querySelector('.wb-shot-actions');
-  if (actionsEl) actionsEl.innerHTML = `<span class="run-indicator">⏳ ${step}...</span> <button class="btn btn-xs btn-danger" onclick="cancelCurrentTask()">⏹</button>`;
+  const act = document.getElementById(`shot-${sid}`)?.querySelector('.wb-shot-actions');
+  _html(act, `<span class="run-indicator">⏳ ${step}...</span> <button class="btn btn-xs btn-danger" onclick="cancelCurrentTask()">⏹</button>`);
   _updatePipelineStep(step, 'active');
   try {
     const { task_id } = await api(`/steps/${step}`, { method: 'POST', body: { episode: ep, shot_id: sid } });
     _currentTaskId = task_id;
-    const result = await pollTask(task_id, info => { if (actionsEl) actionsEl.innerHTML = `<span class="run-indicator">⏳ ${info.message || step} (${info.progress || 0}%)</span> <button class="btn btn-xs btn-danger" onclick="cancelCurrentTask()">⏹</button>`; });
+    const result = await pollTask(task_id, info => _html(act, `<span class="run-indicator">⏳ ${info.message || step} (${info.progress || 0}%)</span> <button class="btn btn-xs btn-danger" onclick="cancelCurrentTask()">⏹</button>`));
     _currentTaskId = null;
-    if (result.status === 'success') {
-      const sub = result.result;
-      if (sub?.status === 'error') { toast(`❌ ${sid} ${step}: ${sub.reason || t('wb.shot_fail')}`, 'error'); _updatePipelineStep(step, 'fail'); }
-      else if (sub?.status === 'skipped') { toast(`⏭ ${sid} ${step}: ${sub.reason || t('wb.shot_skip')}`); _updatePipelineStep(step, 'done'); }
-      else { toast(`✅ ${sid} ${step} ${t('wb.shot_done')}`); _updatePipelineStep(step, 'done'); }
+    const sub = result.result;
+    if (result.status === 'success' && sub?.status !== 'error' && sub?.status !== 'skipped') {
+      toast(`✅ ${sid} ${step} ${t('wb.shot_done')}`); _updatePipelineStep(step, 'done');
+    } else if (result.status === 'success' && sub?.status === 'skipped') {
+      toast(`⏭ ${sid} ${step}: ${sub.reason || t('wb.shot_skip')}`); _updatePipelineStep(step, 'done');
+    } else {
+      const err = sub?.reason || result.error || t('wb.shot_fail');
+      toast(`❌ ${sid} ${step}: ${err}`, 'error'); _updatePipelineStep(step, 'fail');
     }
-    else if (result.status === 'timeout') { toast(`⏰ ${sid} ${step}: ${t('toast.timeout')}`, 'error'); _updatePipelineStep(step, 'fail'); }
-    else { toast(`❌ ${sid} ${step}: ${result.error || t('wb.shot_fail')}`, 'error'); _updatePipelineStep(step, 'fail'); }
   } catch (e) { _currentTaskId = null; toast(`❌ ${sid}: ${e.message}`, 'error'); _updatePipelineStep(step, 'fail'); }
-  if (actionsEl) actionsEl.innerHTML = _actionBtns(idx);
+  _html(act, _actionBtns(idx));
   invalidateCache(`res/${ep}/${sid}`); loadResources(idx);
 }
 
@@ -703,27 +708,19 @@ async function batchRun(step) {
 
 // ── 管线工具 ──
 
-async function runPortraits() {
-  if (!await modalConfirm(t('wb.gen_portraits') + '?')) return;
+async function _runTool(apiPath, body, label) {
+  if (!await modalConfirm(label + '?')) return;
   try {
-    const { task_id } = await api('/tools/portraits', { method: 'POST' });
-    toast('⏳ ' + t('wb.gen_portraits'));
+    toast('⏳ ' + label);
+    const { task_id } = await api(apiPath, { method: 'POST', body });
     const result = await pollTask(task_id);
-    if (result.status === 'success' && result.result?.status !== 'error') toast('✅ ' + t('wb.gen_portraits'));
+    if (result.status === 'success' && result.result?.status !== 'error') toast('✅ ' + label);
     else toast('❌ ' + (result.result?.reason || result.error || t('wb.shot_fail')), 'error');
   } catch (e) { toast('❌ ' + e.message, 'error'); }
 }
 
-async function runPost() {
-  if (!await modalConfirm(t('wb.post_process') + '?')) return;
-  try {
-    const { task_id } = await api('/tools/post', { method: 'POST', body: { episode: ep } });
-    toast('⏳ ' + t('wb.post_process'));
-    const result = await pollTask(task_id);
-    if (result.status === 'success' && result.result?.status !== 'error') toast('✅ ' + t('wb.post_process'));
-    else toast('❌ ' + (result.result?.reason || result.error || t('wb.shot_fail')), 'error');
-  } catch (e) { toast('❌ ' + e.message, 'error'); }
-}
+async function runPortraits() { await _runTool('/tools/portraits', {}, t('wb.gen_portraits')); }
+async function runPost() { await _runTool('/tools/post', { episode: ep }, t('wb.post_process')); }
 
 async function runAll() {
   if (!await modalConfirm(t('wb.run_all') + '?')) return;
@@ -757,25 +754,10 @@ async function runMusic() {
   const duration = await modalPrompt(t('wb.music_duration') + ':', '60', { inputType: 'number' });
   if (!duration) return;
   const mood = await modalPrompt(t('wb.music_mood') + ':', 'neutral');
-  try {
-    const { task_id } = await api('/tools/music', { method: 'POST', body: { duration: parseFloat(duration), mood: mood || 'neutral' } });
-    toast('⏳ ' + t('wb.gen_music'));
-    const result = await pollTask(task_id);
-    if (result.status === 'success' && result.result?.status !== 'error') toast('✅ ' + t('wb.gen_music'));
-    else toast('❌ ' + (result.result?.reason || result.error || t('wb.shot_fail')), 'error');
-  } catch (e) { toast('❌ ' + e.message, 'error'); }
+  await _runTool('/tools/music', { duration: parseFloat(duration), mood: mood || 'neutral' }, t('wb.gen_music'));
 }
 
-async function runSubtitle() {
-  if (!await modalConfirm(t('wb.gen_subtitle') + '?')) return;
-  try {
-    const { task_id } = await api('/tools/subtitle', { method: 'POST', body: { episode: ep } });
-    toast('⏳ ' + t('wb.gen_subtitle'));
-    const result = await pollTask(task_id);
-    if (result.status === 'success' && result.result?.status !== 'error') toast('✅ ' + t('wb.gen_subtitle'));
-    else toast('❌ ' + (result.result?.reason || result.error || t('wb.shot_fail')), 'error');
-  } catch (e) { toast('❌ ' + e.message, 'error'); }
-}
+async function runSubtitle() { await _runTool('/tools/subtitle', { episode: ep }, t('wb.gen_subtitle')); }
 
 // ══════════════════════════════════════════════════════════
 // 角色管理
@@ -846,37 +828,40 @@ async function editChar(id) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-async function ecUploadImg(id) {
-  const fileInput = document.getElementById('ec-file');
+/** 通用图片上传 */
+async function _uploadImg(entityType, id) {
+  const prefix = entityType === 'characters' ? 'ec' : 'es';
+  const fileInput = document.getElementById(`${prefix}-file`);
   if (!fileInput?.files?.[0]) return;
-  const wrap = document.getElementById('ec-img-wrap');
-  if (wrap) wrap.innerHTML = `<span class="dim">${t('common.uploading')}</span>`;
-  const form = new FormData();
-  form.append('file', fileInput.files[0]);
+  const wrap = document.getElementById(`${prefix}-img-wrap`);
+  _html(wrap, `<span class="dim">${t('common.uploading')}</span>`);
+  const form = new FormData(); form.append('file', fileInput.files[0]);
   try {
-    const r = await fetch(`${API}/assets/characters/${id}/upload`, { method: 'POST', body: form });
+    const r = await fetch(`${API}/assets/${entityType}/${id}/upload`, { method: 'POST', body: form });
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || '上传失败');
-    if (wrap) wrap.innerHTML = `<div class="upload-preview"><img src="${d.url}" id="ec-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="ecRemoveImg('${id}')">✕</button></div>`;
-    invalidateCache('characters');
-    toast('✅ 图片已上传');
-  } catch (e) { if (wrap) wrap.innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`; toast(e.message, 'error'); }
+    _html(wrap, `<div class="upload-preview"><img src="${d.url}"><button class="btn btn-xs btn-danger upload-remove" onclick="${prefix}RemoveImg('${id}')">✕</button></div>`);
+    invalidateCache(entityType); toast('✅ 图片已上传');
+  } catch (e) { _html(wrap, `<span style="color:var(--red)">❌ ${e.message}</span>`); toast(e.message, 'error'); }
 }
 
-function ecHandleDrop(e, id) {
+/** 通用拖拽上传 */
+function _handleImgDrop(e, entityType, id) {
   e.preventDefault(); e.currentTarget.classList.remove('dragover');
-  const file = e.dataTransfer?.files?.[0];
-  if (!file) return;
-  const inp = document.getElementById('ec-file');
-  if (inp) { const dt = new DataTransfer(); dt.items.add(file); inp.files = dt.files; ecUploadImg(id); }
+  const file = e.dataTransfer?.files?.[0]; if (!file) return;
+  const prefix = entityType === 'characters' ? 'ec' : 'es';
+  const inp = document.getElementById(`${prefix}-file`);
+  if (inp) { const dt = new DataTransfer(); dt.items.add(file); inp.files = dt.files; _uploadImg(entityType, id); }
 }
+
+async function ecUploadImg(id) { await _uploadImg('characters', id); }
+function ecHandleDrop(e, id) { _handleImgDrop(e, 'characters', id); }
 
 let _charImgRemoved = false;
 async function ecRemoveImg(id) {
   if (!await modalConfirm('删除定妆照？')) return;
   _charImgRemoved = true;
-  const wrap = document.getElementById('ec-img-wrap');
-  if (wrap) wrap.innerHTML = `<div class="upload-area" onclick="document.getElementById('ec-file').click()"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`;
+  _html(document.getElementById('ec-img-wrap'), `<div class="upload-area" onclick="document.getElementById('ec-file').click()"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`);
 }
 function saveCharEdit(id) {
   const voiceVal = val('ec-voice');
@@ -950,37 +935,14 @@ async function editScene(id) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-async function esUploadImg(id) {
-  const fileInput = document.getElementById('es-file');
-  if (!fileInput?.files?.[0]) return;
-  const wrap = document.getElementById('es-img-wrap');
-  if (wrap) wrap.innerHTML = `<span class="dim">${t('common.uploading')}</span>`;
-  const form = new FormData();
-  form.append('file', fileInput.files[0]);
-  try {
-    const r = await fetch(`${API}/assets/scenes/${id}/upload`, { method: 'POST', body: form });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || '上传失败');
-    if (wrap) wrap.innerHTML = `<div class="upload-preview"><img src="${d.url}" id="es-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="esRemoveImg('${id}')">✕</button></div>`;
-    invalidateCache('scenes');
-    toast('✅ 图片已上传');
-  } catch (e) { if (wrap) wrap.innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`; toast(e.message, 'error'); }
-}
-
-function esHandleDrop(e, id) {
-  e.preventDefault(); e.currentTarget.classList.remove('dragover');
-  const file = e.dataTransfer?.files?.[0];
-  if (!file) return;
-  const inp = document.getElementById('es-file');
-  if (inp) { const dt = new DataTransfer(); dt.items.add(file); inp.files = dt.files; esUploadImg(id); }
-}
+async function esUploadImg(id) { await _uploadImg('scenes', id); }
+function esHandleDrop(e, id) { _handleImgDrop(e, 'scenes', id); }
 
 let _sceneImgRemoved = false;
 async function esRemoveImg(id) {
   if (!await modalConfirm('删除参考图？')) return;
   _sceneImgRemoved = true;
-  const wrap = document.getElementById('es-img-wrap');
-  if (wrap) wrap.innerHTML = `<div class="upload-area" onclick="document.getElementById('es-file').click()"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`;
+  _html(document.getElementById('es-img-wrap'), `<div class="upload-area" onclick="document.getElementById('es-file').click()"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`);
 }
 function saveSceneEdit(id) {
   const extra = _sceneImgRemoved ? { reference_images: [] } : {};
@@ -1015,6 +977,30 @@ function setSBView(mode) {
 // AI 生成
 // ══════════════════════════════════════════════════════════
 
+// ── AI 生成通用执行器 ──
+
+async function _runAIGen(apiPath, body, statusId, overlayId, label, cacheKey, reloadFn) {
+  const statusEl = document.getElementById(statusId);
+  const reset = _btnLoad(document.querySelector(`#${overlayId} .btn-primary`), '⏳ 生成中...');
+  _html(statusEl, `⏳ ${label}...`);
+  try {
+    const { task_id } = await api(apiPath, { method: 'POST', body });
+    const result = await pollTask(task_id, info => _html(statusEl, `⏳ ${info.message || 'AI 生成中...'} (${info.progress || 0}%)`));
+    if (result.status === 'success' && result.result?.status === 'done') {
+      const r = result.result;
+      const countLabel = r.count !== undefined ? `生成 ${r.count} 个` : '完成';
+      _html(statusEl, `✅ ${countLabel}`);
+      toast(`✅ 已${countLabel}`);
+      invalidateCache(cacheKey);
+      setTimeout(() => { document.getElementById(overlayId)?.remove(); reloadFn(); }, 1500);
+    } else {
+      const err = result.result?.reason || result.error || '生成失败';
+      _html(statusEl, `❌ ${err}`); toast(`❌ ${err}`, 'error');
+    }
+  } catch (e) { _html(statusEl, `❌ ${e.message}`); toast(`❌ ${e.message}`, 'error'); }
+  reset();
+}
+
 function showAIGenStoryboard() {
   _showOverlay('ai-gen-sb-overlay', '🤖 AI 生成分镜表', `
     <div class="edit-field"><label>剧情大纲</label>
@@ -1033,46 +1019,14 @@ async function doAIGenStoryboard() {
   const episode = parseInt(document.getElementById('ai-sb-ep')?.value) || ep;
   const duration = parseInt(document.getElementById('ai-sb-dur')?.value) || 90;
   const append = document.getElementById('ai-sb-append')?.checked || false;
-  const statusEl = document.getElementById('ai-sb-status');
-  const okBtn = document.querySelector('#ai-gen-sb-overlay .btn-primary');
-
-  if (statusEl) statusEl.innerHTML = '⏳ AI 正在生成分镜，请稍候...';
-  if (okBtn) { okBtn.disabled = true; okBtn.textContent = '⏳ 生成中...'; }
-
-  try {
-    const { task_id } = await api('/llm/storyboard', {
-      method: 'POST',
-      body: { episode, outline, duration, append },
+  await _runAIGen('/llm/storyboard', { episode, outline, duration, append },
+    'ai-sb-status', 'ai-gen-sb-overlay', 'AI 生成分镜',
+    `storyboard/${episode}`, () => {
+      ep = episode;
+      const p = document.querySelector('.page.active');
+      if (p?.id === 'page-storyboard') loadStoryboard();
+      else if (p?.id === 'page-pipeline') loadPipeline();
     });
-
-    // 轮询任务状态
-    const result = await pollTask(task_id, info => {
-      if (statusEl) statusEl.innerHTML = `⏳ ${info.message || 'AI 生成中...'} (${info.progress || 0}%)`;
-    });
-
-    if (result.status === 'success' && result.result?.status === 'done') {
-      const r = result.result;
-      if (statusEl) statusEl.innerHTML = `✅ 生成 ${r.count} 个镜头，共 ${r.total_duration} 秒`;
-      toast(`✅ 已生成 ${r.count} 个镜头`);
-      invalidateCache(`storyboard/${episode}`);
-      invalidateCache('episodes');
-      setTimeout(() => {
-        document.getElementById('ai-gen-sb-overlay')?.remove();
-        ep = episode;
-        const p = document.querySelector('.page.active');
-        if (p?.id === 'page-storyboard') loadStoryboard();
-        else if (p?.id === 'page-pipeline') loadPipeline();
-      }, 1500);
-    } else {
-      const err = result.result?.reason || result.error || '生成失败';
-      if (statusEl) statusEl.innerHTML = `❌ ${err}`;
-      toast(`❌ ${err}`, 'error');
-    }
-  } catch (e) {
-    if (statusEl) statusEl.innerHTML = `❌ ${e.message}`;
-    toast(`❌ ${e.message}`, 'error');
-  }
-  if (okBtn) { okBtn.disabled = false; okBtn.textContent = '🚀 生成'; }
 }
 
 function showAIGenCharacter() {
@@ -1087,33 +1041,8 @@ async function doAIGenCharacter() {
   if (!descText) { toast('请输入角色描述', 'error'); return; }
   const descriptions = descText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
   if (!descriptions.length) { toast('请输入至少一个角色描述', 'error'); return; }
-  const statusEl = document.getElementById('ai-char-status');
-  const okBtn = document.querySelector('#ai-gen-char-overlay .btn-primary');
-  if (statusEl) statusEl.innerHTML = `⏳ 正在生成 ${descriptions.length} 个角色...`;
-  if (okBtn) { okBtn.disabled = true; okBtn.textContent = '⏳ 生成中...'; }
-
-  try {
-    const { task_id } = await api('/llm/characters', { method: 'POST', body: { descriptions } });
-    const result = await pollTask(task_id, info => {
-      if (statusEl) statusEl.innerHTML = `⏳ ${info.message || 'AI 生成中...'} (${info.progress || 0}%)`;
-    });
-
-    if (result.status === 'success' && result.result?.status === 'done') {
-      const r = result.result;
-      if (statusEl) statusEl.innerHTML = `✅ 生成 ${r.count} 个角色`;
-      toast(`✅ 已生成 ${r.count} 个角色`);
-      invalidateCache('characters');
-      setTimeout(() => { document.getElementById('ai-gen-char-overlay')?.remove(); loadCharacters(); }, 1500);
-    } else {
-      const err = result.result?.reason || result.error || '生成失败';
-      if (statusEl) statusEl.innerHTML = `❌ ${err}`;
-      toast(`❌ ${err}`, 'error');
-    }
-  } catch (e) {
-    if (statusEl) statusEl.innerHTML = `❌ ${e.message}`;
-    toast(`❌ ${e.message}`, 'error');
-  }
-  if (okBtn) { okBtn.disabled = false; okBtn.textContent = '🚀 生成'; }
+  await _runAIGen('/llm/characters', { descriptions }, 'ai-char-status', 'ai-gen-char-overlay',
+    `正在生成 ${descriptions.length} 个角色`, 'characters', loadCharacters);
 }
 
 function showAIGenScene() {
@@ -1128,33 +1057,8 @@ async function doAIGenScene() {
   if (!descText) { toast('请输入场景描述', 'error'); return; }
   const descriptions = descText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
   if (!descriptions.length) { toast('请输入至少一个场景描述', 'error'); return; }
-  const statusEl = document.getElementById('ai-scene-status');
-  const okBtn = document.querySelector('#ai-gen-scene-overlay .btn-primary');
-  if (statusEl) statusEl.innerHTML = `⏳ 正在生成 ${descriptions.length} 个场景...`;
-  if (okBtn) { okBtn.disabled = true; okBtn.textContent = '⏳ 生成中...'; }
-
-  try {
-    const { task_id } = await api('/llm/scenes', { method: 'POST', body: { descriptions } });
-    const result = await pollTask(task_id, info => {
-      if (statusEl) statusEl.innerHTML = `⏳ ${info.message || 'AI 生成中...'} (${info.progress || 0}%)`;
-    });
-
-    if (result.status === 'success' && result.result?.status === 'done') {
-      const r = result.result;
-      if (statusEl) statusEl.innerHTML = `✅ 生成 ${r.count} 个场景`;
-      toast(`✅ 已生成 ${r.count} 个场景`);
-      invalidateCache('scenes');
-      setTimeout(() => { document.getElementById('ai-gen-scene-overlay')?.remove(); loadScenes(); }, 1500);
-    } else {
-      const err = result.result?.reason || result.error || '生成失败';
-      if (statusEl) statusEl.innerHTML = `❌ ${err}`;
-      toast(`❌ ${err}`, 'error');
-    }
-  } catch (e) {
-    if (statusEl) statusEl.innerHTML = `❌ ${e.message}`;
-    toast(`❌ ${e.message}`, 'error');
-  }
-  if (okBtn) { okBtn.disabled = false; okBtn.textContent = '🚀 生成'; }
+  await _runAIGen('/llm/scenes', { descriptions }, 'ai-scene-status', 'ai-gen-scene-overlay',
+    `正在生成 ${descriptions.length} 个场景`, 'scenes', loadScenes);
 }
 
 async function loadStoryboard() {
