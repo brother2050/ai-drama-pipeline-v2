@@ -587,7 +587,7 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
     if not shots:
         return {"status": "error", "reason": "LLM 未能生成有效分镜"}
 
-    self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 80, "message": "正在保存..."})
+    self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 70, "message": "正在保存分镜..."})
 
     sb_path = project_dir / "storyboard" / "episodes.csv"
     save_storyboard(sb_path, shots, episode, append)
@@ -604,9 +604,111 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
     except Exception:
         pass
 
+    # ── 自动补全缺失的角色和场景 ──
+    existing_char_ids = {c.get("id") for c in characters}
+    existing_scene_ids = {s.get("id") for s in scenes}
+
+    used_char_ids = set()
+    used_scene_ids = set()
+    for shot in shots:
+        for cid in (shot.get("characters") or "").split("+"):
+            cid = cid.strip()
+            if cid:
+                used_char_ids.add(cid)
+        sid = (shot.get("scene") or "").strip()
+        if sid:
+            used_scene_ids.add(sid)
+
+    missing_chars = sorted(used_char_ids - existing_char_ids)
+    missing_scenes = sorted(used_scene_ids - existing_scene_ids)
+
+    generated_chars = []
+    generated_scenes = []
+
+    if missing_chars or missing_scenes:
+        self.update_state(state="PROGRESS", meta={
+            "step": "ai_storyboard", "progress": 80,
+            "message": f"正在生成 {len(missing_chars)} 个角色、{len(missing_scenes)} 个场景..."})
+
+    # 生成缺失角色
+    if missing_chars:
+        from engines.llm_generator import generate_characters
+        import yaml as _yaml
+        char_dir = project_dir / "config" / "characters"
+        char_dir.mkdir(parents=True, exist_ok=True)
+
+        char_descriptions = []
+        for cid in missing_chars:
+            # 从分镜中收集该角色的动作/台词作为描述线索
+            char_shots = [s for s in shots if cid in (s.get("characters") or "").split("+")]
+            actions = [s.get("action", "") for s in char_shots[:3]]
+            dialogues = [s.get("dialogue", "") for s in char_shots[:3] if s.get("dialogue") and s.get("dialogue") != "......"]
+            desc_parts = [f"角色ID: {cid}"]
+            if actions:
+                desc_parts.append(f"涉及动作: {'; '.join(actions)}")
+            if dialogues:
+                desc_parts.append(f"台词片段: {'; '.join(dialogues)}")
+            desc_parts.append(f"来自大纲: {outline[:200]}")
+            char_descriptions.append("。".join(desc_parts))
+
+        try:
+            new_chars = generate_characters(llm, char_descriptions)
+            for char in new_chars:
+                cid = char.get("id", "unknown")
+                path = char_dir / f"{cid}.yaml"
+                with open(path, "w", encoding="utf-8") as f:
+                    _yaml.dump({"character": char}, f, allow_unicode=True, default_flow_style=False)
+                try:
+                    from infra.database.characters import upsert as db_up
+                    from infra.database.pool import get_pool
+                    db_up(get_pool(), cid, char)
+                except Exception:
+                    pass
+                generated_chars.append(cid)
+                logger.info(f"  ✅ 自动生成角色: {char.get('name', '?')} ({cid})")
+        except Exception as e:
+            logger.warning(f"  ⚠ 自动生成角色失败: {e}")
+
+    # 生成缺失场景
+    if missing_scenes:
+        from engines.llm_generator import generate_scenes
+        import yaml as _yaml
+        scene_dir = project_dir / "config" / "scenes"
+        scene_dir.mkdir(parents=True, exist_ok=True)
+
+        scene_descriptions = []
+        for sid in missing_scenes:
+            scene_shots = [s for s in shots if (s.get("scene") or "").strip() == sid]
+            actions = [s.get("action", "") for s in scene_shots[:3]]
+            desc_parts = [f"场景ID: {sid}"]
+            if actions:
+                desc_parts.append(f"出现画面: {'; '.join(actions)}")
+            desc_parts.append(f"来自大纲: {outline[:200]}")
+            scene_descriptions.append("。".join(desc_parts))
+
+        try:
+            new_scenes = generate_scenes(llm, scene_descriptions)
+            for scene in new_scenes:
+                sid = scene.get("id", "unknown")
+                path = scene_dir / f"{sid}.yaml"
+                with open(path, "w", encoding="utf-8") as f:
+                    _yaml.dump({"scene": scene}, f, allow_unicode=True, default_flow_style=False)
+                try:
+                    from infra.database.scenes import upsert as db_up
+                    from infra.database.pool import get_pool
+                    db_up(get_pool(), sid, scene)
+                except Exception:
+                    pass
+                generated_scenes.append(sid)
+                logger.info(f"  ✅ 自动生成场景: {scene.get('name', '?')} ({sid})")
+        except Exception as e:
+            logger.warning(f"  ⚠ 自动生成场景失败: {e}")
+
     total_sec = sum(int(s.get("duration", 4)) for s in shots)
     return {"status": "done", "episode": episode, "count": len(shots),
-            "total_duration": total_sec, "shots": shots}
+            "total_duration": total_sec, "shots": shots,
+            "generated_characters": generated_chars,
+            "generated_scenes": generated_scenes}
 
 
 def _load_yaml_entities(directory, key: str) -> list:
