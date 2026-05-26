@@ -82,6 +82,11 @@ class Container:
         "training": "training_backend",
     }
 
+    # 工作流模板名 → 实际 API 后端名（image_backend 配置同时被 workflow_builder 用作工作流选择）
+    _WORKFLOW_TO_API = {
+        "sd15": "comfyui", "flux": "comfyui",
+    }
+
     def __init__(self, config: dict):
         self._config = config
         self._instances: dict[str, Any] = {}
@@ -107,6 +112,8 @@ class Container:
         cfg_key = self._TYPE_KEY.get(service_type, f"{service_type}_backend")
         name = models.get(cfg_key)
         if name:
+            # image_backend 等配置可能存的是工作流模板名（如 sd15），需映射到实际 API 后端
+            name = self._WORKFLOW_TO_API.get(name, name)
             return name
         # 2. 从顶层 service_type 段读取（如 llm.backend, training.backend）
         svc_cfg = self._config.get(service_type, {})
