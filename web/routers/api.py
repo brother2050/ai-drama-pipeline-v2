@@ -1038,7 +1038,7 @@ def get_shot_file(episode: int, shot_id: str, filename: str):
 def get_worker_status():
     """获取 Celery Worker 状态"""
     try:
-        from celery_app import app as celery_app
+        from pipeline.celery_app import app as celery_app
         inspect = celery_app.control.inspect(timeout=0.5)
         active = inspect.active() or {}
         active_tasks = sum(len(v) for v in active.values())
