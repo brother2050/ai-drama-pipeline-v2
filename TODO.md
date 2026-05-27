@@ -6,14 +6,17 @@
 
 ## 🔴 待开发
 
-- [ ] **outfit 图片批量/单独生成** — 为角色各服装（outfit）生成专属参考图
-  - 当前：outfit 子目录查找已接入，但没有生成入口
-  - 需要：`/characters/{char_id}/generate-outfit` 单独生成 + 批量任务
-  - 生成时将 outfit 描述作为 prompt 一部分传给 ComfyUI
+（暂无）
 
 ---
 
 ## ✅ 已完成
+
+### 2026-05-27 outfit 图片批量/单独生成
+- 新增 `POST /characters/{char_id}/generate-outfit?outfit_key=xxx` 单独生成接口
+- 新增 `POST /characters/{char_id}/generate-outfits` 批量生成接口
+- 生成时将角色 appearance + outfit 描述拼接为 prompt 传给 ComfyUI
+- 图片输出到 `assets/characters/{char_id}/{outfit_key}/` 子目录
 
 ### 2026-05-27 前端显示层
 - ID→中文名映射（网格视图、时间线、分镜表格 tooltip）

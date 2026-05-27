@@ -567,6 +567,130 @@ def generate_character_portrait(char_id: str):
     return {"status": "ok", "url": img_url, "char_id": char_id}
 
 
+@router.post("/characters/{char_id}/generate-outfit")
+def generate_character_outfit(char_id: str, outfit_key: str = "default"):
+    """为单个角色的指定服装（outfit）生成参考图"""
+    _check_id(char_id, "角色 ID")
+
+    import yaml
+    from infra.config import Config
+    from api import _ensure_registered; _ensure_registered()
+    from api.registry import Container
+    from engines.prompt import translate_to_english
+
+    cfg_path = _cfg_path()
+    cfg = Config(cfg_path)
+
+    # 读取角色配置
+    char_yaml_path = _proj() / "config" / "characters" / f"{char_id}.yaml"
+    if not char_yaml_path.exists():
+        raise HTTPException(404, f"角色 {char_id} 不存在")
+
+    with open(char_yaml_path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    char = data.get("character", {})
+    appearance = char.get("appearance", char_id)
+    outfits = char.get("outfits", {})
+
+    if not isinstance(outfits, dict) or outfit_key not in outfits:
+        available = list(outfits.keys()) if isinstance(outfits, dict) else []
+        raise HTTPException(404, f"角色 {char_id} 没有名为 '{outfit_key}' 的服装，可用: {available}")
+
+    outfit_desc = outfits[outfit_key]
+    if not outfit_desc:
+        raise HTTPException(400, f"角色 {char_id} 的服装 '{outfit_key}' 描述为空")
+
+    # 获取 ComfyUI 后端
+    try:
+        cont = Container(cfg.data)
+        comfyui = cont.get("image")
+    except Exception as e:
+        raise HTTPException(503, f"ComfyUI 不可用: {e}")
+
+    # 构建 outfit 参考图输出目录
+    from engines.workflow_builder import WorkflowBuilder
+    outfit_dir = _proj() / "assets" / "characters" / char_id / outfit_key
+    outfit_dir.mkdir(parents=True, exist_ok=True)
+
+    # 清除旧图（强制重新生成）
+    for old in outfit_dir.glob("*.png"):
+        old.unlink()
+    for old in outfit_dir.glob("*.jpg"):
+        old.unlink()
+
+    # 构建 prompt：appearance + outfit description
+    full_desc = f"{appearance}, wearing {outfit_desc}"
+    # 中文描述需要翻译
+    if any(ord(c) > 127 for c in full_desc):
+        full_desc = translate_to_english(full_desc, llm=None)
+
+    models = cfg.get("models", {})
+    wb = WorkflowBuilder(cfg.data, models, str(_proj()), comfyui=comfyui)
+    wb.load_workflows()
+    fake_shot = {"characters": char_id, "emotion": "neutral",
+                 "shot_type": "全身", "camera": "固定"}
+    _, wf = wb.build_first_frame(fake_shot, character_desc=full_desc)
+    if not wf:
+        raise HTTPException(500, "首帧工作流为空（缺少模板）")
+
+    try:
+        files = comfyui.generate(wf, str(outfit_dir))
+    except Exception as e:
+        raise HTTPException(500, f"ComfyUI 生成失败: {e}")
+
+    if not files:
+        raise HTTPException(500, "ComfyUI 未返回任何图片")
+
+    img_url = f"/api/assets/characters/{char_id}/{outfit_key}/{Path(files[0]).name}"
+    return {"status": "ok", "url": img_url, "char_id": char_id, "outfit": outfit_key}
+
+
+@router.post("/characters/{char_id}/generate-outfits")
+def generate_character_outfits(char_id: str):
+    """为单个角色的所有服装（outfit）批量生成参考图"""
+    _check_id(char_id, "角色 ID")
+
+    import yaml
+    from infra.config import Config
+
+    cfg_path = _cfg_path()
+    cfg = Config(cfg_path)
+
+    # 读取角色配置
+    char_yaml_path = _proj() / "config" / "characters" / f"{char_id}.yaml"
+    if not char_yaml_path.exists():
+        raise HTTPException(404, f"角色 {char_id} 不存在")
+
+    with open(char_yaml_path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    char = data.get("character", {})
+    outfits = char.get("outfits", {})
+
+    if not isinstance(outfits, dict) or not outfits:
+        raise HTTPException(400, f"角色 {char_id} 没有定义任何服装")
+
+    results = []
+    errors = []
+    for key in outfits:
+        try:
+            result = generate_character_outfit(char_id, key)
+            results.append(result)
+        except HTTPException as e:
+            errors.append({"outfit": key, "error": e.detail})
+        except Exception as e:
+            errors.append({"outfit": key, "error": str(e)})
+
+    return {
+        "status": "ok",
+        "char_id": char_id,
+        "generated": results,
+        "errors": errors,
+        "total": len(outfits),
+        "success": len(results),
+        "failed": len(errors),
+    }
+
+
 @router.post("/tools/post")
 def run_post(req: PostRequest):
     """后期合成"""
