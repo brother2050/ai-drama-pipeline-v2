@@ -361,14 +361,26 @@ def video_core(shot_id: str, cfg, cont, out_dir: Path) -> dict:
         return _skip(shot_id, "video", "首帧不存在，请先执行 Step 2")
 
     from engines.workflow_builder import WorkflowBuilder
+    from engines.workflow import find_load_image_nodes
     wb = WorkflowBuilder(cfg.data, cfg.get("models", {}), cfg.project_dir, comfyui=cont.get("image"))
     wb.load_workflows()
     video_wf = wb.build_video(str(frame_path))
     if not video_wf:
         return _err(shot_id, "video", "视频工作流为空（缺少模板）")
 
+    # 上传首帧图到 ComfyUI（LoadImage 节点需要服务端文件）
+    comfyui = cont.get("image")
+    load_nodes = find_load_image_nodes(video_wf)
+    if load_nodes:
+        try:
+            comfyui.upload_image(str(frame_path))
+            if load_nodes[0] in video_wf:
+                video_wf[load_nodes[0]]["inputs"]["image"] = frame_path.name
+        except Exception as e:
+            logger.warning(f"首帧图上传失败: {e}")
+
     try:
-        files = cont.get("video").generate(video_wf, str(out_dir))
+        files = comfyui.generate(video_wf, str(out_dir))
     except Exception as e:
         return _err(shot_id, "video", f"视频生成失败: {e}")
 
