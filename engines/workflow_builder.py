@@ -36,13 +36,14 @@ class WorkflowBuilder:
     """ComfyUI 工作流构建器"""
 
     def __init__(self, config: dict, models: dict, project_dir: str,
-                 wf_dir: str = "", registry=None, comfyui=None):
+                 wf_dir: str = "", registry=None, comfyui=None, llm=None):
         self.config = config
         self.models = models
         self.project_dir = project_dir
         self.wf_dir = wf_dir or os.path.join(project_dir, "workflows")
         self.registry = registry
         self.comfyui = comfyui
+        self.llm = llm
         self.first_frame_wf: dict = {}
         self.video_wf: dict = {}
 
@@ -150,7 +151,7 @@ class WorkflowBuilder:
         genre = self.config.get("project", {}).get("genre", "urban")
         positive = build_prompt(shot, character_desc=character_desc,
                                 scene_desc=scene_desc, style=style, genre=genre,
-                                llm=getattr(self, '_llm', None))
+                                llm=self.llm)
         if multi_char_prompt:
             positive = f"{positive}, {multi_char_prompt}"
 
@@ -467,7 +468,8 @@ class WorkflowBuilder:
 
         # 尝试自动定妆照（传入简易容器包装 comfyui 实例）
         portrait = ensure_portrait(char_id, self.config,
-                                   _SimpleContainer(self.comfyui) if self.comfyui else None)
+                                   _SimpleContainer(self.comfyui) if self.comfyui else None,
+                                   llm=self.llm)
         if portrait:
             return [portrait]
 

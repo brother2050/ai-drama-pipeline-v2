@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 _generating: set[str] = set()
 
 
-def ensure_portrait(char_id: str, config: dict, container=None) -> str:
+def ensure_portrait(char_id: str, config: dict, container=None, llm=None) -> str:
     """确保角色有定妆照，没有则生成一张"""
     project_dir = config.get("_project_dir", os.getcwd())
     portrait_dir = Path(project_dir) / "assets" / "characters" / char_id
@@ -47,7 +47,7 @@ def ensure_portrait(char_id: str, config: dict, container=None) -> str:
             # 使用 WorkflowBuilder 构建正确的定妆照工作流
             from engines.workflow_builder import WorkflowBuilder
             models = config.get("models", {})
-            wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui)
+            wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui, llm=llm)
             wb.load_workflows()
             # 构建一个简单的首帧工作流（单角色，无场景）
             fake_shot = {"characters": char_id, "emotion": "neutral",

@@ -92,36 +92,8 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
 
 
 # 常见中文外貌描述→英文映射（兜底用，覆盖常见词）
-_APPEARANCE_MAP = {
-    "年轻男性": "young man", "年轻女性": "young woman",
-    "男性": "male", "女性": "female",
-    "短发": "short hair", "长发": "long hair", "及肩长发": "shoulder-length hair",
-    "长发及肩": "shoulder-length hair", "及肩": "shoulder-length",
-    "卷发": "curly hair", "直发": "straight hair", "马尾": "ponytail",
-    "剑眉星目": "sharp eyebrows, bright eyes", "瓜子脸": "oval face",
-    "大眼睛": "big eyes", "柳叶眉": "willow-leaf eyebrows",
-    "高鼻梁": "high nose bridge", "薄唇": "thin lips", "厚唇": "full lips",
-    "皮肤白皙": "fair skin", "小麦色皮肤": "tan skin", "古铜色皮肤": "bronze skin",
-    "体型匀称": "athletic build", "体型偏瘦": "slim build",
-    "体型偏胖": "chubby build", "肌肉发达": "muscular build",
-    "岁": " year old ", "身高": "height ", "cm": "cm",
-    "，": ", ", "。": "", "、": ", ",
-}
-
-
-def _fallback_translate(text: str) -> str:
-    """基础中→英翻译兜底：替换常见词汇，保留数字和标点"""
-    result = text
-    # 按 key 长度降序替换，避免短 key 先匹配了长 key 的子串
-    for zh, en in sorted(_APPEARANCE_MAP.items(), key=lambda x: -len(x[0])):
-        result = result.replace(zh, en)
-    # 清理多余逗号和空格
-    result = ", ".join(p.strip() for p in result.split(",") if p.strip())
-    return result
-
-
 def translate_to_english(text: str, llm=None) -> str:
-    """中文→英文翻译（使用 LLM 或回退）"""
+    """中文→英文翻译（使用 LLM）"""
     if not text:
         return ""
     # 简单回退：如果已经是英文直接返回
@@ -133,7 +105,6 @@ def translate_to_english(text: str, llm=None) -> str:
                           system="You are a professional translator.")
         except Exception as e:
             logger.warning(f"LLM translation failed: {e}")
-    # 兜底：基础词汇替换
-    translated = _fallback_translate(text)
-    logger.info(f"使用基础翻译兜底: {text[:30]}... → {translated[:50]}...")
-    return translated
+    # 无 LLM 时返回原文并警告
+    logger.warning(f"无 LLM 可用，中文描述将原样传入 ComfyUI（可能无效）: {text[:50]}...")
+    return text

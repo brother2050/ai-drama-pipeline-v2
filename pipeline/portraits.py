@@ -34,6 +34,15 @@ def run_portraits(config_path: str, force: bool = False):
         logger.warning(f"无法创建容器: {e}")
         cont = None
 
+    # 获取 LLM 实例（用于中文→英文翻译）
+    llm = None
+    if cont:
+        try:
+            llm = cont.get("llm")
+            logger.info(f"LLM 后端: {type(llm).__name__}")
+        except Exception as e:
+            logger.warning(f"无 LLM 可用，中文角色描述将无法翻译: {e}")
+
     import yaml
 
     generated = 0
@@ -75,7 +84,7 @@ def run_portraits(config_path: str, force: bool = False):
                 # 使用 WorkflowBuilder 构建正确的定妆照工作流
                 from engines.workflow_builder import WorkflowBuilder
                 models = cfg.get("models", {})
-                wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=comfyui)
+                wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=comfyui, llm=llm)
                 wb.load_workflows()
                 fake_shot = {"characters": char_id, "emotion": "neutral",
                              "shot_type": "特写", "camera": "固定"}
