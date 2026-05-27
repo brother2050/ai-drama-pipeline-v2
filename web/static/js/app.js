@@ -1043,20 +1043,117 @@ async function generateSceneImage(sceneId) {
   reset();
 }
 
+/** 构建服装列表 HTML（支持多套服装 + 单独/批量生成） */
+function _outfitFieldsHtml(charId, outfits = {}) {
+  const entries = Object.entries(outfits);
+  let html = `<div class="edit-field"><label>👗 服装列表 <button class="btn btn-xs btn-ai" onclick="addOutfitField()">+ 添加</button> <button class="btn btn-xs btn-ai" onclick="generateAllOutfits('${esc(charId)}')" id="gen-all-outfits-btn">🎨 批量生成全部</button><span id="gen-all-outfits-status" class="dim" style="font-size:.8rem;margin-left:.5rem"></span></label></div>`;
+  html += `<div id="ec-outfit-list">`;
+  if (entries.length === 0) {
+    html += _outfitEntryHtml('', '', charId);
+  } else {
+    for (const [key, desc] of entries) {
+      html += _outfitEntryHtml(key, typeof desc === 'string' ? desc : '', charId);
+    }
+  }
+  html += `</div>`;
+  return html;
+}
+
+function _outfitEntryHtml(key, desc, charId) {
+  const k = esc(key);
+  const d = esc(desc);
+  return `<div class="outfit-entry" style="display:flex;gap:.4rem;align-items:flex-start;margin-bottom:.5rem">` +
+    `<input class="outfit-key" value="${k}" placeholder="服装名 (如 default)" style="width:120px;flex-shrink:0">` +
+    `<textarea class="outfit-desc" rows="1" placeholder="服装描述" style="flex:1;min-height:1.8rem">${d}</textarea>` +
+    `<button class="btn btn-xs btn-ai" onclick="generateOutfit('${esc(charId)}', this)" title="生成此服装参考图">🎨</button>` +
+    `<button class="btn btn-xs btn-danger" onclick="removeOutfitField(this)" title="删除">✕</button>` +
+    `</div>`;
+}
+
+function addOutfitField() {
+  const list = document.getElementById('ec-outfit-list');
+  if (!list) return;
+  list.insertAdjacentHTML('beforeend', _outfitEntryHtml('', '', _currentEditCharId || ''));
+}
+
+function removeOutfitField(btn) {
+  const entry = btn.closest('.outfit-entry');
+  if (entry) entry.remove();
+}
+
+/** 从表单收集所有服装配置 */
+function _collectOutfits() {
+  const entries = document.querySelectorAll('#ec-outfit-list .outfit-entry');
+  const outfits = {};
+  for (const entry of entries) {
+    const key = entry.querySelector('.outfit-key')?.value?.trim();
+    const desc = entry.querySelector('.outfit-desc')?.value?.trim();
+    if (key && desc) outfits[key] = desc;
+  }
+  return Object.keys(outfits).length ? outfits : null;
+}
+
+/** 单个服装参考图生成（异步） */
+async function generateOutfit(charId, btnEl) {
+  const entry = btnEl.closest('.outfit-entry');
+  const key = entry?.querySelector('.outfit-key')?.value?.trim();
+  if (!key) { toast('请先填写服装名称', 'error'); return; }
+  const statusEl = document.getElementById('gen-all-outfits-status');
+  const reset = _btnLoad(btnEl, '⏳');
+  try {
+    const { task_id } = await api(`/characters/${charId}/generate-outfit?outfit_key=${encodeURIComponent(key)}`, { method: 'POST' });
+    const result = await pollTask(task_id, info => { if (statusEl) _html(statusEl, `⏳ ${key}: ${info.message || '生成中...'} (${info.progress || 0}%)`); });
+    if (result.status === 'success' && result.result?.status === 'done') {
+      toast(`✅ 服装「${key}」参考图已生成`);
+      invalidateCache('characters');
+    } else {
+      const err = result.result?.reason || result.error || '生成失败';
+      toast(`❌ ${key}: ${err}`, 'error');
+    }
+  } catch (e) { toast(`❌ ${e.message}`, 'error'); }
+  reset();
+  if (statusEl) _html(statusEl, '');
+}
+
+/** 批量生成所有服装参考图（异步） */
+async function generateAllOutfits(charId) {
+  const btn = document.getElementById('gen-all-outfits-btn');
+  const status = document.getElementById('gen-all-outfits-status');
+  const reset = _btnLoad(btn, '⏳ 批量生成中...');
+  _html(status, '⏳ 提交批量任务...');
+  try {
+    const { task_id } = await api(`/characters/${charId}/generate-outfits`, { method: 'POST' });
+    const result = await pollTask(task_id, info => _html(status, `⏳ ${info.message || '生成中...'} (${info.progress || 0}%)`));
+    if (result.status === 'success' && result.result?.status === 'done') {
+      const r = result.result;
+      _html(status, `✅ 完成 (${r.success || 0}/${r.total || 0})`);
+      toast(`✅ 服装批量生成完成: ${r.success || 0}/${r.total || 0}`);
+      invalidateCache('characters');
+    } else {
+      const err = result.result?.reason || result.error || '生成失败';
+      _html(status, `❌ ${err}`);
+      toast(`❌ ${err}`, 'error');
+    }
+  } catch (e) { _html(status, `❌ ${e.message}`); toast(`❌ ${e.message}`, 'error'); }
+  reset();
+}
+
+var _currentEditCharId = '';
+
 async function editChar(id) {
+  _currentEditCharId = id;
   await _getTtsBackend();
   _editEntityPanel('characters', id, {
     titleKey: 'char.edit_title', notFoundKey: 'char.not_found', imgPrefix: 'ec', imgLabel: t('char.upload_img'), confirmMsg: '删除定妆照？',
     reload: loadCharacters,
     deleteFn: deleteCharWithRef,
-    buildExtra() { return { voice: _collectVoiceConfig('ec'), outfits: $val('ec-outfits') ? { default: $val('ec-outfits') } : null }; },
-    extraHtml: (item) => `<div class="edit-field"><button class="btn btn-ai btn-sm" onclick="generatePortrait('${esc(id)}')" id="gen-portrait-btn">🎨 AI 生成定妆照</button><span id="gen-portrait-status" class="dim" style="font-size:.8rem;margin-left:.5rem"></span></div>` + _ttsVoiceFieldsHtml('ec', item.voice || {}),
+    buildExtra() { return { voice: _collectVoiceConfig('ec'), outfits: _collectOutfits() }; },
+    extraHtml: (item) => `<div class="edit-field"><button class="btn btn-ai btn-sm" onclick="generatePortrait('${esc(id)}')" id="gen-portrait-btn">🎨 AI 生成定妆照</button><span id="gen-portrait-status" class="dim" style="font-size:.8rem;margin-left:.5rem"></span></div>` + _outfitFieldsHtml(id, item.outfits || {}) + _ttsVoiceFieldsHtml('ec', item.voice || {}),
     fields: [
       { key: 'name', label: t('char.name') },
       { key: 'gender', label: t('char.gender'), type: 'select', options: [{ value: '', label: '-' }, { value: 'male', label: t('char.gender.male') }, { value: 'female', label: t('char.gender.female') }] },
       { key: 'appearance', label: t('char.appearance'), type: 'textarea' },
       { key: 'personality', label: t('char.personality') || '性格', type: 'textarea', getValue: c => c.personality || '' },
-      { key: 'outfits', label: t('char.outfit_desc'), type: 'textarea', getValue: c => c.outfits?.default || '' },
     ],
   });
 }
