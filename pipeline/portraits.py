@@ -13,7 +13,7 @@ from infra.config import Config
 logger = logging.getLogger(__name__)
 
 
-def run_portraits(config_path: str):
+def run_portraits(config_path: str, force: bool = False):
     """生成定妆照"""
     cfg = Config(config_path)
     logger.info("生成定妆照")
@@ -59,8 +59,13 @@ def run_portraits(config_path: str):
         # 检查是否已有定妆照
         existing = list(portrait_dir.glob("*.png")) + list(portrait_dir.glob("*.jpg"))
         if existing:
-            logger.info(f"    已有 {len(existing)} 张定妆照，跳过")
-            continue
+            if force:
+                for img in existing:
+                    img.unlink()
+                logger.info(f"    已有 {len(existing)} 张定妆照，已删除（强制模式）")
+            else:
+                logger.info(f"    已有 {len(existing)} 张定妆照，跳过")
+                continue
 
         # 构建 prompt
         appearance = char.get("appearance", "")

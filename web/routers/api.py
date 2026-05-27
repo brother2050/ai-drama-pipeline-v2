@@ -476,17 +476,17 @@ def run_tts(req: TTSRequest):
 
 
 @router.post("/tools/portraits")
-def gen_portraits():
+def gen_portraits(force: bool = False):
     """生成定妆照"""
     from pipeline.tasks import portraits_task
-    return _submit_task(portraits_task, _cfg_path())
+    return _submit_task(portraits_task, _cfg_path(), force=force)
 
 
 @router.post("/tools/scene-images")
-def gen_scene_images():
+def gen_scene_images(force: bool = False):
     """批量生成场景参考图"""
     from pipeline.tasks import scene_images_task
-    return _submit_task(scene_images_task, _cfg_path())
+    return _submit_task(scene_images_task, _cfg_path(), force=force)
 
 
 @router.post("/characters/{char_id}/generate-portrait")

@@ -598,12 +598,12 @@ def post_task(self, config_path: str, episode: int, vertical: bool = False) -> d
 
 
 @app.task(bind=True, name="pipeline.portraits", soft_time_limit=1800)
-def portraits_task(self, config_path: str) -> dict:
+def portraits_task(self, config_path: str, force: bool = False) -> dict:
     _ensure_path()
     self.update_state(state="PROGRESS", meta={"step": "portraits", "progress": 10})
     try:
         from pipeline.portraits import run_portraits
-        run_portraits(config_path)
+        run_portraits(config_path, force=force)
     except Exception as e:
         logger.error(f"定妆照生成失败: {e}")
         return {"status": "error", "reason": str(e)}
@@ -611,7 +611,7 @@ def portraits_task(self, config_path: str) -> dict:
 
 
 @app.task(bind=True, name="pipeline.scene_images", soft_time_limit=1800)
-def scene_images_task(self, config_path: str) -> dict:
+def scene_images_task(self, config_path: str, force: bool = False) -> dict:
     """为所有场景批量生成参考图"""
     _ensure_path()
     self.update_state(state="PROGRESS", meta={"step": "scene_images", "progress": 10, "message": "加载场景..."})
@@ -670,8 +670,13 @@ def scene_images_task(self, config_path: str) -> dict:
             if scene_asset_dir.exists():
                 existing = list(scene_asset_dir.glob("*.png")) + list(scene_asset_dir.glob("*.jpg"))
                 if existing:
-                    logger.info(f"  场景 {sname} 已有 {len(existing)} 张图，跳过")
-                    continue
+                    if force:
+                        for img in existing:
+                            img.unlink()
+                        logger.info(f"  场景 {sname} 已有 {len(existing)} 张图，已删除（强制模式）")
+                    else:
+                        logger.info(f"  场景 {sname} 已有 {len(existing)} 张图，跳过")
+                        continue
 
             scene_asset_dir.mkdir(parents=True, exist_ok=True)
             scene_desc_en = translate_to_english(description, llm=llm)

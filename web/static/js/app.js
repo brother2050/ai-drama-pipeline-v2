@@ -759,8 +759,8 @@ async function _runTool(apiPath, body, label) {
   } catch (e) { toast('❌ ' + e.message, 'error'); }
 }
 
-async function runPortraits() { _updatePipelineStep('portrait', 'active'); await _runTool('/tools/portraits', {}, t('wb.gen_portraits')); _updatePipelineStep('portrait', 'done'); }
-async function runSceneImages() { _updatePipelineStep('scene', 'active'); await _runTool('/tools/scene-images', {}, t('wb.gen_scene_images')); _updatePipelineStep('scene', 'done'); }
+async function runPortraits() { _updatePipelineStep('portrait', 'active'); await _runTool('/tools/portraits?force=true', {}, t('wb.gen_portraits')); _updatePipelineStep('portrait', 'done'); }
+async function runSceneImages() { _updatePipelineStep('scene', 'active'); await _runTool('/tools/scene-images?force=true', {}, t('wb.gen_scene_images')); _updatePipelineStep('scene', 'done'); }
 async function runPost() { await _runTool('/tools/post', { episode: ep }, t('wb.post_process')); }
 
 async function runAll() {
