@@ -67,8 +67,11 @@ CREATE TABLE IF NOT EXISTS generation_status (
 def init_schema(conn):
     """初始化数据库 Schema"""
     cursor = conn.cursor()
-    for stmt in SCHEMA_SQL.split(";"):
-        stmt = stmt.strip()
-        if stmt:
-            cursor.execute(stmt)
-    conn.commit()
+    try:
+        for stmt in SCHEMA_SQL.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                cursor.execute(stmt)
+        conn.commit()
+    finally:
+        cursor.close()

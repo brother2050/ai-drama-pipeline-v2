@@ -106,7 +106,10 @@ _CACHE_MAX_SIZE = 4096
 
 def _cache_set(key: str, value: str) -> None:
     if len(_translate_cache) >= _CACHE_MAX_SIZE:
-        _translate_cache.clear()
+        # 淘汰最早插入的一批条目（FIFO 近似），避免 clear() 导致缓存雪巴
+        evict_count = _CACHE_MAX_SIZE // 4
+        for old_key in list(_translate_cache)[:evict_count]:
+            del _translate_cache[old_key]
     _translate_cache[key] = value
 
 
