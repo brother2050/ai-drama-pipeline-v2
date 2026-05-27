@@ -1,6 +1,9 @@
 """Prompt 工程引擎 — 中文→英文翻译 + ComfyUI Prompt 构建"""
 from __future__ import annotations
 import logging
+import re
+import urllib.parse
+import urllib.request
 
 logger = logging.getLogger(__name__)
 
@@ -92,19 +95,51 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
 
 
 # 常见中文外貌描述→英文映射（兜底用，覆盖常见词）
+_TRANSLATE_API = "http://shanhe.kim/api/fany/fanyi.php"
+
+
+def _http_translate(text: str) -> str:
+    """通过山河翻译 API 进行中→英翻译"""
+    try:
+        url = f"{_TRANSLATE_API}?msg={urllib.parse.quote(text)}"
+        req = urllib.request.Request(url, headers={"User-Agent": "ai-drama-pipeline/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        # 返回格式: "内容：xxx<br>结果：yyy"
+        m = re.search(r"结果[：:]\s*(.+)", raw)
+        if m:
+            result = m.group(1).strip()
+            # 去掉可能残留的 HTML 标签
+            result = re.sub(r"<[^>]+>", "", result).strip()
+            if result:
+                logger.debug(f"HTTP 翻译成功: {text[:30]} → {result[:30]}")
+                return result
+        logger.warning(f"HTTP 翻译返回格式异常: {raw[:100]}")
+    except Exception as e:
+        logger.warning(f"HTTP 翻译失败: {e}")
+    return ""
+
+
 def translate_to_english(text: str, llm=None) -> str:
-    """中文→英文翻译（使用 LLM）"""
+    """中文→英文翻译（LLM 优先，HTTP API 兜底）"""
     if not text:
         return ""
     # 简单回退：如果已经是英文直接返回
     if all(ord(c) < 128 for c in text):
         return text
+    # 1. 优先用 LLM
     if llm:
         try:
-            return llm.chat(f"Translate to English, output only the translation: {text}",
-                          system="You are a professional translator.")
+            result = llm.chat(f"Translate to English, output only the translation: {text}",
+                              system="You are a professional translator.")
+            if result and result.strip():
+                return result.strip()
         except Exception as e:
             logger.warning(f"LLM translation failed: {e}")
-    # 无 LLM 时返回原文并警告
-    logger.warning(f"无 LLM 可用，中文描述将原样传入 ComfyUI（可能无效）: {text[:50]}...")
+    # 2. 兜底：HTTP 翻译接口
+    result = _http_translate(text)
+    if result:
+        return result
+    # 3. 都失败了返回原文
+    logger.warning(f"翻译全部失败，中文描述将原样传入 ComfyUI（可能无效）: {text[:50]}...")
     return text
