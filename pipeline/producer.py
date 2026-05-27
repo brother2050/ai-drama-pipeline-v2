@@ -150,6 +150,32 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path):
 
         if wf:
             comfyui = container.get("image")
+
+            # ── LoRA 资源检查 ──
+            from engines.workflow import find_lora_nodes
+            from infra.asset_tracker import AssetTracker
+            from urllib.parse import urlparse
+
+            tracker = AssetTracker(cfg.project_dir)
+            image_server_url = comfyui.url
+            lora_nodes = find_lora_nodes(wf)
+            for node_id, lora_name in lora_nodes:
+                if tracker.is_lora_tracked(image_server_url, lora_name):
+                    continue
+                parsed = urlparse(image_server_url)
+                is_local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
+                found = False
+                if is_local:
+                    for d in [Path.home() / "ComfyUI" / "models" / "loras",
+                              Path("/opt/ComfyUI/models/loras")]:
+                        if (d / lora_name).exists():
+                            tracker.mark_lora_tracked(image_server_url, lora_name)
+                            found = True
+                            break
+                if not found:
+                    logger.warning(
+                        f"  ⚠ LoRA '{lora_name}' 未确认存在于服务器 {image_server_url}")
+
             # 上传参考图到 ComfyUI（IP-Adapter 需要）
             for node_id, file_path in wb.build_upload_map(shot, wf).items():
                 if Path(file_path).exists():
@@ -171,6 +197,7 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path):
     if frame_path.exists():
         try:
             from engines.workflow_builder import WorkflowBuilder
+            from engines.workflow import find_load_image_nodes
             models = cfg.get("models", {})
             wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=container.get("image"))
             wb.load_workflows()
@@ -178,6 +205,46 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path):
 
             if video_wf:
                 video_backend = container.get("video")
+
+                # 智能判断是否需要上传首帧图（全局唯一文件名避免跨项目/跨集覆盖）
+                load_nodes = find_load_image_nodes(video_wf)
+                if load_nodes:
+                    video_comfyui = video_backend._get_comfyui() if hasattr(video_backend, "_get_comfyui") else video_backend
+                    shot_id = shot.get("shot_id", "000")
+                    project_name = os.path.basename(cfg.project_dir) or "project"
+                    # 从路径提取集号: .../output/ep01/001/ → ep01
+                    ep_tag = ""
+                    parent = shot_out.parent.name
+                    if parent.startswith("ep") and parent[2:].isdigit():
+                        ep_tag = f"_{parent}"
+                    server_filename = f"{project_name}{ep_tag}_{shot_id}_frame.png"
+
+                    # 判断是否需要上传：tracker 记录 + 服务端存在 → 跳过
+                    # 避免"删除项目→重建同名"时旧图残留
+                    from infra.asset_tracker import AssetTracker
+                    tracker = AssetTracker(cfg.project_dir)
+                    video_server_url = getattr(video_comfyui, "url", "").rstrip("/")
+                    already_tracked = tracker.is_image_tracked(video_server_url, server_filename)
+
+                    need_upload = True
+                    if already_tracked:
+                        try:
+                            if video_comfyui.check_image_exists(server_filename):
+                                need_upload = False
+                            else:
+                                tracker.untrack_image(video_server_url, server_filename)
+                        except Exception:
+                            pass
+                    if need_upload:
+                        try:
+                            video_comfyui.upload_image(str(frame_path))
+                            tracker.mark_image_tracked(video_server_url, server_filename)
+                        except Exception as e:
+                            logger.warning(f"  ⚠ 首帧上传失败: {e}")
+                    # 始终更新工作流节点引用
+                    if load_nodes[0] in video_wf:
+                        video_wf[load_nodes[0]]["inputs"]["image"] = server_filename
+
                 files = video_backend.generate(video_wf, str(shot_out))
                 if files:
                     os.replace(files[0], video_path)

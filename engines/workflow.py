@@ -6,7 +6,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "find_first_node", "find_nodes_by_class", "find_load_image_nodes",
-    "find_character_load_image_nodes", "set_clip_text_prompts",
+    "find_character_load_image_nodes", "find_lora_nodes",
+    "set_clip_text_prompts",
     "apply_ip_adapter_config", "resolve_node_aliases",
 ]
 
@@ -49,6 +50,23 @@ def find_load_image_nodes(wf: dict) -> list[str]:
 
 def find_character_load_image_nodes(wf: dict) -> list[str]:
     return find_load_image_nodes(wf)
+
+
+def find_lora_nodes(wf: dict) -> list[tuple[str, str]]:
+    """查找工作流中所有 LoRA 加载节点，返回 [(node_id, lora_name), ...]
+
+    支持 LoraLoader 及常见的别名节点类型。
+    """
+    lora_types = {"LoraLoader", "LoraLoaderModelOnly", "CR Lora Loader"}
+    result = []
+    for nid, node in wf.items():
+        if nid.startswith("_"):
+            continue
+        if node.get("class_type") in lora_types:
+            lora_name = node.get("inputs", {}).get("lora_name", "")
+            if lora_name:
+                result.append((nid, lora_name))
+    return result
 
 
 def set_clip_text_prompts(wf: dict, positive: str, negative: str = "", backend: str = "sd15") -> dict:

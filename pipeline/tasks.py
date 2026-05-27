@@ -323,6 +323,45 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path) -> dict
         return _err(shot_id, "first_frame", "首帧工作流为空（缺少模板）")
 
     comfyui = cont.get("image")
+
+    # ── LoRA 资源检查：验证工作流中的 LoRA 文件是否存在于 ComfyUI 服务器 ──
+    from engines.workflow import find_lora_nodes
+    from infra.asset_tracker import AssetTracker
+    from urllib.parse import urlparse
+
+    tracker = AssetTracker(cfg.project_dir)
+    image_server_url = comfyui.url
+    lora_nodes = find_lora_nodes(wf)
+
+    for node_id, lora_name in lora_nodes:
+        if tracker.is_lora_tracked(image_server_url, lora_name):
+            continue  # 已确认存在
+
+        # 检测服务器是否为本机
+        parsed = urlparse(image_server_url)
+        is_local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
+
+        found = False
+        if is_local:
+            # 本机 ComfyUI：尝试检查 models/loras 目录
+            loras_dir_candidates = [
+                Path.home() / "ComfyUI" / "models" / "loras",
+                Path("/opt/ComfyUI/models/loras"),
+            ]
+            for loras_dir in loras_dir_candidates:
+                if (loras_dir / lora_name).exists():
+                    tracker.mark_lora_tracked(image_server_url, lora_name)
+                    logger.debug(f"LoRA {lora_name} 在本地 ComfyUI 已确认存在 ({loras_dir})")
+                    found = True
+                    break
+
+        if not found:
+            logger.warning(
+                f"LoRA '{lora_name}' 未确认存在于服务器 {image_server_url}，"
+                f"工作流可能执行失败。请将文件放入 ComfyUI 的 models/loras/ 目录"
+            )
+
+    # ── 上传参考图 ──
     for node_id, file_path in wb.build_upload_map(shot, wf).items():
         if Path(file_path).exists():
             try:
@@ -368,28 +407,56 @@ def video_core(shot_id: str, cfg, cont, out_dir: Path) -> dict:
     if not video_wf:
         return _err(shot_id, "video", "视频工作流为空（缺少模板）")
 
-    # 判断是否需要上传首帧图到视频 ComfyUI 服务器
-    # 同一台服务器时首帧已在 output 目录，LoadImage 可直接访问，无需上传
+    # 智能判断是否需要上传首帧图到视频 ComfyUI 服务器
+    # 检测资源是否真的存在（而非仅凭 URL），确保文件不跨项目/跨集覆盖
     image_backend = cont.get("image")
     video_backend = cont.get("video")
     load_nodes = find_load_image_nodes(video_wf)
 
+    # 构建全局唯一服务器文件名: {项目}_{集}_{镜头}_frame.png
+    project_name = os.path.basename(cfg.project_dir) or "project"
+    # 尝试从路径中提取集号: .../output/ep01/001/ → ep01
+    ep_tag = ""
+    parent = out_dir.parent.name
+    if parent.startswith("ep") and parent[2:].isdigit():
+        ep_tag = f"_{parent}"
+    server_filename = f"{project_name}{ep_tag}_{shot_id}_frame.png"
+
     if load_nodes:
-        image_url = getattr(image_backend, "_url", "").rstrip("/")
-        video_url = getattr(video_backend, "_comfyui_url",
-                   getattr(video_backend, "_url", "")).rstrip("/")
-        if image_url != video_url:
-            # 不同服务器，需要上传首帧
+        video_comfyui = video_backend._get_comfyui() if hasattr(video_backend, "_get_comfyui") else video_backend
+        video_server_url = getattr(video_comfyui, "url", "").rstrip("/")
+
+        # 1) 判断是否需要上传：tracker 记录了 + 服务端确实存在 → 跳过
+        #    避免"删除项目→重建同名项目"时，旧图残留在服务器导致跳过上传
+        from infra.asset_tracker import AssetTracker
+        tracker = AssetTracker(cfg.project_dir)
+        already_tracked = tracker.is_image_tracked(video_server_url, server_filename)
+
+        need_upload = True
+        if already_tracked:
             try:
-                video_backend_upload = video_backend._get_comfyui() if hasattr(video_backend, "_get_comfyui") else video_backend
-                video_backend_upload.upload_image(str(frame_path))
-                if load_nodes[0] in video_wf:
-                    video_wf[load_nodes[0]]["inputs"]["image"] = frame_path.name
-                logger.debug(f"首帧图已上传到视频服务器 {video_url}")
+                if video_comfyui.check_image_exists(server_filename):
+                    logger.debug(f"首帧图 {server_filename} 已在视频服务器 {video_server_url}，跳过上传")
+                    need_upload = False
+                else:
+                    # 服务器文件丢失（如被清理），清理 tracker 记录重新上传
+                    tracker.untrack_image(video_server_url, server_filename)
+            except Exception as e:
+                logger.debug(f"检查首帧图存在性失败: {e}，回退上传")
+
+        # 2) 不存在则上传
+        if need_upload:
+            try:
+                video_comfyui.upload_image(str(frame_path))
+                tracker.mark_image_tracked(video_server_url, server_filename)
+                logger.debug(f"首帧图 {server_filename} 已上传到视频服务器")
             except Exception as e:
                 logger.warning(f"首帧图上传失败: {e}")
-        else:
-            logger.debug(f"首帧图与视频同服务器 ({image_url})，跳过上传")
+
+        # 3) 始终更新工作流节点引用为服务器文件名（即使跳过上传也要设置）
+        if load_nodes[0] in video_wf:
+            video_wf[load_nodes[0]]["inputs"]["image"] = server_filename
+
 
     try:
         files = video_backend.generate(video_wf, str(out_dir))

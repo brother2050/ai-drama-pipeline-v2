@@ -18,8 +18,28 @@ class ComfyUI:
     @property
     def name(self): return "comfyui"
 
+    @property
+    def url(self) -> str:
+        """暴露服务器 URL，供 AssetTracker 等使用"""
+        return self._url
+
     def _headers(self) -> dict:
         return auth_headers(self._api_key)
+
+    def check_image_exists(self, filename: str, subfolder: str = "") -> bool:
+        """检查图片是否已存在于 ComfyUI 输出目录
+
+        通过 HEAD 请求 /view 端点验证，HTTP 200 表示文件存在。
+        """
+        try:
+            params = {"filename": filename, "type": "output"}
+            if subfolder:
+                params["subfolder"] = subfolder
+            r = self._client.head(f"{self._url}/view", params=params,
+                                  headers=self._headers())
+            return r.status_code == 200
+        except Exception:
+            return False
 
     def upload_image(self, filepath: str, overwrite: bool = True) -> dict:
         """上传图片到 ComfyUI 服务器（用于 IP-Adapter 等需要参考图的节点）"""

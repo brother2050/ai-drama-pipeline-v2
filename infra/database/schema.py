@@ -61,6 +61,16 @@ CREATE TABLE IF NOT EXISTS generation_status (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(episode, shot_id, stage)
 );
+
+CREATE TABLE IF NOT EXISTS comfyui_assets (
+    id SERIAL PRIMARY KEY,
+    project_dir TEXT NOT NULL,
+    server_url TEXT NOT NULL,
+    asset_type TEXT NOT NULL CHECK (asset_type IN ('image', 'lora')),
+    filename TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(project_dir, server_url, asset_type, filename)
+);
 """
 
 
