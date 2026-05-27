@@ -76,6 +76,8 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
     # 动作
     action = shot.get("action_en") or shot.get("action", "")
     if action:
+        if any(ord(c) > 127 for c in action):
+            action = translate_to_english(action, llm=llm)
         parts.append(action)
 
     # 情绪
