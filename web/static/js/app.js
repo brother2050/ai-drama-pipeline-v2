@@ -1080,7 +1080,7 @@ async function editScene(id) {
     titleKey: 'scene.edit_title', notFoundKey: 'scene.not_found', imgPrefix: 'es', imgLabel: t('scene.upload_img'), confirmMsg: '删除参考图？',
     reload: loadScenes,
     deleteFn: deleteSceneWithRef,
-    extraHtml: `<div class="edit-field"><button class="btn btn-ai btn-sm" onclick="generateSceneImage('${esc(id)}')" id="gen-scene-img-btn">🎨 ${t('scene.gen_image')}</button><span id="gen-scene-img-status" class="dim" style="font-size:.8rem;margin-left:.5rem"></span></div>`,
+    extraHtml: `<div class="edit-field"><button class="btn btn-ai btn-sm" onclick="generateSceneImage('${esc(id)}')" id="gen-scene-img-btn">${t('scene.gen_image')}</button><span id="gen-scene-img-status" class="dim" style="font-size:.8rem;margin-left:.5rem"></span></div>`,
     fields: [
       { key: 'name', label: t('scene.name') },
       { key: 'description', label: t('scene.desc'), type: 'textarea' },
@@ -1567,7 +1567,7 @@ function _backendSection(label, icon, idPrefix, backends, backend, url, availabl
   const toolName = idPrefix === 'lipsync' ? 'lipsync' : idPrefix;
   const apiKeyHtml = opts.showApiKey ? `<div class="form-row"><label>${t('set.tts_api_key')}</label><div style="display:flex;gap:.3rem;flex:1"><input id="cfg-${idPrefix}-key" type="password" value="${esc(opts.apiKey || '')}" style="flex:1" placeholder="MIMO_API_KEY"><button class="btn btn-xs btn-outline" onclick="_toggleKeyVis('cfg-${idPrefix}-key','cfg-${idPrefix}-key-toggle')" id="cfg-${idPrefix}-key-toggle">👁</button></div></div>` : '';
   const testHtml = opts.showTest ? `<div style="margin-top:.5rem"><div class="form-row"><label>${t('set.tts_test_text')}</label><input id="cfg-${idPrefix}-test-text" value="${esc(opts.testText || '你好，这是一段测试语音。')}" style="flex:1"></div>
-    <button class="btn btn-xs btn-outline" onclick="testTtsPreview()" id="test-btn-tts-preview" style="margin-top:.3rem">🎤 ${t('set.tts_test')}</button>
+    <button class="btn btn-xs btn-outline" onclick="testTtsPreview()" id="test-btn-tts-preview" style="margin-top:.3rem">${t('set.tts_test')}</button>
     <span id="test-result-tts-preview" class="dim" style="font-size:0.8rem;margin-left:0.3rem"></span></div>` : '';
   return `<div class="config-section"><h3>${icon} ${label}</h3>
     <div class="form-row"><label>${t('set.backend')}</label><select id="cfg-${idPrefix}" onchange="_updateUrl('${idPrefix}')">${backends.map(b => `<option value="${b}" ${backend === b ? 'selected' : ''}>${b}</option>`).join('')}</select></div>
