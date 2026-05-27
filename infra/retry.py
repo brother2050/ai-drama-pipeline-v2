@@ -20,4 +20,4 @@ def retry(fn: Callable[..., T], *args, max_retries: int = 3, base_delay: float =
             delay = min(base_delay * (2 ** attempt), max_delay)
             logger.warning(f"重试 {attempt+1}/{max_retries}，{delay:.1f}s 后: {e}")
             time.sleep(delay)
-    raise last_exc  # type: ignore
+    raise last_exc or RuntimeError(f"重试 {max_retries} 次后仍失败")

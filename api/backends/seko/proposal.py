@@ -107,6 +107,7 @@ def wait_for_proposal(
     api_key: str = "",
     config: dict | None = None,
     interval: int = 10,
+    max_retries: int = 180,
     on_status: Callable[[str], None] | None = None,
 ) -> dict:
     """轮询等待策划案任务完成
@@ -116,13 +117,14 @@ def wait_for_proposal(
         api_key: Seko API Key
         config: 后端配置字典
         interval: 轮询间隔（秒）
+        max_retries: 最大轮询次数（默认 180 次 × 10 秒 = 30 分钟）
         on_status: 状态回调 fn(status: str)
 
     Returns:
         最终 API 响应字典
     """
-    logger.info(f"等待策划案完成，taskId: {task_id}，每 {interval} 秒轮询一次...")
-    while True:
+    logger.info(f"等待策划案完成，taskId: {task_id}，每 {interval} 秒轮询一次（最多 {max_retries} 次）...")
+    for attempt in range(1, max_retries + 1):
         result = check_proposal_status(task_id, api_key=api_key, config=config)
         if result.get("code") != 200:
             return result
@@ -140,6 +142,9 @@ def wait_for_proposal(
             elif status == "FAIL":
                 logger.warning(f"策划案任务失败: {data.get('taskStatusMsg', '未知原因')}")
             return result
+
+    logger.warning(f"策划案轮询超时（{max_retries} 次），taskId: {task_id}")
+    return {"code": 408, "msg": f"轮询超时（{max_retries} 次）", "data": {"taskStatus": "TIMEOUT"}}
 
 
 # ══════════════════════════════════════════════════════════

@@ -123,9 +123,10 @@ class Container:
 
     def _backend_config(self, service_type: str, name: str) -> dict:
         models = self._config.get("models", {})
+        # 尝试原始名和规范化名（fish-speech → fish_speech）
         key = name.replace("-", "_")
         cfg = {
-            **models.get(key, {}),
+            **models.get(name, models.get(key, {})),
             "timeouts": self._config.get("timeouts", {}),
             "project_dir": self._config.get("_project_dir", ""),
         }

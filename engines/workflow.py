@@ -57,7 +57,14 @@ def set_clip_text_prompts(wf: dict, positive: str, negative: str = "", backend: 
             continue
         if node.get("class_type") == "CLIPTextEncode":
             text = node.get("inputs", {}).get("text", "")
-            if any(neg in text.lower() for neg in ["bad", "worst", "ugly", "negative"]):
+            # 判断是否为 negative prompt 节点：文本较短或包含常见 negative 关键词
+            text_lower = text.lower().strip()
+            is_negative = (
+                len(text_lower) < 20 or
+                any(kw in text_lower for kw in ["bad quality", "worst quality", "ugly",
+                    "deformed", "blurry", "negative", "low quality", "bad anatomy"])
+            )
+            if is_negative:
                 node["inputs"]["text"] = negative or text
             else:
                 node["inputs"]["text"] = positive

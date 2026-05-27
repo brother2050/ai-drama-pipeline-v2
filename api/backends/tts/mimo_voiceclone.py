@@ -47,6 +47,10 @@ class MimoVoiceClone:
 
     API_URL = os.environ.get("MIMO_API_ENDPOINT", "https://api.xiaomimimo.com/v1/chat/completions")
     MODEL = os.environ.get("MIMO_TTS_CLONE_MODEL", "mimo-v2.5-tts-voiceclone")
+    # 默认 PCM 格式（当 API 返回裸 PCM 时使用，MiMo TTS 输出为 24kHz 16bit 单声道）
+    DEFAULT_SAMPLE_RATE = 24000
+    DEFAULT_BITS_PER_SAMPLE = 16
+    DEFAULT_CHANNELS = 1
 
     def __init__(self, config: dict):
         self._api_key = config.get("api_key") or os.environ.get("MIMO_API_KEY", "")
@@ -135,7 +139,7 @@ class MimoVoiceClone:
             if raw[:4] == b"RIFF":
                 f.write(raw)
             else:
-                sr, bps, ch = 24000, 16, 1
+                sr, bps, ch = self.DEFAULT_SAMPLE_RATE, self.DEFAULT_BITS_PER_SAMPLE, self.DEFAULT_CHANNELS
                 br = sr * ch * bps // 8
                 f.write(b"RIFF")
                 f.write(struct.pack("<I", 36 + len(raw)))

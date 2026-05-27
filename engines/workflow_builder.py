@@ -364,13 +364,19 @@ class WorkflowBuilder:
             # UNETLoader 不含 clip，找单独的 CLIPLoader
             clip_source = find_first_node(wf, "DualCLIPLoader") or find_first_node(wf, "CLIPLoader")
             if not clip_source:
-                # 找任何连接到 KSampler clip 输入的节点
-                for nid, node in wf.items():
-                    if nid == model_source or nid == ksampler:
-                        continue
-                    if node.get("class_type", "").startswith("CLIP"):
-                        clip_source = nid
-                        break
+                # 从 KSampler 的 clip 输入反向追踪来源
+                ksampler_clip = wf[ksampler].get("inputs", {}).get("clip")
+                if isinstance(ksampler_clip, list) and len(ksampler_clip) == 2:
+                    clip_source = ksampler_clip[0]
+                else:
+                    # 最后手段：找非 CLIPTextEncode 的 CLIP 加载节点
+                    clip_loaders = {"CLIPLoader", "DualCLIPLoader", "CLIPVisionLoader"}
+                    for nid, node in wf.items():
+                        if nid in (model_source, ksampler):
+                            continue
+                        if node.get("class_type", "") in clip_loaders:
+                            clip_source = nid
+                            break
 
         # 创建 LoraLoader 节点
         lora_node_id = f"lora_{Path(lora_path).stem}"

@@ -1,8 +1,6 @@
 """质量检查引擎 — 视频格式/面部一致性"""
 from __future__ import annotations
-import json
 import logging
-import subprocess
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -13,12 +11,10 @@ def check_video_format(path: str) -> dict:
     if not Path(path).exists():
         return {"valid": False, "error": "文件不存在"}
     try:
-        r = subprocess.run(
-            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", path],
-            capture_output=True, text=True, timeout=30)
-        if r.returncode != 0:
+        from infra.ffmpeg import probe
+        info = probe(path)
+        if not info:
             return {"valid": False, "error": "ffprobe 失败"}
-        info = json.loads(r.stdout)
         video_stream = next((s for s in info.get("streams", []) if s["codec_type"] == "video"), None)
         if not video_stream:
             return {"valid": False, "error": "无视频流"}

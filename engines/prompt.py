@@ -97,6 +97,13 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
 # 常见中文外貌描述→英文映射（兜底用，覆盖常见词）
 _TRANSLATE_API = "http://shanhe.kim/api/fany/fanyi.php"
 _translate_cache: dict[str, str] = {}
+_CACHE_MAX_SIZE = 4096
+
+
+def _cache_set(key: str, value: str) -> None:
+    if len(_translate_cache) >= _CACHE_MAX_SIZE:
+        _translate_cache.clear()
+    _translate_cache[key] = value
 
 
 def _http_translate(text: str) -> str:
@@ -115,7 +122,7 @@ def _http_translate(text: str) -> str:
             # 去掉可能残留的 HTML 标签
             result = re.sub(r"<[^>]+>", "", result).strip()
             if result:
-                _translate_cache[text] = result
+                _cache_set(text, result)
                 logger.debug(f"HTTP 翻译成功: {text[:30]} → {result[:30]}")
                 return result
         logger.warning(f"HTTP 翻译返回格式异常: {raw[:100]}")
@@ -141,7 +148,7 @@ def translate_to_english(text: str, llm=None) -> str:
                               system="You are a professional translator.")
             if result and result.strip():
                 translated = result.strip()
-                _translate_cache[text] = translated
+                _cache_set(text, translated)
                 return translated
         except Exception as e:
             logger.warning(f"LLM translation failed: {e}")

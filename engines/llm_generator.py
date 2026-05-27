@@ -341,7 +341,15 @@ def _parse_json_response(text: str) -> Any:
         pass
 
     # 5. 单引号 → 双引号（Python 风格 dict → JSON）
-    if "'" in text and '"' not in text:
+    # 仅当文本不含双引号且不含英文撇号时才替换（避免破坏 it's 等）
+    if "'" in text and '"' not in text and "\u2019" not in text:
+        # 先尝试用 ast.literal_eval 解析 Python dict
+        try:
+            import ast
+            return ast.literal_eval(text)
+        except (ValueError, SyntaxError):
+            pass
+        # 退而求其次：替换单引号（可能破坏含撇号的值）
         fixed = text.replace("'", '"')
         fixed = re.sub(r',\s*([\]}])', r'\1', fixed)
         try:

@@ -75,8 +75,11 @@ class OpenAICompatLLM:
 
     def health_check(self) -> tuple[bool, str]:
         try:
+            headers = {}
+            if self._api_key:
+                headers["Authorization"] = f"Bearer {self._api_key}"
             with httpx.Client(timeout=5) as c:
-                r = c.get(f"{self._url}/v1/models")
+                r = c.get(f"{self._url}/v1/models", headers=headers)
                 return True, f"OpenAI-compat reachable (HTTP {r.status_code})"
         except Exception as e:
             return False, f"OpenAI-compat unreachable: {e}"
