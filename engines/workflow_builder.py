@@ -170,6 +170,7 @@ class WorkflowBuilder:
 
         # 注入角色参考图（IP-Adapter）或 LoRA
         char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
+        outfit = shot.get("outfit", "")
         ip_config = self.models.get("ip_adapter", {})
 
         if char_ids:
@@ -191,7 +192,7 @@ class WorkflowBuilder:
 
             # 无 LoRA 的角色使用 IP-Adapter 回退
             if chars_without_lora:
-                wf = self._inject_character_refs(wf, chars_without_lora, ip_config)
+                wf = self._inject_character_refs(wf, chars_without_lora, ip_config, outfit=outfit)
 
         # 注入风格 LoRA（复用上方已读取的 genre）
         if genre:
@@ -204,14 +205,14 @@ class WorkflowBuilder:
         return prompt, wf
 
     def _inject_character_refs(self, wf: dict, char_ids: list[str],
-                                ip_config: dict) -> dict:
+                                ip_config: dict, outfit: str = "") -> dict:
         """注入角色参考图到工作流（支持多角色链式 IP-Adapter）"""
         if not char_ids:
             return wf
 
         # 主角色：使用模板中的 LoadImage 节点
         primary_id = char_ids[0]
-        primary_refs = self._get_character_refs(primary_id)
+        primary_refs = self._get_character_refs(primary_id, outfit=outfit)
         char_nodes = find_character_load_image_nodes(wf)
 
         if primary_refs and char_nodes:
@@ -228,7 +229,7 @@ class WorkflowBuilder:
         # 第二角色：链式 IP-Adapter
         if len(char_ids) > 1:
             for i, secondary_id in enumerate(char_ids[1:]):
-                secondary_refs = self._get_character_refs(secondary_id)
+                secondary_refs = self._get_character_refs(secondary_id, outfit=outfit)
                 if secondary_refs:
                     wf = self._add_secondary_ip_adapter(wf, secondary_id, secondary_refs, ip_config, i)
 
@@ -428,6 +429,7 @@ class WorkflowBuilder:
         """构建参考图上传映射 {node_id: file_path}"""
         uploads: dict[str, str] = {}
         char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
+        outfit = shot.get("outfit", "")
 
         char_nodes = find_character_load_image_nodes(wf)
         all_load_nodes = find_load_image_nodes(wf)
@@ -435,14 +437,14 @@ class WorkflowBuilder:
 
         # 主角色
         if char_ids:
-            refs = self._get_character_refs(char_ids[0])
+            refs = self._get_character_refs(char_ids[0], outfit=outfit)
             if refs and char_nodes:
                 uploads[char_nodes[0]] = refs[0]
 
         # 第二角色
         secondary_nodes = [n for n in all_load_nodes if n.startswith("char2_load_")]
         for i, cid in enumerate(char_ids[1:]):
-            refs = self._get_character_refs(cid)
+            refs = self._get_character_refs(cid, outfit=outfit)
             if refs and i < len(secondary_nodes):
                 uploads[secondary_nodes[i]] = refs[0]
 
@@ -458,28 +460,38 @@ class WorkflowBuilder:
 
     # ── 内部方法 ──────────────────────────────────────────
 
-    def _get_character_refs(self, char_id: str) -> list[str]:
-        """获取角色参考图路径列表"""
+    def _get_character_refs(self, char_id: str, outfit: str = "") -> list[str]:
+        """获取角色参考图路径列表（优先返回 outfit 对应的图）"""
         from engines.portrait import ensure_portrait
 
-        # 查找已有定妆照
         char_dir = Path(self.project_dir) / "assets" / "characters" / char_id
+
+        # 1. 优先查找 outfit 子目录
+        if outfit:
+            outfit_dir = char_dir / outfit
+            refs = []
+            if outfit_dir.exists():
+                for ext in ("*.png", "*.jpg", "*.jpeg"):
+                    refs.extend(str(p) for p in outfit_dir.glob(ext))
+            if refs:
+                return sorted(refs)
+
+        # 2. 回退到角色根目录
         refs = []
         if char_dir.exists():
             for ext in ("*.png", "*.jpg", "*.jpeg"):
                 refs.extend(str(p) for p in char_dir.glob(ext))
-
         if refs:
             return sorted(refs)
 
-        # 尝试自动定妆照（传入简易容器包装 comfyui 实例）
+        # 3. 尝试自动定妆照
         portrait = ensure_portrait(char_id, self.config,
                                    _SimpleContainer(self.comfyui) if self.comfyui else None,
                                    llm=self.llm)
         if portrait:
             return [portrait]
 
-        # 从 shared_assets 查找
+        # 4. 从 shared_assets 查找
         shared_dir = Path(self.project_dir) / "shared_assets" / "characters" / char_id
         if shared_dir.exists():
             for ext in ("*.png", "*.jpg", "*.jpeg"):
