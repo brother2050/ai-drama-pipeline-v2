@@ -15,8 +15,12 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def _find_face_center(video: str) -> tuple[int, int] | None:
-    """尝试检测视频中的人脸中心位置
+def _find_face_center(video: str, max_samples: int = 5) -> tuple[int, int] | None:
+    """尝试检测视频中的人脸中心位置（多帧采样）
+
+    Args:
+        video: 视频路径
+        max_samples: 最多采样帧数
 
     Returns:
         (x, y) 人脸中心坐标，或 None
@@ -25,19 +29,32 @@ def _find_face_center(video: str) -> tuple[int, int] | None:
         import face_recognition
         import cv2
         cap = cv2.VideoCapture(video)
-        ret, frame = cap.read()
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if total <= 0:
+            cap.release()
+            return None
+        # 均匀采样 max_samples 帧
+        step = max(1, total // max_samples)
+        positions = []
+        for i in range(0, total, step):
+            if len(positions) >= max_samples:
+                break
+            cap.set(cv2.CAP_PROP_POS_FRAMES, i)
+            ret, frame = cap.read()
+            if not ret:
+                continue
+            rgb = frame[:, :, ::-1]
+            locations = face_recognition.face_locations(rgb)
+            if locations:
+                top, right, bottom, left = locations[0]
+                positions.append(((left + right) // 2, (top + bottom) // 2))
         cap.release()
-        if not ret:
+        if not positions:
             return None
-        rgb = frame[:, :, ::-1]
-        locations = face_recognition.face_locations(rgb)
-        if not locations:
-            return None
-        # 取第一个人脸的中心
-        top, right, bottom, left = locations[0]
-        cx = (left + right) // 2
-        cy = (top + bottom) // 2
-        return (cx, cy)
+        # 取所有采样帧的平均人脸位置
+        avg_x = sum(p[0] for p in positions) // len(positions)
+        avg_y = sum(p[1] for p in positions) // len(positions)
+        return (avg_x, avg_y)
     except ImportError:
         return None
     except Exception:

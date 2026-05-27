@@ -23,11 +23,14 @@ _KEYWORDS = {
 
 
 def analyze_emotion(text: str) -> str:
-    """从文本分析情绪"""
+    """从文本分析情绪（优先匹配更长的关键词，避免子串误判）"""
     if not text:
         return "neutral"
+    best_match = None
+    best_len = 0
     for emotion, keywords in _KEYWORDS.items():
         for kw in keywords:
-            if kw in text:
-                return emotion
-    return "neutral"
+            if kw in text and len(kw) > best_len:
+                best_match = emotion
+                best_len = len(kw)
+    return best_match or "neutral"
