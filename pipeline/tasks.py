@@ -810,7 +810,9 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
         available = list(outfits.keys()) if isinstance(outfits, dict) else []
         return {"status": "error", "reason": f"角色 {char_id} 没有名为 '{outfit_key}' 的服装，可用: {available}"}
 
-    outfit_desc = outfits[outfit_key]
+    outfit_val = outfits[outfit_key]
+    # 兼容 string 和 dict 两种格式
+    outfit_desc = outfit_val.get("description", "") if isinstance(outfit_val, dict) else (outfit_val or "")
     if not outfit_desc:
         return {"status": "error", "reason": f"角色 {char_id} 的服装 '{outfit_key}' 描述为空"}
 
