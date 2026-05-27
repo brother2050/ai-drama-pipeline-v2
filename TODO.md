@@ -29,6 +29,8 @@
 - `engines/workflow_builder.py` — CLIP 节点查找改用 KSampler 输入反向追踪
 - `api/backends/llm/ollama.py` — health_check 携带 API key
 - `api/registry.py` — 配置查找同时尝试原始名和规范化名
+- `engines/emotions.py` — 情绪匹配优先更长关键词（`"苦笑"` 不再误判为 happy）
+- `post/vertical.py` — 人脸检测多帧采样（最多 5 帧取平均位置）
 
 ---
 
@@ -37,5 +39,3 @@
 - `engines/video_consistency.py` — 临时目录清理（OS 自动回收，非 bug）
 - `pipeline/tasks.py` — advisory lock crc32 碰撞（概率极低）
 - `pipeline/tasks.py` — shot_task 同步调用（设计选择，非 bug）
-- `post/vertical.py` — 仅第一帧人脸检测（功能限制，非 bug）
-- `engines/emotions.py` — 子串匹配（功能限制，非 bug）
