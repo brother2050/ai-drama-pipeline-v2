@@ -41,8 +41,12 @@ def run_portraits(config_path: str):
         if f.suffix != ".yaml" or f.stem.endswith(".example"):
             continue
 
-        with open(f) as fh:
-            data = yaml.safe_load(fh) or {}
+        try:
+            with open(f) as fh:
+                data = yaml.safe_load(fh) or {}
+        except yaml.YAMLError as e:
+            logger.warning(f"角色 YAML 格式错误 {f}: {e}")
+            continue
         char = data.get("character", {})
         char_id = char.get("id", f.stem)
         char_name = char.get("name", char_id)

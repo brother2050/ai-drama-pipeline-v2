@@ -649,8 +649,12 @@ def scene_images_task(self, config_path: str) -> dict:
         generated = 0
         total = len(scene_files)
         for i, f in enumerate(scene_files):
-            with open(f, encoding="utf-8") as fh:
-                data = yaml.safe_load(fh) or {}
+            try:
+                with open(f, encoding="utf-8") as fh:
+                    data = yaml.safe_load(fh) or {}
+            except yaml.YAMLError as e:
+                logger.warning(f"场景 YAML 格式错误 {f}: {e}")
+                continue
             scene = data.get("scene", {})
             sid = scene.get("id", f.stem)
             sname = scene.get("name", sid)

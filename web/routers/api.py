@@ -654,8 +654,12 @@ def get_system_config():
     path = _sys_cfg_path()
     if not os.path.isfile(path):
         return {}
-    with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except yaml.YAMLError as e:
+        logger.warning(f"系统配置 YAML 格式错误: {e}")
+        return {}
 
 
 @router.post("/system/config")
@@ -1015,8 +1019,12 @@ async def upload_entity_image(entity_type: str, entity_id: str, file: UploadFile
     entity_key = "character" if entity_type == "characters" else "scene"
     yaml_path = _proj() / "config" / yaml_dir / f"{entity_id}.yaml"
     if yaml_path.exists():
-        with open(yaml_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+        try:
+            with open(yaml_path, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            logger.warning(f"YAML 格式错误 {yaml_path}: {e}")
+            data = {}
         entity = data.get(entity_key, {})
         imgs = entity.get("reference_images") or []
         img_url = f"/api/assets/{entity_type}/{entity_id}/{filename}"

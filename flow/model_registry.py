@@ -49,8 +49,12 @@ class ModelRegistry:
         if not os.path.exists(path):
             logger.debug(f"模型注册表不存在: {path}，使用内置默认值")
             return _builtin_defaults()
-        with open(path, encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+        try:
+            with open(path, encoding="utf-8") as f:
+                return yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            logger.warning(f"模型注册表 YAML 格式错误: {e}")
+            return _builtin_defaults()
 
     def valid_image_backends(self) -> set[str]:
         return set(self._data.get("image_backends", {}).keys())
