@@ -4,31 +4,15 @@
 
 ---
 
-## 🔴 待优化（清理兼容包袱）
-
-### 1. engines/gpu_adapter.py — 移除废弃 vram_mb 参数
-- `vram_mb` 参数标注"已废弃，保留兼容性，忽略"
-- 个人项目直接删掉这个参数，调用方也不需要传
-
-### 2. infra/gpu.py — 移除废弃 detect_gpu() 函数
-- 标注"兼容旧接口 — 返回占位信息（不检测本地 GPU）"
-- 直接删除，调用方改用 `get_generation_config()`
-
-### 3. web/schemas + web/routers/api.py — ConfigUpdate 简化
-- `ConfigUpdate.get_config_data()` 兼容 `{"data":{}}` 和 `{"project":{}}` 两种格式
-- 个人项目只保留 `{"data":{}}` 新格式即可
-- 涉及文件：`web/schemas/__init__.py`（L134-148）、`web/routers/api.py`（L645-655）
-
-### 4. api/backends/llm/ollama.py — 移除 /v1 后缀兼容
-- `url.endswith("/v1")` 自动 strip，用户填错自己负责
-
-### 5. infra/http.py — 移除 CloudStudio 双认证头
-- 同时发 `X-API-Key` + `Authorization: Bearer`，只为兼容 CloudStudio 代理
-- 个人项目用不到 CloudStudio，只保留 `Authorization: Bearer`
-
----
-
 ## ✅ 已完成
+
+### 2026-05-27 清理兼容包袱（5 项）
+- `engines/gpu_adapter.py` — 移除废弃 `vram_mb` 参数
+- `infra/gpu.py` — 移除废弃 `detect_gpu()` 函数
+- `web/schemas` + `web/routers/api.py` — ConfigUpdate 简化为仅接受 `{"data":{}}`
+- `api/backends/llm/ollama.py` — 移除 `/v1` 后缀自动 strip
+- `infra/http.py` — 移除 CloudStudio `X-API-Key` 双认证头，只保留 `Authorization: Bearer`
+- `tests/test_all.py` — 同步更新过时测试
 
 ### 2026-05-27 outfits 统一为 dict 格式
 - 移除 pipeline/tasks.py 中 string/dict 双格式兼容逻辑
