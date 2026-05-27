@@ -1,6 +1,5 @@
 comfyui:
   url: http://127.0.0.1:8188
-  timeout: 900
   api_key: ''
 models:
   image_backend: sd15

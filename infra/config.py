@@ -74,7 +74,7 @@ class Config:
     DEFAULTS: dict[str, Any] = {
         "project": {"episodes": 1, "fps": 24,
                      "style": "cinematic", "genre": "urban"},
-        "comfyui": {"url": "http://127.0.0.1:8188", "timeout": 900, "api_key": ""},
+        "comfyui": {"url": "http://127.0.0.1:8188", "api_key": ""},
         "models": {"tts_backend": "mimo-voicedesign", "lip_sync_backend": "musetalk",
                    "music_backend": "template", "image_backend": "sd15", "video_backend": "animatediff"},
         "llm": {"enabled": False, "backend": "openai", "base_url": "https://api.siliconflow.cn",
@@ -97,7 +97,6 @@ class Config:
     VALID_RANGES: dict[str, tuple[int, int]] = {
         "project.fps": (1, 120),
         "server.port": (1, 65535),
-        "comfyui.timeout": (1, 3600),
         "post_production.transition_duration": (0, 10),
         "post_production.bgm_volume": (0, 1),
         "timeouts.comfyui": (1, 7200),
