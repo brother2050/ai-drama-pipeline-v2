@@ -981,21 +981,27 @@ async function generatePortrait(charId) {
   const reset = _btnLoad(btn, '⏳ 生成中...');
   _html(status, '⏳ AI 正在生成定妆照...');
   try {
-    const r = await api(`/characters/${charId}/generate-portrait`, { method: 'POST' });
-    _html(status, '✅ 生成完成');
-    toast('✅ 定妆照已生成');
-    // 更新预览图
-    const preview = document.getElementById('ec-img-preview');
-    if (preview && r.url) {
-      preview.src = r.url + '?t=' + Date.now(); // cache bust
-    } else if (r.url) {
-      // 从 upload-area 切换到预览模式
-      const wrap = document.getElementById('ec-img-wrap');
-      if (wrap) {
-        wrap.innerHTML = `<div class="upload-preview"><img src="${r.url}?t=${Date.now()}" id="ec-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="ecRemoveImg('${charId}')">✕</button></div>`;
+    const { task_id } = await api(`/characters/${charId}/generate-portrait`, { method: 'POST' });
+    const result = await pollTask(task_id, info => _html(status, `⏳ ${info.message || '生成中...'} (${info.progress || 0}%)`));
+    if (result.status === 'success' && result.result?.status === 'done') {
+      const r = result.result;
+      _html(status, '✅ 生成完成');
+      toast('✅ 定妆照已生成');
+      const preview = document.getElementById('ec-img-preview');
+      if (preview && r.url) {
+        preview.src = r.url + '?t=' + Date.now();
+      } else if (r.url) {
+        const wrap = document.getElementById('ec-img-wrap');
+        if (wrap) {
+          wrap.innerHTML = `<div class="upload-preview"><img src="${r.url}?t=${Date.now()}" id="ec-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="ecRemoveImg('${charId}')">✕</button></div>`;
+        }
       }
+      invalidateCache('characters');
+    } else {
+      const err = result.result?.reason || result.error || '生成失败';
+      _html(status, `❌ ${err}`);
+      toast(`❌ ${err}`, 'error');
     }
-    invalidateCache('characters');
   } catch (e) {
     _html(status, `❌ ${e.message}`);
     toast(`❌ ${e.message}`, 'error');
@@ -1009,20 +1015,27 @@ async function generateSceneImage(sceneId) {
   const reset = _btnLoad(btn, '⏳ 生成中...');
   _html(status, '⏳ AI 正在生成场景图...');
   try {
-    const r = await api(`/scenes/${sceneId}/generate-image`, { method: 'POST' });
-    _html(status, '✅ 生成完成');
-    toast('✅ 场景图已生成');
-    // 更新预览图
-    const preview = document.getElementById('es-img-preview');
-    if (preview && r.url) {
-      preview.src = r.url + '?t=' + Date.now();
-    } else if (r.url) {
-      const wrap = document.getElementById('es-img-wrap');
-      if (wrap) {
-        wrap.innerHTML = `<div class="upload-preview"><img src="${r.url}?t=${Date.now()}" id="es-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="esRemoveImg('${sceneId}')">✕</button></div>`;
+    const { task_id } = await api(`/scenes/${sceneId}/generate-image`, { method: 'POST' });
+    const result = await pollTask(task_id, info => _html(status, `⏳ ${info.message || '生成中...'} (${info.progress || 0}%)`));
+    if (result.status === 'success' && result.result?.status === 'done') {
+      const r = result.result;
+      _html(status, '✅ 生成完成');
+      toast('✅ 场景图已生成');
+      const preview = document.getElementById('es-img-preview');
+      if (preview && r.url) {
+        preview.src = r.url + '?t=' + Date.now();
+      } else if (r.url) {
+        const wrap = document.getElementById('es-img-wrap');
+        if (wrap) {
+          wrap.innerHTML = `<div class="upload-preview"><img src="${r.url}?t=${Date.now()}" id="es-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="esRemoveImg('${sceneId}')">✕</button></div>`;
+        }
       }
+      invalidateCache('scenes');
+    } else {
+      const err = result.result?.reason || result.error || '生成失败';
+      _html(status, `❌ ${err}`);
+      toast(`❌ ${err}`, 'error');
     }
-    invalidateCache('scenes');
   } catch (e) {
     _html(status, `❌ ${e.message}`);
     toast(`❌ ${e.message}`, 'error');
