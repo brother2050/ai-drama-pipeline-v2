@@ -149,7 +149,8 @@ class WorkflowBuilder:
         style = self.config.get("project", {}).get("style", "cinematic")
         genre = self.config.get("project", {}).get("genre", "urban")
         positive = build_prompt(shot, character_desc=character_desc,
-                                scene_desc=scene_desc, style=style, genre=genre)
+                                scene_desc=scene_desc, style=style, genre=genre,
+                                llm=getattr(self, '_llm', None))
         if multi_char_prompt:
             positive = f"{positive}, {multi_char_prompt}"
 

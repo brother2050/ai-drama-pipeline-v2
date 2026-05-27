@@ -46,7 +46,8 @@ CAMERA_MAP = {
 
 
 def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
-                 style: str = "cinematic", genre: str = "urban") -> str:
+                 style: str = "cinematic", genre: str = "urban",
+                 llm=None) -> str:
     """从镜头数据构建 ComfyUI Prompt"""
     parts = []
 
@@ -58,10 +59,15 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
 
     # 场景
     if scene_desc:
+        if any(ord(c) > 127 for c in scene_desc):
+            scene_desc = translate_to_english(scene_desc, llm=llm)
         parts.append(scene_desc)
 
     # 角色
     if character_desc:
+        # 中文描述需要翻译为英文才能被 CLIP 正确编码
+        if any(ord(c) > 127 for c in character_desc):
+            character_desc = translate_to_english(character_desc, llm=llm)
         parts.append(character_desc)
 
     # 动作
@@ -85,6 +91,35 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
     return ", ".join(parts)
 
 
+# 常见中文外貌描述→英文映射（兜底用，覆盖常见词）
+_APPEARANCE_MAP = {
+    "年轻男性": "young man", "年轻女性": "young woman",
+    "男性": "male", "女性": "female",
+    "短发": "short hair", "长发": "long hair", "及肩长发": "shoulder-length hair",
+    "长发及肩": "shoulder-length hair", "及肩": "shoulder-length",
+    "卷发": "curly hair", "直发": "straight hair", "马尾": "ponytail",
+    "剑眉星目": "sharp eyebrows, bright eyes", "瓜子脸": "oval face",
+    "大眼睛": "big eyes", "柳叶眉": "willow-leaf eyebrows",
+    "高鼻梁": "high nose bridge", "薄唇": "thin lips", "厚唇": "full lips",
+    "皮肤白皙": "fair skin", "小麦色皮肤": "tan skin", "古铜色皮肤": "bronze skin",
+    "体型匀称": "athletic build", "体型偏瘦": "slim build",
+    "体型偏胖": "chubby build", "肌肉发达": "muscular build",
+    "岁": " year old ", "身高": "height ", "cm": "cm",
+    "，": ", ", "。": "", "、": ", ",
+}
+
+
+def _fallback_translate(text: str) -> str:
+    """基础中→英翻译兜底：替换常见词汇，保留数字和标点"""
+    result = text
+    # 按 key 长度降序替换，避免短 key 先匹配了长 key 的子串
+    for zh, en in sorted(_APPEARANCE_MAP.items(), key=lambda x: -len(x[0])):
+        result = result.replace(zh, en)
+    # 清理多余逗号和空格
+    result = ", ".join(p.strip() for p in result.split(",") if p.strip())
+    return result
+
+
 def translate_to_english(text: str, llm=None) -> str:
     """中文→英文翻译（使用 LLM 或回退）"""
     if not text:
@@ -98,5 +133,7 @@ def translate_to_english(text: str, llm=None) -> str:
                           system="You are a professional translator.")
         except Exception as e:
             logger.warning(f"LLM translation failed: {e}")
-    # 回退：返回原文
-    return text
+    # 兜底：基础词汇替换
+    translated = _fallback_translate(text)
+    logger.info(f"使用基础翻译兜底: {text[:30]}... → {translated[:50]}...")
+    return translated
