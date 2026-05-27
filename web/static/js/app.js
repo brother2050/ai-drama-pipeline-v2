@@ -370,7 +370,7 @@ function _updatePipelineStep(step, state) {
   el.classList.remove('active', 'done', 'fail');
   if (state) el.classList.add(state);
   // 箭头联动：完成时标记前一段箭头
-  const steps = ['tts', 'first-frame', 'video', 'lipsync', 'post'];
+  const steps = ['portrait', 'scene', 'tts', 'first-frame', 'video', 'lipsync', 'post'];
   const idx = steps.indexOf(step);
   const arrows = document.querySelectorAll('.pipeline-arrow');
   if (state === 'done' && idx > 0 && arrows[idx - 1]) arrows[idx - 1].classList.add('done');
@@ -413,6 +413,8 @@ function renderWB(episodes) {
 
   // 流程图
   const flowSteps = [
+    { icon: '📸', label: t('wb.portrait_short'), step: 'portrait' },
+    { icon: '🏔️', label: t('wb.scene_short'), step: 'scene' },
     { icon: '🎤', label: t('step.tts'), step: 'tts' },
     { icon: '🎨', label: t('step.first_frame'), step: 'first-frame' },
     { icon: '🎬', label: t('step.video'), step: 'video' },
@@ -757,8 +759,8 @@ async function _runTool(apiPath, body, label) {
   } catch (e) { toast('❌ ' + e.message, 'error'); }
 }
 
-async function runPortraits() { await _runTool('/tools/portraits', {}, t('wb.gen_portraits')); }
-async function runSceneImages() { await _runTool('/tools/scene-images', {}, t('wb.gen_scene_images')); }
+async function runPortraits() { _updatePipelineStep('portrait', 'active'); await _runTool('/tools/portraits', {}, t('wb.gen_portraits')); _updatePipelineStep('portrait', 'done'); }
+async function runSceneImages() { _updatePipelineStep('scene', 'active'); await _runTool('/tools/scene-images', {}, t('wb.gen_scene_images')); _updatePipelineStep('scene', 'done'); }
 async function runPost() { await _runTool('/tools/post', { episode: ep }, t('wb.post_process')); }
 
 async function runAll() {

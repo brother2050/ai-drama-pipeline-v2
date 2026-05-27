@@ -183,6 +183,8 @@ const I18N = {
   'wb.tools': { zh: '工具', en: 'Tools' },
   'wb.flow_title': { zh: '生产流程', en: 'Production Flow' },
   'wb.post_short': { zh: '后期', en: 'Post' },
+  'wb.portrait_short': { zh: '定妆照', en: 'Portrait' },
+  'wb.scene_short': { zh: '场景图', en: 'Scene' },
 
   // 角色补充
   'char.not_found': { zh: '角色不存在', en: 'Character not found' },
