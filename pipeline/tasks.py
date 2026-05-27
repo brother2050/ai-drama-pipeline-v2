@@ -207,11 +207,11 @@ def _cfg_dir(config_path: str, *parts) -> Path:
 
 
 def _unique_hash_id(prefix: str, name: str, existing: dict) -> str:
-    """基于中文名生成确定性短 hash ID，碰撞时自动追加后缀
+    """基于名字生成确定性短 hash ID，碰撞时自动追加后缀
 
     Args:
         prefix: ID 前缀（如 "ch"、"sc"）
-        name: 中文名
+        name: 角色/场景名（任意语言）
         existing: 已有的 id_remap，用于检测碰撞
 
     Returns:
@@ -850,7 +850,7 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                     desc_parts.append(f"  镜头{idx}: {a}")
             if dialogues:
                 desc_parts.append(f"台词: {' / '.join(dialogues)}")
-            desc_parts.append(f"\n【重要】此角色的 id 必须为「{cid}」，且 name 必须是与其他角色不同的独立中文名，不能与其他角色重名。")
+            desc_parts.append(f"\n【重要】此角色的 id 必须为「{cid}」，且 name 必须是与其他角色不同的独立名字（根据角色背景可以是中文或英文），不能与其他角色重名。")
             char_descriptions.append("\n".join(desc_parts))
 
         try:
@@ -860,12 +860,12 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                     logger.warning(f"  ⚠ 角色 {sorted_ids[i]} 生成失败，跳过")
                     continue
                 old_id = sorted_ids[i]
-                chinese_name = char.get("name", "").strip()
-                if not chinese_name:
-                    chinese_name = old_id
-                new_id = _unique_hash_id("ch", chinese_name, id_remap)
+                char_name = char.get("name", "").strip()
+                if not char_name:
+                    char_name = old_id
+                new_id = _unique_hash_id("ch", char_name, id_remap)
                 char["id"] = new_id
-                char["name"] = chinese_name
+                char["name"] = char_name
                 id_remap[old_id] = new_id
 
                 path = char_dir / f"{new_id}.yaml"
@@ -878,7 +878,7 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                 except Exception as e:
                     logger.warning(f"DB 写入跳过: {e}")
                 generated_chars.append(new_id)
-                logger.info(f"  ✅ 角色: {chinese_name} ({old_id} → {new_id})")
+                logger.info(f"  ✅ 角色: {char_name} ({old_id} → {new_id})")
         except Exception as e:
             logger.warning(f"  ⚠ 角色生成失败: {e}")
 
@@ -1158,7 +1158,7 @@ def _parse_seko_characters(steps: list[dict]) -> list[dict]:
         prompt_match = re.search(r"<Prompt>(.*?)</Prompt>", block, re.DOTALL)
         prompt_text = prompt_match.group(1).strip() if prompt_match else ""
 
-        # 生成 ID：中文名转拼音风格的 safe id
+        # 生成 ID：名字转 safe id
         safe_id = "".join(c for c in char_name if c.isalnum() or c in ("-", "_")).strip()
         if not safe_id:
             safe_id = f"char_{len(characters) + 1:02d}"
