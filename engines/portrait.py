@@ -7,6 +7,9 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# 重入保护：正在生成中的角色，防止 build_first_frame → _get_character_refs → ensure_portrait 死循环
+_generating: set[str] = set()
+
 
 def ensure_portrait(char_id: str, config: dict, container=None) -> str:
     """确保角色有定妆照，没有则生成一张"""
@@ -18,6 +21,11 @@ def ensure_portrait(char_id: str, config: dict, container=None) -> str:
         existing = list(portrait_dir.glob(ext))
         if existing:
             return str(existing[0])
+
+    # 重入保护：如果该角色正在生成中，直接返回空，避免递归死循环
+    if char_id in _generating:
+        logger.warning(f"角色 '{char_id}' 定妆照正在生成中，跳过重入")
+        return ""
 
     # 生成一张
     logger.info(f"角色 '{char_id}' 无定妆照，自动生成...")
@@ -33,6 +41,7 @@ def ensure_portrait(char_id: str, config: dict, container=None) -> str:
     appearance = char.get("appearance", char_id)
 
     if container:
+        _generating.add(char_id)
         try:
             comfyui = container.get("image")
             # 使用 WorkflowBuilder 构建正确的定妆照工作流
@@ -50,5 +59,7 @@ def ensure_portrait(char_id: str, config: dict, container=None) -> str:
                     return files[0]
         except Exception as e:
             logger.error(f"定妆照生成失败: {e}")
+        finally:
+            _generating.discard(char_id)
 
     return ""

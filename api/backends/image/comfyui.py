@@ -40,7 +40,11 @@ class ComfyUI:
             r = c.post(f"{self._url}/prompt", json={"prompt": workflow, "client_id": client_id},
                       headers=self._headers())
             r.raise_for_status()
-            resp = r.json()
+            # ComfyUI 可能返回空 body 或非 JSON 响应
+            try:
+                resp = r.json()
+            except Exception:
+                raise RuntimeError(f"ComfyUI /prompt 返回非 JSON 响应 (HTTP {r.status_code}): {r.text[:200]}")
             # ComfyUI 提交失败时返回 {"error": "...", "node_errors": {...}}
             if "error" in resp:
                 raise RuntimeError(f"ComfyUI 工作流提交失败: {resp['error']}")
@@ -54,7 +58,11 @@ class ComfyUI:
                 try:
                     r = c.get(f"{self._url}/history/{prompt_id}")
                     if r.status_code == 200:
-                        history = r.json()
+                        try:
+                            history = r.json()
+                        except Exception:
+                            time.sleep(2)
+                            continue
                         if prompt_id in history:
                             entry = history[prompt_id]
                             # 检查 ComfyUI 是否报告了任务失败
