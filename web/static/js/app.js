@@ -12,6 +12,34 @@ let ep = 1, shots = [], batchCancelled = false;
 const _undoStack = [], _redoStack = [];
 let _currentTaskId = null; // 当前正在执行的任务 ID
 
+// ── ID→名字显示映射 ──
+const _charNameMap = {};  // { 'ch_8a3f2b1c': '林夏', ... }
+const _sceneNameMap = {}; // { 'sc_8a3f2b1c': '客厅', ... }
+
+async function _loadNameMaps() {
+  try {
+    const [charData, sceneData] = await Promise.all([
+      cachedFetch('characters', () => api('/characters')),
+      cachedFetch('scenes', () => api('/scenes')),
+    ]);
+    (charData.characters || []).forEach(c => { if (c.id) _charNameMap[c.id] = c.name || c.id; });
+    (sceneData.scenes || []).forEach(s => { if (s.id) _sceneNameMap[s.id] = s.name || s.id; });
+  } catch {}
+}
+
+function _resolveChars(ids) {
+  if (!ids) return '';
+  return ids.split('+').map(id => {
+    id = id.trim();
+    return _charNameMap[id] || id;
+  }).join('+');
+}
+
+function _resolveScene(id) {
+  if (!id) return '';
+  return _sceneNameMap[id] || id;
+}
+
 // ── 集数选择器 ──
 async function loadEpisodeSelector() {
   try {
@@ -399,6 +427,7 @@ async function loadPipeline() {
   const el = document.getElementById('page-pipeline');
   el.innerHTML = `<div class="card"><h2>${t('common.loading')}</h2></div>`;
   try {
+    await _loadNameMaps();
     const episodes = await loadEpisodeSelector();
     const d = await cachedFetch(`storyboard/${ep}`, () => api(`/storyboard/${ep}`));
     shots = d.shots || [];
@@ -464,7 +493,7 @@ function renderShotsGrid() {
   grid.innerHTML = shots.map((s, i) => {
     const sid = _shotId(s, i);
     return `<div class="wb-shot-card" id="shot-${esc(sid)}">
-      <div class="wb-shot-head" id="shot-head-${esc(sid)}"><span class="wb-shot-num">${esc(sid)}</span><span class="wb-shot-char">${esc(s.characters || '')}</span><span class="wb-shot-scene">${esc(s.scene || '')}</span><span class="wb-shot-status"></span></div>
+      <div class="wb-shot-head" id="shot-head-${esc(sid)}"><span class="wb-shot-num">${esc(sid)}</span><span class="wb-shot-char">${esc(_resolveChars(s.characters))}</span><span class="wb-shot-scene">${esc(_resolveScene(s.scene))}</span><span class="wb-shot-status"></span></div>
       <div class="wb-shot-body"><div class="wb-shot-text"><div class="wb-shot-action" title="${esc(s.action || '')}">${esc((s.action || '').substring(0, 30)) || '...'}</div>
         <div class="wb-shot-dialogue" title="${esc(s.dialogue || '')}">"${esc((s.dialogue || '').substring(0, 30)) || '...'}"</div></div>
         <div class="wb-shot-resources" id="res-${esc(sid)}"></div></div>
@@ -569,8 +598,8 @@ async function editShot(idx) {
       cachedFetch('characters', () => api('/characters')),
       cachedFetch('scenes', () => api('/scenes')),
     ]);
-    (charData.characters || []).forEach(c => { charOpts += `<option value="${esc(c.name || c.id)}" ${(s.characters || '').includes(c.name || c.id) ? 'selected' : ''}>${esc(c.name || c.id)}</option>`; });
-    (sceneData.scenes || []).forEach(sc => { sceneOpts += `<option value="${esc(sc.name || sc.id)}" ${(s.scene || '') === (sc.name || sc.id) ? 'selected' : ''}>${esc(sc.name || sc.id)}</option>`; });
+    (charData.characters || []).forEach(c => { const _cv = c.id || c.name; const _cn = c.name || c.id; charOpts += `<option value="${esc(_cv)}" ${(s.characters || '').split('+').map(x=>x.trim()).includes(_cv) ? 'selected' : ''}>${esc(_cn)}</option>`; });
+    (sceneData.scenes || []).forEach(sc => { const _sv = sc.id || sc.name; const _sn = sc.name || sc.id; sceneOpts += `<option value="${esc(_sv)}" ${(s.scene || '') === _sv ? 'selected' : ''}>${esc(_sn)}</option>`; });
   } catch {}
   _showOverlay('edit-overlay', `${t('edit.shot_title')} ${sid}`, `
     <div class="edit-field"><label>${t('edit.scene')}</label>
@@ -1205,6 +1234,7 @@ async function doAIGenScene() {
 async function loadStoryboard() {
   const el = document.getElementById('page-storyboard');
   try {
+    await _loadNameMaps();
     const episodes = await loadEpisodeSelector();
     const d = await cachedFetch(`storyboard/${ep}`, () => api(`/storyboard/${ep}`));
     const ss = d.shots || [];
@@ -1226,7 +1256,7 @@ async function loadStoryboard() {
           <div class="timeline-card">
             <div class="timeline-thumb" id="tl-thumb-${esc(sid)}"><div class="thumb-skeleton"><div class="thumb-skeleton-pulse"></div></div></div>
             <div class="timeline-info">
-              <div class="timeline-info-head"><span class="timeline-sid">${esc(sid)}</span><span class="timeline-meta">${esc(s.scene || '')} · ${esc(s.characters || '')}</span></div>
+              <div class="timeline-info-head"><span class="timeline-sid">${esc(sid)}</span><span class="timeline-meta">${esc(_resolveScene(s.scene))} · ${esc(_resolveChars(s.characters))}</span></div>
               <div class="timeline-info-body">${esc((s.action || '').substring(0, 60))}${(s.action||'').length > 60 ? '...' : ''}</div>
               ${s.dialogue && s.dialogue !== '......' ? `<div class="timeline-info-dialogue">"${esc((s.dialogue || '').substring(0, 50))}"</div>` : ''}
               <div class="timeline-meta" style="margin-top:.25rem">${esc(s.camera || '')} · ${esc(s.shot_type || '')} · ${s.duration || 4}s · ${esc(s.emotion || 'neutral')} · ${LANGUAGES.find(l => l.value === (s.language || 'zh'))?.label || s.language || 'zh'}</div>
@@ -1243,7 +1273,7 @@ async function loadStoryboard() {
       const rows = ss.map((s, i) => `<tr>
         <td><span class="drag-handle" title="拖拽排序">⠿</span></td>
         <td>${_shotId(s, i)}</td>
-        ${SB_FIELDS.slice(0, 4).map(f => `<td><input class="sb-inline-input" value="${esc(s[f] || '')}" data-idx="${i}" data-field="${f}" onchange="updateShotField(this)"></td>`).join('')}
+        ${SB_FIELDS.slice(0, 4).map(f => { const _tip = f === 'characters' ? _resolveChars(s[f]) : f === 'scene' ? _resolveScene(s[f]) : ''; return `<td><input class="sb-inline-input" value="${esc(s[f] || '')}" data-idx="${i}" data-field="${f}"${_tip ? ` title="${esc(_tip)}"` : ''} onchange="updateShotField(this)"></td>`; }).join('')}
         <td><select class="sb-inline-input" data-idx="${i}" data-field="camera" onchange="updateShotField(this)">${_selectOpts(_cameras(), s.camera)}</select></td>
         <td><select class="sb-inline-input" data-idx="${i}" data-field="shot_type" onchange="updateShotField(this)">${_selectOpts(_shotTypes(), s.shot_type)}</select></td>
         <td><input class="sb-inline-input" type="number" value="${s.duration || 4}" min="1" max="30" data-idx="${i}" data-field="duration" onchange="updateShotField(this)"></td>
