@@ -36,16 +36,23 @@ class PgPool:
                 pass
             conn = self._pool.getconn()
         else:
+            cur = None
             try:
                 cur = conn.cursor()
                 cur.execute("SELECT 1")
-                cur.close()
             except Exception:
+                try:
+                    if cur:
+                        cur.close()
+                except Exception:
+                    pass
                 try:
                     self._pool.putconn(conn, close=True)
                 except Exception:
                     pass
                 conn = self._pool.getconn()
+            else:
+                cur.close()
         return conn
 
     def release(self, conn):

@@ -490,7 +490,7 @@ def gen_scene_images(force: bool = False):
 
 
 @router.post("/characters/{char_id}/generate-portrait")
-async def generate_character_portrait(char_id: str):
+def generate_character_portrait(char_id: str):
     """为单个角色 AI 生成定妆照（强制重新生成，完成后更新 reference_images）"""
     _check_id(char_id, "角色 ID")
 
@@ -903,7 +903,7 @@ def delete_scene(scene_id: str):
 
 
 @router.post("/scenes/{scene_id}/generate-image")
-async def generate_scene_image(scene_id: str):
+def generate_scene_image(scene_id: str):
     """为单个场景 AI 生成参考图（强制重新生成，完成后更新 reference_images）"""
     _check_id(scene_id, "场景 ID")
 

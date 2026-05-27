@@ -150,6 +150,15 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path):
 
         if wf:
             comfyui = container.get("image")
+            # 上传参考图到 ComfyUI（IP-Adapter 需要）
+            for node_id, file_path in wb.build_upload_map(shot, wf).items():
+                if Path(file_path).exists():
+                    try:
+                        comfyui.upload_image(file_path)
+                        if node_id in wf and wf[node_id].get("class_type") in ("LoadImage", "LoadImageFromPath", "ImageLoad"):
+                            wf[node_id]["inputs"]["image"] = Path(file_path).name
+                    except Exception as e:
+                        logger.warning(f"  ⚠ 参考图上传失败 [{node_id}]: {e}")
             files = comfyui.generate(wf, str(shot_out))
             if files:
                 os.replace(files[0], frame_path)
