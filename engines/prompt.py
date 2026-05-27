@@ -96,22 +96,26 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
 
 # 常见中文外貌描述→英文映射（兜底用，覆盖常见词）
 _TRANSLATE_API = "http://shanhe.kim/api/fany/fanyi.php"
+_translate_cache: dict[str, str] = {}
 
 
 def _http_translate(text: str) -> str:
-    """通过山河翻译 API 进行中→英翻译"""
+    """通过山河翻译 API 进行中→英翻译（带缓存）"""
+    if text in _translate_cache:
+        return _translate_cache[text]
     try:
         url = f"{_TRANSLATE_API}?msg={urllib.parse.quote(text)}"
         req = urllib.request.Request(url, headers={"User-Agent": "ai-drama-pipeline/1.0"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
-        # 返回格式: "内容：xxx<br>结果：yyy"
-        m = re.search(r"结果[：:]\s*(.+)", raw)
+        # 返回格式: "内容：xxx<br>结果：yyy" 或 "内容：xxx\n结果：yyy"
+        m = re.search(r"结果[：:]\s*(.+)", raw, re.DOTALL)
         if m:
             result = m.group(1).strip()
             # 去掉可能残留的 HTML 标签
             result = re.sub(r"<[^>]+>", "", result).strip()
             if result:
+                _translate_cache[text] = result
                 logger.debug(f"HTTP 翻译成功: {text[:30]} → {result[:30]}")
                 return result
         logger.warning(f"HTTP 翻译返回格式异常: {raw[:100]}")
@@ -127,13 +131,18 @@ def translate_to_english(text: str, llm=None) -> str:
     # 简单回退：如果已经是英文直接返回
     if all(ord(c) < 128 for c in text):
         return text
+    # 缓存命中
+    if text in _translate_cache:
+        return _translate_cache[text]
     # 1. 优先用 LLM
     if llm:
         try:
             result = llm.chat(f"Translate to English, output only the translation: {text}",
                               system="You are a professional translator.")
             if result and result.strip():
-                return result.strip()
+                translated = result.strip()
+                _translate_cache[text] = translated
+                return translated
         except Exception as e:
             logger.warning(f"LLM translation failed: {e}")
     # 2. 兜底：HTTP 翻译接口
