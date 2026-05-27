@@ -368,19 +368,31 @@ def video_core(shot_id: str, cfg, cont, out_dir: Path) -> dict:
     if not video_wf:
         return _err(shot_id, "video", "视频工作流为空（缺少模板）")
 
-    # 上传首帧图到 ComfyUI（LoadImage 节点需要服务端文件）
-    comfyui = cont.get("image")
+    # 判断是否需要上传首帧图到视频 ComfyUI 服务器
+    # 同一台服务器时首帧已在 output 目录，LoadImage 可直接访问，无需上传
+    image_backend = cont.get("image")
+    video_backend = cont.get("video")
     load_nodes = find_load_image_nodes(video_wf)
+
     if load_nodes:
-        try:
-            comfyui.upload_image(str(frame_path))
-            if load_nodes[0] in video_wf:
-                video_wf[load_nodes[0]]["inputs"]["image"] = frame_path.name
-        except Exception as e:
-            logger.warning(f"首帧图上传失败: {e}")
+        image_url = getattr(image_backend, "_url", "").rstrip("/")
+        video_url = getattr(video_backend, "_comfyui_url",
+                   getattr(video_backend, "_url", "")).rstrip("/")
+        if image_url != video_url:
+            # 不同服务器，需要上传首帧
+            try:
+                video_backend_upload = video_backend._get_comfyui() if hasattr(video_backend, "_get_comfyui") else video_backend
+                video_backend_upload.upload_image(str(frame_path))
+                if load_nodes[0] in video_wf:
+                    video_wf[load_nodes[0]]["inputs"]["image"] = frame_path.name
+                logger.debug(f"首帧图已上传到视频服务器 {video_url}")
+            except Exception as e:
+                logger.warning(f"首帧图上传失败: {e}")
+        else:
+            logger.debug(f"首帧图与视频同服务器 ({image_url})，跳过上传")
 
     try:
-        files = comfyui.generate(video_wf, str(out_dir))
+        files = video_backend.generate(video_wf, str(out_dir))
     except Exception as e:
         return _err(shot_id, "video", f"视频生成失败: {e}")
 
