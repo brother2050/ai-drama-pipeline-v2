@@ -811,8 +811,7 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
         return {"status": "error", "reason": f"角色 {char_id} 没有名为 '{outfit_key}' 的服装，可用: {available}"}
 
     outfit_val = outfits[outfit_key]
-    # 兼容 string 和 dict 两种格式
-    outfit_desc = outfit_val.get("description", "") if isinstance(outfit_val, dict) else (outfit_val or "")
+    outfit_desc = outfit_val.get("description", "")
     if not outfit_desc:
         return {"status": "error", "reason": f"角色 {char_id} 的服装 '{outfit_key}' 描述为空"}
 
@@ -859,14 +858,10 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
         outfits_data = char.get("outfits", {})
         if isinstance(outfits_data, dict) and outfit_key in outfits_data:
             outfit_val = outfits_data[outfit_key]
-            if isinstance(outfit_val, str):
-                # 旧格式：字符串描述 → 升级为带 reference_images 的 dict
-                outfits_data[outfit_key] = {"description": outfit_val, "reference_images": [img_url]}
-            elif isinstance(outfit_val, dict):
-                outfit_val.setdefault("reference_images", [])
-                prefix = f"/api/assets/characters/{char_id}/{outfit_key}/cover"
-                outfit_val["reference_images"] = [u for u in outfit_val["reference_images"] if not u.startswith(prefix)]
-                outfit_val["reference_images"].append(img_url)
+            outfit_val.setdefault("reference_images", [])
+            prefix = f"/api/assets/characters/{char_id}/{outfit_key}/cover"
+            outfit_val["reference_images"] = [u for u in outfit_val["reference_images"] if not u.startswith(prefix)]
+            outfit_val["reference_images"].append(img_url)
         char["outfits"] = outfits_data
         data["character"] = char
         with open(char_yaml_path, "w", encoding="utf-8") as f:

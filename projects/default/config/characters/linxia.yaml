@@ -6,9 +6,11 @@ character:
     22岁年轻女性，长发及肩，瓜子脸，大眼睛，柳叶眉，
     身高165cm，体型偏瘦，皮肤白皙
   outfits:
-    casual: >-
-      白色T恤，浅蓝色牛仔裤，白色帆布鞋，斜挎小包
-    home: >-
-      浅粉色居家服，棉拖鞋
+    casual:
+      description: "白色T恤，浅蓝色牛仔裤，白色帆布鞋，斜挎小包"
+      reference_images: []
+    home:
+      description: "浅粉色居家服，棉拖鞋"
+      reference_images: []
   voice:
     voice_description: "温柔甜美的年轻女性，语速适中，带有轻微南方口音"

@@ -960,7 +960,7 @@ function newChar() {
   _getTtsBackend().then(() => {
     _newEntityPanel('characters', {
       titleKey: 'char.title', reload: loadCharacters,
-      buildExtra() { return { voice: _collectVoiceConfig('nc'), outfits: $val('nc-outfits') ? { default: $val('nc-outfits') } : null }; },
+      buildExtra() { return { voice: _collectVoiceConfig('nc'), outfits: $val('nc-outfits') ? { default: { description: $val('nc-outfits'), reference_images: [] } } : null }; },
       extraHtml: _ttsVoiceFieldsHtml('nc'),
       fields: [
         { key: 'name', label: t('char.name') },
@@ -1052,8 +1052,8 @@ function _outfitFieldsHtml(charId, outfits = {}) {
     html += _outfitEntryHtml('', '', charId);
   } else {
     for (const [key, val] of entries) {
-      const desc = typeof val === 'string' ? val : (val?.description || '');
-      const imgs = (typeof val === 'object' && val?.reference_images?.length) ? val.reference_images : [];
+      const desc = val?.description || '';
+      const imgs = val?.reference_images || [];
       html += _outfitEntryHtml(key, desc, charId, imgs);
     }
   }
@@ -1096,11 +1096,7 @@ function _collectOutfits() {
     if (!key || !desc) continue;
     let imgs = [];
     try { imgs = JSON.parse(entry.dataset.imgs || '[]'); } catch {}
-    if (imgs.length) {
-      outfits[key] = { description: desc, reference_images: imgs };
-    } else {
-      outfits[key] = desc;
-    }
+    outfits[key] = { description: desc, reference_images: imgs };
   }
   return Object.keys(outfits).length ? outfits : null;
 }

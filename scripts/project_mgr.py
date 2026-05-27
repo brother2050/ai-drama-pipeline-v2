@@ -65,10 +65,12 @@ character:
     （填写外貌特征，越详细越好，用于 AI 生成定妆照和一致性保持）
     例如：22岁年轻女性，长发，瓜子脸，大眼睛，身高165cm，体型偏瘦
   outfits:
-    casual: >-
-      （填写日常服装描述）
-    formal: >-
-      （填写正式场合服装描述，可选）
+    casual:
+      description: "（填写日常服装描述）"
+      reference_images: []
+    formal:
+      description: "（填写正式场合服装描述，可选）"
+      reference_images: []
   voice:
     voice_description: "（填写声音特征描述，用于 TTS 语音合成）"
 """
