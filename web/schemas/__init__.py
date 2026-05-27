@@ -129,22 +129,14 @@ class ProjectSwitch(BaseModel):
 # ── 配置 ──
 
 class ConfigUpdate(BaseModel):
-    """配置更新（接受任意 dict，由路由层做额外校验）
-
-    兼容两种格式:
-    - 新格式: {"data": {...}}
-    - 旧格式: {"project": {...}} (直接发送 config dict)
-    """
+    """配置更新（接受 {"data": {...}} 格式，由路由层做额外校验）"""
     model_config = {"extra": "allow"}
 
     data: dict | None = None
 
     def get_config_data(self) -> dict:
-        """提取配置数据，兼容新旧两种格式"""
-        if self.data is not None:
-            return self.data
-        # 旧格式: 整个 body 就是配置 dict
-        return self.model_extra or {}
+        """提取配置数据"""
+        return self.data or {}
 
 
 # ── LLM 生成 ──

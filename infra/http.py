@@ -32,8 +32,6 @@ def auth_headers(api_key: str = "", content_type: str = "application/json") -> d
     if content_type:
         h["Content-Type"] = content_type
     if api_key:
-        # 同时发送两种认证头，兼容 CloudStudio 代理和 ComfyUI 原生认证
-        h["X-API-Key"] = api_key
         h["Authorization"] = f"Bearer {api_key}"
     return h
 

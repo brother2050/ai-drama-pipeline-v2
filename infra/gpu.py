@@ -21,11 +21,6 @@ _DEFAULTS: dict[str, Any] = {
 }
 
 
-def detect_gpu() -> dict:
-    """兼容旧接口 — 返回占位信息（不检测本地 GPU）"""
-    return {"name": "N/A", "vram_mb": 0, "cuda": "N/A", "available": False}
-
-
 def get_generation_config(config=None) -> dict:
     """从配置读取生成参数（支持热读取）。
 

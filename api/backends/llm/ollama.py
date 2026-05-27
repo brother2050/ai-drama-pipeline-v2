@@ -45,11 +45,7 @@ registry.register(BackendMeta(name="ollama", service_type="llm", factory=_f,
 
 class OpenAICompatLLM:
     def __init__(self, config: dict):
-        url = config.get("base_url", "http://localhost:8080").rstrip("/")
-        # 兼容用户填了 /v1 结尾的情况
-        if url.endswith("/v1"):
-            url = url[:-3]
-        self._url = url
+        self._url = config.get("base_url", "http://localhost:8080").rstrip("/")
         self._model = config.get("model", "qwen2.5-7b")
         self._api_key = config.get("api_key", "")
         self._timeout = config.get("timeouts", {}).get("llm", 300)

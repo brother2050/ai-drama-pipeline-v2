@@ -640,12 +640,7 @@ def get_config():
 
 @router.post("/config")
 def update_config(req: ConfigUpdate):
-    """更新配置（接受任意 dict）
-
-    兼容两种格式:
-    - {"data": {...}} — 新格式
-    - {"project": {...}} — 旧格式（直接发送 config dict）
-    """
+    """更新配置（接受 {"data": {...}} 格式）"""
     data = req.get_config_data()
     cfg_path = _cfg_path()
     from infra.config import save_config, load_config

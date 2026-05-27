@@ -79,15 +79,15 @@ def test_ttl_cache():
 
 # ── infra/gpu.py ──
 
-def test_gpu_detect():
-    """测试 GPU 检测"""
-    # GPU 检测已简化 — 不再调用 nvidia-smi
-
-    gpu = {"name": "N/A", "vram_mb": 0, "available": False}
-    assert "name" in gpu
-    assert "vram_mb" in gpu
-    assert "available" in gpu
-    print("✅ GPU 检测已跳过（本地不检测，由三方工具管理）")
+def test_generation_config():
+    """测试生成参数配置（默认值）"""
+    from infra.gpu import get_generation_config
+    cfg = get_generation_config()
+    assert "resolution" in cfg
+    assert "image_steps" in cfg
+    assert "video_frames" in cfg
+    assert cfg["resolution"] == [512, 512]
+    print("✅ 生成参数配置读取正常（默认值）")
 
 
 # ── infra/retry.py ──
