@@ -56,11 +56,12 @@ class ComfyUI:
             deadline = time.time() + self._timeout
             while time.time() < deadline:
                 try:
-                    r = c.get(f"{self._url}/history/{prompt_id}")
+                    r = c.get(f"{self._url}/history/{prompt_id}", headers=self._headers())
                     if r.status_code == 200:
                         try:
                             history = r.json()
                         except Exception:
+                            logger.warning(f"GET /history/{prompt_id} 返回非 JSON (len={len(r.text)}): {r.text[:200]}")
                             time.sleep(2)
                             continue
                         if prompt_id in history:
