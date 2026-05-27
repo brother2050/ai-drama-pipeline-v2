@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class ComfyUI:
     def __init__(self, config: dict):
         self._url = config.get("url", "http://127.0.0.1:8188").rstrip("/")
-        self._timeout = config.get("timeouts", {}).get("comfyui", 300)
+        self._timeout = config.get("timeouts", {}).get("comfyui", 900)
         self._api_key = config.get("api_key", "")
 
     @property

@@ -14,7 +14,7 @@ class _ComfyUIVideoBase:
         self._comfyui_url = (config.get("comfyui_url")
                              or config.get("url")
                              or "http://127.0.0.1:8188").rstrip("/")
-        self._timeout = config.get("timeouts", {}).get("comfyui", 300)
+        self._timeout = config.get("timeouts", {}).get("comfyui", 900)
         self._api_key = config.get("api_key", "")
         self._comfyui = None
 
