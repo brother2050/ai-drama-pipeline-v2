@@ -848,6 +848,30 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
         return {"status": "error", "reason": "ComfyUI 未返回任何图片"}
 
     img_url = f"/api/assets/characters/{char_id}/{outfit_key}/{Path(files[0]).name}"
+
+    # 更新角色 YAML 中该 outfit 的 reference_images
+    try:
+        with open(char_yaml_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        char = data.get("character", {})
+        outfits_data = char.get("outfits", {})
+        if isinstance(outfits_data, dict) and outfit_key in outfits_data:
+            outfit_val = outfits_data[outfit_key]
+            if isinstance(outfit_val, str):
+                # 旧格式：字符串描述 → 升级为带 reference_images 的 dict
+                outfits_data[outfit_key] = {"description": outfit_val, "reference_images": [img_url]}
+            elif isinstance(outfit_val, dict):
+                outfit_val.setdefault("reference_images", [])
+                prefix = f"/api/assets/characters/{char_id}/{outfit_key}/cover"
+                outfit_val["reference_images"] = [u for u in outfit_val["reference_images"] if not u.startswith(prefix)]
+                outfit_val["reference_images"].append(img_url)
+        char["outfits"] = outfits_data
+        data["character"] = char
+        with open(char_yaml_path, "w", encoding="utf-8") as f:
+            yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+    except Exception as e:
+        logger.debug(f"更新 outfit reference_images 跳过: {e}")
+
     return {"status": "done", "url": img_url, "char_id": char_id, "outfit": outfit_key}
 
 

@@ -1051,18 +1051,23 @@ function _outfitFieldsHtml(charId, outfits = {}) {
   if (entries.length === 0) {
     html += _outfitEntryHtml('', '', charId);
   } else {
-    for (const [key, desc] of entries) {
-      html += _outfitEntryHtml(key, typeof desc === 'string' ? desc : '', charId);
+    for (const [key, val] of entries) {
+      const desc = typeof val === 'string' ? val : (val?.description || '');
+      const imgs = (typeof val === 'object' && val?.reference_images?.length) ? val.reference_images : [];
+      html += _outfitEntryHtml(key, desc, charId, imgs);
     }
   }
   html += `</div>`;
   return html;
 }
 
-function _outfitEntryHtml(key, desc, charId) {
+function _outfitEntryHtml(key, desc, charId, imgs = []) {
   const k = esc(key);
   const d = esc(desc);
-  return `<div class="outfit-entry" style="display:flex;gap:.4rem;align-items:flex-start;margin-bottom:.5rem">` +
+  const imgsJson = esc(JSON.stringify(imgs));
+  const thumb = imgs.length ? `<img src="${esc(imgs[0])}" style="width:36px;height:36px;border-radius:4px;object-fit:cover;flex-shrink:0">` : '';
+  return `<div class="outfit-entry" data-imgs='${imgsJson}' style="display:flex;gap:.4rem;align-items:flex-start;margin-bottom:.5rem">` +
+    thumb +
     `<input class="outfit-key" value="${k}" placeholder="服装名 (如 default)" style="width:120px;flex-shrink:0">` +
     `<textarea class="outfit-desc" rows="1" placeholder="服装描述" style="flex:1;min-height:1.8rem">${d}</textarea>` +
     `<button class="btn btn-xs btn-ai" onclick="generateOutfit('${esc(charId)}', this)" title="生成此服装参考图">🎨</button>` +
@@ -1081,14 +1086,21 @@ function removeOutfitField(btn) {
   if (entry) entry.remove();
 }
 
-/** 从表单收集所有服装配置 */
+/** 从表单收集所有服装配置（保留 reference_images） */
 function _collectOutfits() {
   const entries = document.querySelectorAll('#ec-outfit-list .outfit-entry');
   const outfits = {};
   for (const entry of entries) {
     const key = entry.querySelector('.outfit-key')?.value?.trim();
     const desc = entry.querySelector('.outfit-desc')?.value?.trim();
-    if (key && desc) outfits[key] = desc;
+    if (!key || !desc) continue;
+    let imgs = [];
+    try { imgs = JSON.parse(entry.dataset.imgs || '[]'); } catch {}
+    if (imgs.length) {
+      outfits[key] = { description: desc, reference_images: imgs };
+    } else {
+      outfits[key] = desc;
+    }
   }
   return Object.keys(outfits).length ? outfits : null;
 }
