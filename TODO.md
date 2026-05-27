@@ -7,11 +7,11 @@
 
 ## 🔴 高严重度（6 个）
 
-- [ ] **`pipeline/tasks.py`** — `except Exception:` 里引用变量 `e` 但没写 `as e`，导致 `NameError` 被吞掉。涉及 `ai_storyboard_task`、`ai_characters_task`、`ai_scenes_task`、`seko_import_task`
+- [x] **`pipeline/tasks.py`** — `except Exception:` 里引用变量 `e` 但没写 `as e`，导致 `NameError` 被吞掉。涉及 `ai_storyboard_task`、`ai_characters_task`、`ai_scenes_task`、`seko_import_task`
 - [ ] **`engines/prompt.py`** — 外部翻译 API 用 HTTP 明文传输用户文本，有数据泄露风险；地址硬编码应走配置
-- [ ] **`infra/database/pool.py`** — `connect()` 健康检查执行 `SELECT 1` 后未关闭 cursor，长期运行连接泄漏
-- [ ] **`web/routers/api.py`** — `_check_rate_limit` 用内存存储，多 worker 进程下无法共享状态，限流形同虚设
-- [ ] **`web/routers/api.py`** — `generate_character_portrait` 和 `generate_scene_image` 是 `async def` 但内部执行大量同步 I/O，阻塞事件循环
+- [x] **`infra/database/pool.py`** — `connect()` 健康检查执行 `SELECT 1` 后未关闭 cursor，长期运行连接泄漏
+- [x] **`web/routers/api.py`** — `_check_rate_limit` 用内存存储，多 worker 进程下无法共享状态，限流形同虚设
+- [x] **`web/routers/api.py`** — `generate_character_portrait` 和 `generate_scene_image` 是 `async def` 但内部执行大量同步 I/O，阻塞事件循环
 - [ ] **`engines/portrait.py`** — `_generating` 集合是模块级全局状态，多进程（Celery 多 worker）下无法提供重入保护，需用分布式锁
 
 ## 🟡 中严重度（25 个）
@@ -22,9 +22,9 @@
 - [ ] **`engines/video_consistency.py`** — 临时目录在正常返回后可能泄漏（`_cleanup_frames` 清理文件但不一定清目录）
 - [ ] **`engines/video_consistency.py`** — `_extract_embedding` 用函数属性存全局 app，与 `consistency.py` 实现不一致
 - [ ] **`engines/workflow_builder.py`** — `_inject_lora` 找 CLIP 节点逻辑可能匹配到不相关节点
-- [ ] **`api/backends/image/comfyui.py`** — 轮询 `/history` 用 `time.sleep(2)` 忙等待，ComfyUI 宕机时阻塞最多 900 秒
-- [ ] **`api/backends/image/comfyui.py`** — `_download_outputs` 的 `subfolder` 参数直接拼 URL，有路径遍历风险
-- [ ] **`api/backends/image/comfyui.py`** — 每次 `generate` 创建新 `httpx.Client`，不复用连接池
+- [x] **`api/backends/image/comfyui.py`** — 轮询 `/history` 用 `time.sleep(2)` 忙等待，ComfyUI 宕机时阻塞最多 900 秒
+- [x] **`api/backends/image/comfyui.py`** — `_download_outputs` 的 `subfolder` 参数直接拼 URL，有路径遍历风险
+- [x] **`api/backends/image/comfyui.py`** — 每次 `generate` 创建新 `httpx.Client`，不复用连接池
 - [ ] **`api/backends/tts/mimo_*.py`** — WAV header 硬编码 `sr=24000, bps=16, ch=1`，实际采样率不同时产生损坏文件
 - [ ] **`api/backends/seko/proposal.py`** — `wait_for_proposal` 是 `while True` 无限循环，API 持续返回 RUNNING 时永远阻塞
 - [ ] **`api/backends/seko/proposal.py`** — `download_image` 用 `urllib.request` 而非统一的 `httpx`，未校验 Content-Type
@@ -64,20 +64,20 @@
 
 ## 🔧 ComfyUI 集成问题
 
-- [ ] **角色定妆照 → ComfyUI** — 只写了文件名到工作流节点，没有调用 `comfyui.upload_image()`，跨机器部署时 IP-Adapter 参考图会找不到
-- [ ] **场景参考图 → ComfyUI** — 同上，只写文件名没 upload
-- [ ] **`build_upload_map` 死代码** — `workflow_builder.py` 中定义了 `build_upload_map()` 方法（构建参考图上传映射），但全项目无人调用，是死代码
-- [ ] **首帧 → ComfyUI** — ✅ 有串联，`build_first_frame` 构建工作流 → `comfyui.generate` 提交
-- [ ] **首帧 → 视频** — ✅ 有串联，`frame.png` 路径传入 `build_video`
+- [x] **角色定妆照 → ComfyUI** — 只写了文件名到工作流节点，没有调用 `comfyui.upload_image()`，跨机器部署时 IP-Adapter 参考图会找不到
+- [x] **场景参考图 → ComfyUI** — 同上，只写文件名没 upload
+- [x] **`build_upload_map` 死代码** — `workflow_builder.py` 中定义了 `build_upload_map()` 方法（构建参考图上传映射），但全项目无人调用，是死代码 → 已在 `tasks.py:first_frame_core` 和 `producer.py:_produce_shot` 中接入
+- [x] **首帧 → ComfyUI** — ✅ 有串联，`build_first_frame` 构建工作流 → `comfyui.generate` 提交
+- [x] **首帧 → 视频** — ✅ 有串联，`frame.png` 路径传入 `build_video`
 
 ---
 
 ## 建议修复优先级
 
-1. `pipeline/tasks.py` — `except Exception:` 变量引用 bug
-2. `web/routers/api.py` — `async def` → `def`；rate limiting 改 Redis
-3. `infra/database/pool.py` — cursor 泄漏
+1. ~~`pipeline/tasks.py` — `except Exception:` 变量引用 bug~~ ✅
+2. ~~`web/routers/api.py` — `async def` → `def`；rate limiting 改 Redis~~ ✅ (async→def 已修，Redis rate limiting 个人使用暂不需要)
+3. ~~`infra/database/pool.py` — cursor 泄漏~~ ✅
 4. `engines/prompt.py` — 翻译 API 改 HTTPS + 走配置
-5. `engines/portrait.py` — 分布式锁替代全局集合
-6. `api/backends/image/comfyui.py` — 连接池复用 + 超时优化
-7. ComfyUI 集成 — 补充 upload_image 调用，清理死代码
+5. `engines/portrait.py` — 分布式锁替代全局集合 (个人单 worker 可暂不修)
+6. ~~`api/backends/image/comfyui.py` — 连接池复用 + 超时优化~~ ✅
+7. ~~ComfyUI 集成 — 补充 upload_image 调用，清理死代码~~ ✅
