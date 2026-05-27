@@ -711,6 +711,268 @@ def scene_images_task(self, config_path: str, force: bool = False) -> dict:
 
 
 # ══════════════════════════════════════════════════════════
+#  单资产生成任务（异步，复用已有工具函数）
+# ══════════════════════════════════════════════════════════
+
+@app.task(bind=True, name="pipeline.portrait_single", soft_time_limit=300)
+def portrait_single_task(self, config_path: str, char_id: str) -> dict:
+    """为单个角色 AI 生成定妆照（异步）"""
+    _ensure_path()
+    import yaml
+    from engines.workflow_builder import WorkflowBuilder
+
+    self.update_state(state="PROGRESS", meta={"step": "portrait", "progress": 10, "message": f"生成 {char_id} 定妆照..."})
+
+    cfg, cont = _init_ctx(config_path)
+    project_dir = _cfg_dir(config_path)
+
+    char_yaml_path = project_dir / "config" / "characters" / f"{char_id}.yaml"
+    if not char_yaml_path.exists():
+        return {"status": "error", "reason": f"角色 {char_id} 不存在"}
+
+    with open(char_yaml_path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    char = data.get("character", {})
+    appearance = char.get("appearance", char_id)
+
+    try:
+        comfyui = cont.get("image")
+    except Exception as e:
+        return {"status": "error", "reason": f"ComfyUI 不可用: {e}"}
+
+    portrait_dir = project_dir / "assets" / "characters" / char_id
+    portrait_dir.mkdir(parents=True, exist_ok=True)
+    for old in portrait_dir.glob("*.png"):
+        old.unlink()
+    for old in portrait_dir.glob("*.jpg"):
+        old.unlink()
+
+    models = cfg.get("models", {})
+    wb = WorkflowBuilder(cfg.data, models, str(project_dir), comfyui=comfyui)
+    wb.load_workflows()
+    fake_shot = {"characters": char_id, "emotion": "neutral",
+                 "shot_type": "特写", "camera": "固定"}
+    _, wf = wb.build_first_frame(fake_shot, character_desc=appearance)
+    if not wf:
+        return {"status": "error", "reason": "首帧工作流为空（缺少模板）"}
+
+    self.update_state(state="PROGRESS", meta={"step": "portrait", "progress": 50, "message": f"ComfyUI 生成中..."})
+    try:
+        files = comfyui.generate(wf, str(portrait_dir))
+    except Exception as e:
+        return {"status": "error", "reason": f"ComfyUI 生成失败: {e}"}
+    if not files:
+        return {"status": "error", "reason": "ComfyUI 未返回任何图片"}
+
+    img_url = f"/api/assets/characters/{char_id}/{Path(files[0]).name}"
+    char.setdefault("reference_images", [])
+    prefix = f"/api/assets/characters/{char_id}/cover"
+    char["reference_images"] = [u for u in char["reference_images"] if not u.startswith(prefix)]
+    char["reference_images"].append(img_url)
+    data["character"] = char
+    with open(char_yaml_path, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+
+    try:
+        from infra.database.characters import upsert as db_up
+        from infra.database.pool import get_pool
+        db_up(get_pool(), char_id, char)
+    except Exception as e:
+        logger.debug(f"DB 写入跳过: {e}")
+
+    return {"status": "done", "url": img_url, "char_id": char_id}
+
+
+@app.task(bind=True, name="pipeline.outfit_single", soft_time_limit=300)
+def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) -> dict:
+    """为单个角色的指定服装生成参考图（异步）"""
+    _ensure_path()
+    import yaml
+    from engines.workflow_builder import WorkflowBuilder
+    from engines.prompt import translate_to_english
+
+    self.update_state(state="PROGRESS", meta={"step": "outfit", "progress": 10, "message": f"生成 {char_id}/{outfit_key} 服装图..."})
+
+    cfg, cont = _init_ctx(config_path)
+    project_dir = _cfg_dir(config_path)
+
+    char_yaml_path = project_dir / "config" / "characters" / f"{char_id}.yaml"
+    if not char_yaml_path.exists():
+        return {"status": "error", "reason": f"角色 {char_id} 不存在"}
+
+    with open(char_yaml_path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    char = data.get("character", {})
+    appearance = char.get("appearance", char_id)
+    outfits = char.get("outfits", {})
+
+    if not isinstance(outfits, dict) or outfit_key not in outfits:
+        available = list(outfits.keys()) if isinstance(outfits, dict) else []
+        return {"status": "error", "reason": f"角色 {char_id} 没有名为 '{outfit_key}' 的服装，可用: {available}"}
+
+    outfit_desc = outfits[outfit_key]
+    if not outfit_desc:
+        return {"status": "error", "reason": f"角色 {char_id} 的服装 '{outfit_key}' 描述为空"}
+
+    try:
+        comfyui = cont.get("image")
+    except Exception as e:
+        return {"status": "error", "reason": f"ComfyUI 不可用: {e}"}
+
+    outfit_dir = project_dir / "assets" / "characters" / char_id / outfit_key
+    outfit_dir.mkdir(parents=True, exist_ok=True)
+    for old in outfit_dir.glob("*.png"):
+        old.unlink()
+    for old in outfit_dir.glob("*.jpg"):
+        old.unlink()
+
+    full_desc = f"{appearance}, wearing {outfit_desc}"
+    if any(ord(c) > 127 for c in full_desc):
+        full_desc = translate_to_english(full_desc, llm=None)
+
+    models = cfg.get("models", {})
+    wb = WorkflowBuilder(cfg.data, models, str(project_dir), comfyui=comfyui)
+    wb.load_workflows()
+    fake_shot = {"characters": char_id, "emotion": "neutral",
+                 "shot_type": "全身", "camera": "固定"}
+    _, wf = wb.build_first_frame(fake_shot, character_desc=full_desc)
+    if not wf:
+        return {"status": "error", "reason": "首帧工作流为空（缺少模板）"}
+
+    self.update_state(state="PROGRESS", meta={"step": "outfit", "progress": 50, "message": "ComfyUI 生成中..."})
+    try:
+        files = comfyui.generate(wf, str(outfit_dir))
+    except Exception as e:
+        return {"status": "error", "reason": f"ComfyUI 生成失败: {e}"}
+    if not files:
+        return {"status": "error", "reason": "ComfyUI 未返回任何图片"}
+
+    img_url = f"/api/assets/characters/{char_id}/{outfit_key}/{Path(files[0]).name}"
+    return {"status": "done", "url": img_url, "char_id": char_id, "outfit": outfit_key}
+
+
+@app.task(bind=True, name="pipeline.outfits_batch", soft_time_limit=600)
+def outfits_batch_task(self, config_path: str, char_id: str) -> dict:
+    """为单个角色的所有服装批量生成参考图（异步）"""
+    _ensure_path()
+    import yaml
+
+    self.update_state(state="PROGRESS", meta={"step": "outfits", "progress": 5, "message": f"加载角色 {char_id}..."})
+
+    project_dir = _cfg_dir(config_path)
+    char_yaml_path = project_dir / "config" / "characters" / f"{char_id}.yaml"
+    if not char_yaml_path.exists():
+        return {"status": "error", "reason": f"角色 {char_id} 不存在"}
+
+    with open(char_yaml_path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    char = data.get("character", {})
+    outfits = char.get("outfits", {})
+
+    if not isinstance(outfits, dict) or not outfits:
+        return {"status": "error", "reason": f"角色 {char_id} 没有定义任何服装"}
+
+    total = len(outfits)
+    results = []
+    errors = []
+    for i, key in enumerate(outfits):
+        self.update_state(state="PROGRESS", meta={
+            "step": "outfits", "progress": int(10 + i / total * 80),
+            "message": f"[{i+1}/{total}] 生成 {key}...", "current": i + 1, "total": total})
+        try:
+            result = outfit_single_task.apply(args=[config_path, char_id, key]).get(timeout=300)
+            if result.get("status") == "done":
+                results.append(result)
+            else:
+                errors.append({"outfit": key, "error": result.get("reason", "未知错误")})
+        except Exception as e:
+            errors.append({"outfit": key, "error": str(e)})
+
+    return {"status": "done", "char_id": char_id,
+            "generated": results, "errors": errors,
+            "total": total, "success": len(results), "failed": len(errors)}
+
+
+@app.task(bind=True, name="pipeline.scene_image_single", soft_time_limit=300)
+def scene_image_single_task(self, config_path: str, scene_id: str) -> dict:
+    """为单个场景 AI 生成参考图（异步）"""
+    _ensure_path()
+    import yaml
+    from engines.workflow_builder import WorkflowBuilder
+    from engines.prompt import translate_to_english
+
+    self.update_state(state="PROGRESS", meta={"step": "scene_image", "progress": 10, "message": f"生成场景 {scene_id} 参考图..."})
+
+    cfg, cont = _init_ctx(config_path)
+    project_dir = _cfg_dir(config_path)
+
+    scene_yaml_path = project_dir / "config" / "scenes" / f"{scene_id}.yaml"
+    if not scene_yaml_path.exists():
+        return {"status": "error", "reason": f"场景 {scene_id} 不存在"}
+
+    with open(scene_yaml_path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    scene = data.get("scene", {})
+    description = scene.get("description", scene_id)
+
+    try:
+        comfyui = cont.get("image")
+    except Exception as e:
+        return {"status": "error", "reason": f"ComfyUI 不可用: {e}"}
+
+    scene_dir = project_dir / "assets" / "scenes" / scene_id
+    scene_dir.mkdir(parents=True, exist_ok=True)
+    for old in scene_dir.glob("*.png"):
+        old.unlink()
+    for old in scene_dir.glob("*.jpg"):
+        old.unlink()
+
+    llm = None
+    try:
+        if cfg.get("llm", {}).get("enabled"):
+            llm = cont.get("llm")
+    except Exception:
+        pass
+
+    scene_desc_en = translate_to_english(description, llm=llm)
+
+    models = cfg.get("models", {})
+    wb = WorkflowBuilder(cfg.data, models, str(project_dir), comfyui=comfyui)
+    wb.load_workflows()
+    fake_shot = {"characters": "", "emotion": "neutral",
+                 "shot_type": "全景", "camera": "固定"}
+    _, wf = wb.build_first_frame(fake_shot, scene_desc=scene_desc_en)
+    if not wf:
+        return {"status": "error", "reason": "首帧工作流为空（缺少模板）"}
+
+    self.update_state(state="PROGRESS", meta={"step": "scene_image", "progress": 50, "message": "ComfyUI 生成中..."})
+    try:
+        files = comfyui.generate(wf, str(scene_dir))
+    except Exception as e:
+        return {"status": "error", "reason": f"ComfyUI 生成失败: {e}"}
+    if not files:
+        return {"status": "error", "reason": "ComfyUI 未返回任何图片"}
+
+    img_url = f"/api/assets/scenes/{scene_id}/{Path(files[0]).name}"
+    scene.setdefault("reference_images", [])
+    prefix = f"/api/assets/scenes/{scene_id}/cover"
+    scene["reference_images"] = [u for u in scene["reference_images"] if not u.startswith(prefix)]
+    scene["reference_images"].append(img_url)
+    data["scene"] = scene
+    with open(scene_yaml_path, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+
+    try:
+        from infra.database.scenes import upsert as db_up
+        from infra.database.pool import get_pool
+        db_up(get_pool(), scene_id, scene)
+    except Exception as e:
+        logger.debug(f"DB 写入跳过: {e}")
+
+    return {"status": "done", "url": img_url, "scene_id": scene_id}
+
+
+# ══════════════════════════════════════════════════════════
 #  独立工具任务
 # ══════════════════════════════════════════════════════════
 

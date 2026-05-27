@@ -491,204 +491,36 @@ def gen_scene_images(force: bool = False):
 
 @router.post("/characters/{char_id}/generate-portrait")
 def generate_character_portrait(char_id: str):
-    """为单个角色 AI 生成定妆照（强制重新生成，完成后更新 reference_images）"""
+    """为单个角色 AI 生成定妆照（异步，强制重新生成）"""
     _check_id(char_id, "角色 ID")
-
-    import yaml
-    from infra.config import Config
-    from api import _ensure_registered; _ensure_registered()
-    from api.registry import Container
-
-    cfg_path = _cfg_path()
-    cfg = Config(cfg_path)
-
-    # 读取角色配置
+    # 检查角色是否存在
     char_yaml_path = _proj() / "config" / "characters" / f"{char_id}.yaml"
     if not char_yaml_path.exists():
         raise HTTPException(404, f"角色 {char_id} 不存在")
-
-    with open(char_yaml_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    char = data.get("character", {})
-    appearance = char.get("appearance", char_id)
-
-    # 获取 ComfyUI 后端
-    try:
-        cont = Container(cfg.data)
-        comfyui = cont.get("image")
-    except Exception as e:
-        raise HTTPException(503, f"ComfyUI 不可用: {e}")
-
-    # 生成定妆照
-    from engines.workflow_builder import WorkflowBuilder
-    portrait_dir = _proj() / "assets" / "characters" / char_id
-    portrait_dir.mkdir(parents=True, exist_ok=True)
-
-    # 清除旧图（强制重新生成）
-    for old in portrait_dir.glob("*.png"):
-        old.unlink()
-    for old in portrait_dir.glob("*.jpg"):
-        old.unlink()
-
-    models = cfg.get("models", {})
-    wb = WorkflowBuilder(cfg.data, models, str(_proj()), comfyui=comfyui)
-    wb.load_workflows()
-    fake_shot = {"characters": char_id, "emotion": "neutral",
-                 "shot_type": "特写", "camera": "固定"}
-    _, wf = wb.build_first_frame(fake_shot, character_desc=appearance)
-    if not wf:
-        raise HTTPException(500, "首帧工作流为空（缺少模板）")
-
-    try:
-        files = comfyui.generate(wf, str(portrait_dir))
-    except Exception as e:
-        raise HTTPException(500, f"ComfyUI 生成失败: {e}")
-
-    if not files:
-        raise HTTPException(500, "ComfyUI 未返回任何图片")
-
-    # 更新 YAML reference_images
-    img_url = f"/api/assets/characters/{char_id}/{Path(files[0]).name}"
-    char.setdefault("reference_images", [])
-    prefix = f"/api/assets/characters/{char_id}/cover"
-    char["reference_images"] = [u for u in char["reference_images"] if not u.startswith(prefix)]
-    char["reference_images"].append(img_url)
-    data["character"] = char
-    with open(char_yaml_path, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
-
-    # 同步数据库
-    try:
-        from infra.database.characters import upsert as db_up
-        from infra.database.pool import get_pool
-        db_up(get_pool(), char_id, char)
-    except Exception:
-        logger.warning(f"DB 写入跳过: {e}")
-    return {"status": "ok", "url": img_url, "char_id": char_id}
+    from pipeline.tasks import portrait_single_task
+    return _submit_task(portrait_single_task, _cfg_path(), char_id)
 
 
 @router.post("/characters/{char_id}/generate-outfit")
 def generate_character_outfit(char_id: str, outfit_key: str = "default"):
-    """为单个角色的指定服装（outfit）生成参考图"""
+    """为单个角色的指定服装（outfit）生成参考图（异步）"""
     _check_id(char_id, "角色 ID")
-
-    import yaml
-    from infra.config import Config
-    from api import _ensure_registered; _ensure_registered()
-    from api.registry import Container
-    from engines.prompt import translate_to_english
-
-    cfg_path = _cfg_path()
-    cfg = Config(cfg_path)
-
-    # 读取角色配置
     char_yaml_path = _proj() / "config" / "characters" / f"{char_id}.yaml"
     if not char_yaml_path.exists():
         raise HTTPException(404, f"角色 {char_id} 不存在")
-
-    with open(char_yaml_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    char = data.get("character", {})
-    appearance = char.get("appearance", char_id)
-    outfits = char.get("outfits", {})
-
-    if not isinstance(outfits, dict) or outfit_key not in outfits:
-        available = list(outfits.keys()) if isinstance(outfits, dict) else []
-        raise HTTPException(404, f"角色 {char_id} 没有名为 '{outfit_key}' 的服装，可用: {available}")
-
-    outfit_desc = outfits[outfit_key]
-    if not outfit_desc:
-        raise HTTPException(400, f"角色 {char_id} 的服装 '{outfit_key}' 描述为空")
-
-    # 获取 ComfyUI 后端
-    try:
-        cont = Container(cfg.data)
-        comfyui = cont.get("image")
-    except Exception as e:
-        raise HTTPException(503, f"ComfyUI 不可用: {e}")
-
-    # 构建 outfit 参考图输出目录
-    from engines.workflow_builder import WorkflowBuilder
-    outfit_dir = _proj() / "assets" / "characters" / char_id / outfit_key
-    outfit_dir.mkdir(parents=True, exist_ok=True)
-
-    # 清除旧图（强制重新生成）
-    for old in outfit_dir.glob("*.png"):
-        old.unlink()
-    for old in outfit_dir.glob("*.jpg"):
-        old.unlink()
-
-    # 构建 prompt：appearance + outfit description
-    full_desc = f"{appearance}, wearing {outfit_desc}"
-    # 中文描述需要翻译
-    if any(ord(c) > 127 for c in full_desc):
-        full_desc = translate_to_english(full_desc, llm=None)
-
-    models = cfg.get("models", {})
-    wb = WorkflowBuilder(cfg.data, models, str(_proj()), comfyui=comfyui)
-    wb.load_workflows()
-    fake_shot = {"characters": char_id, "emotion": "neutral",
-                 "shot_type": "全身", "camera": "固定"}
-    _, wf = wb.build_first_frame(fake_shot, character_desc=full_desc)
-    if not wf:
-        raise HTTPException(500, "首帧工作流为空（缺少模板）")
-
-    try:
-        files = comfyui.generate(wf, str(outfit_dir))
-    except Exception as e:
-        raise HTTPException(500, f"ComfyUI 生成失败: {e}")
-
-    if not files:
-        raise HTTPException(500, "ComfyUI 未返回任何图片")
-
-    img_url = f"/api/assets/characters/{char_id}/{outfit_key}/{Path(files[0]).name}"
-    return {"status": "ok", "url": img_url, "char_id": char_id, "outfit": outfit_key}
+    from pipeline.tasks import outfit_single_task
+    return _submit_task(outfit_single_task, _cfg_path(), char_id, outfit_key)
 
 
 @router.post("/characters/{char_id}/generate-outfits")
 def generate_character_outfits(char_id: str):
-    """为单个角色的所有服装（outfit）批量生成参考图"""
+    """为单个角色的所有服装（outfit）批量生成参考图（异步）"""
     _check_id(char_id, "角色 ID")
-
-    import yaml
-    from infra.config import Config
-
-    cfg_path = _cfg_path()
-    cfg = Config(cfg_path)
-
-    # 读取角色配置
     char_yaml_path = _proj() / "config" / "characters" / f"{char_id}.yaml"
     if not char_yaml_path.exists():
         raise HTTPException(404, f"角色 {char_id} 不存在")
-
-    with open(char_yaml_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    char = data.get("character", {})
-    outfits = char.get("outfits", {})
-
-    if not isinstance(outfits, dict) or not outfits:
-        raise HTTPException(400, f"角色 {char_id} 没有定义任何服装")
-
-    results = []
-    errors = []
-    for key in outfits:
-        try:
-            result = generate_character_outfit(char_id, key)
-            results.append(result)
-        except HTTPException as e:
-            errors.append({"outfit": key, "error": e.detail})
-        except Exception as e:
-            errors.append({"outfit": key, "error": str(e)})
-
-    return {
-        "status": "ok",
-        "char_id": char_id,
-        "generated": results,
-        "errors": errors,
-        "total": len(outfits),
-        "success": len(results),
-        "failed": len(errors),
-    }
+    from pipeline.tasks import outfits_batch_task
+    return _submit_task(outfits_batch_task, _cfg_path(), char_id)
 
 
 @router.post("/tools/post")
@@ -1028,91 +860,13 @@ def delete_scene(scene_id: str):
 
 @router.post("/scenes/{scene_id}/generate-image")
 def generate_scene_image(scene_id: str):
-    """为单个场景 AI 生成参考图（强制重新生成，完成后更新 reference_images）"""
+    """为单个场景 AI 生成参考图（异步，强制重新生成）"""
     _check_id(scene_id, "场景 ID")
-
-    import yaml
-    from infra.config import Config
-    from api import _ensure_registered; _ensure_registered()
-    from api.registry import Container
-
-    cfg_path = _cfg_path()
-    cfg = Config(cfg_path)
-
-    # 读取场景配置
     scene_yaml_path = _proj() / "config" / "scenes" / f"{scene_id}.yaml"
     if not scene_yaml_path.exists():
         raise HTTPException(404, f"场景 {scene_id} 不存在")
-
-    with open(scene_yaml_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    scene = data.get("scene", {})
-    description = scene.get("description", scene_id)
-
-    # 获取 ComfyUI 后端
-    try:
-        cont = Container(cfg.data)
-        comfyui = cont.get("image")
-    except Exception as e:
-        raise HTTPException(503, f"ComfyUI 不可用: {e}")
-
-    # 生成场景图
-    from engines.workflow_builder import WorkflowBuilder
-    from engines.prompt import translate_to_english
-
-    scene_dir = _proj() / "assets" / "scenes" / scene_id
-    scene_dir.mkdir(parents=True, exist_ok=True)
-
-    # 清除旧图（强制重新生成）
-    for old in scene_dir.glob("*.png"):
-        old.unlink()
-    for old in scene_dir.glob("*.jpg"):
-        old.unlink()
-
-    # 翻译场景描述为英文 prompt
-    llm = None
-    try:
-        if cfg.get("llm", {}).get("enabled"):
-            llm = cont.get("llm")
-    except Exception:
-        pass
-    scene_desc_en = translate_to_english(description, llm=llm)
-
-    models = cfg.get("models", {})
-    wb = WorkflowBuilder(cfg.data, models, str(_proj()), comfyui=comfyui)
-    wb.load_workflows()
-    fake_shot = {"characters": "", "emotion": "neutral",
-                 "shot_type": "全景", "camera": "固定"}
-    _, wf = wb.build_first_frame(fake_shot, scene_desc=scene_desc_en)
-    if not wf:
-        raise HTTPException(500, "首帧工作流为空（缺少模板）")
-
-    try:
-        files = comfyui.generate(wf, str(scene_dir))
-    except Exception as e:
-        raise HTTPException(500, f"ComfyUI 生成失败: {e}")
-
-    if not files:
-        raise HTTPException(500, "ComfyUI 未返回任何图片")
-
-    # 更新 YAML reference_images
-    img_url = f"/api/assets/scenes/{scene_id}/{Path(files[0]).name}"
-    scene.setdefault("reference_images", [])
-    prefix = f"/api/assets/scenes/{scene_id}/cover"
-    scene["reference_images"] = [u for u in scene["reference_images"] if not u.startswith(prefix)]
-    scene["reference_images"].append(img_url)
-    data["scene"] = scene
-    with open(scene_yaml_path, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
-
-    # 同步数据库
-    try:
-        from infra.database.scenes import upsert as db_up
-        from infra.database.pool import get_pool
-        db_up(get_pool(), scene_id, scene)
-    except Exception:
-        logger.warning(f"DB 写入跳过: {e}")
-    return {"status": "ok", "url": img_url, "scene_id": scene_id}
+    from pipeline.tasks import scene_image_single_task
+    return _submit_task(scene_image_single_task, _cfg_path(), scene_id)
 
 
 # ── 角色/场景图片上传 ──
