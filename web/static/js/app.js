@@ -1,4 +1,20 @@
-// AI 短剧工作台 v2
+/**
+ * AI 短剧工作台 v2 — 主应用
+ *
+ * 模块清单（按加载顺序）：
+ *   1. core.js      — 基础设施：API/cache/toast/modal/pollTask/undo-redo/routing/CRUD
+ *   2. dashboard.js — 仪表盘 + 灵感生成
+ *   3. pipeline.js  — 生产工作台：步骤/镜头编辑/执行/工具
+ *   4. characters.js— 角色管理 + 定妆照 + 服装 + LoRA 训练
+ *   5. scenes.js    — 场景管理
+ *   6. storyboard.js— 分镜表（表格/卡片视图）
+ *   7. ai-gen.js    — AI 生成（通用执行器 + 对话式编辑）
+ *   8. seko.js      — Seko 影视策划案
+ *   9. projects.js  — 项目管理
+ *  10. settings.js  — 系统设置 + 配置预设
+ *  11. extras.js    — 拖拽排序/批量导入导出/引用计数/成片预览/主体库/多剧集/Worker状态
+ *  12. init.js      — 启动入口
+ */
 const API = '/api';
 
 // ── 基础设施 ──
@@ -215,8 +231,9 @@ document.addEventListener('keydown', e => {
   }
 });
 
+
 // ══════════════════════════════════════════════════════════
-// 通用 CRUD
+// MODULE: core — 通用 CRUD
 // ══════════════════════════════════════════════════════════
 
 function _crudTable(cols, items, editFn, delFn) {
@@ -259,8 +276,9 @@ function _showOverlay(id, title, bodyHtml, saveFn, saveLabel, deleteFn) {
   o.querySelector('input,textarea')?.focus();
 }
 
+
 // ══════════════════════════════════════════════════════════
-// 仪表盘
+// MODULE: dashboard — 仪表盘
 // ══════════════════════════════════════════════════════════
 
 const TOOL_META = { redis:{icon:'🔴',label:'Redis'}, celery:{icon:'🔧',label:'Celery'}, ffmpeg:{icon:'🎞',label:'FFmpeg'}, tts:{icon:'🎤',label:'TTS'}, comfyui:{icon:'🎨',label:'ComfyUI'}, lipsync:{icon:'👄',label:'LipSync'}, llm:{icon:'🧠',label:'LLM'}, music:{icon:'🎵',label:'Music'}, seko:{icon:'🎬',label:'Seko'}, training:{icon:'🏋',label:'Training'} };
@@ -387,8 +405,9 @@ async function dashInspireGen() {
   reset();
 }
 
+
 // ══════════════════════════════════════════════════════════
-// 生产工作台
+// MODULE: pipeline — 生产工作台
 // ══════════════════════════════════════════════════════════
 
 function _updatePipelineStep(step, state) {
@@ -829,8 +848,9 @@ async function runMusic() {
 
 async function runSubtitle() { await _runTool('/tools/subtitle', { episode: ep }, t('wb.gen_subtitle')); }
 
+
 // ══════════════════════════════════════════════════════════
-// 角色管理
+// MODULE: characters — 角色管理
 // ══════════════════════════════════════════════════════════
 
 /** 通用实体列表渲染 */
@@ -1188,9 +1208,7 @@ async function generateAllOutfits(charId) {
 
 var _currentEditCharId = '';
 
-// ══════════════════════════════════════════════════════════
-// LoRA 训练
-// ══════════════════════════════════════════════════════════
+// ── LoRA 训练 ──
 
 function _loraTrainHtml(charId, item) {
   const loraPath = item.lora_path || '';
@@ -1426,8 +1444,9 @@ function _handleImgDrop(e, entityType, id) {
 }
 
 
+
 // ══════════════════════════════════════════════════════════
-// 场景管理
+// MODULE: scenes — 场景管理
 // ══════════════════════════════════════════════════════════
 
 
@@ -1471,8 +1490,9 @@ async function editScene(id) {
 // ── DOM 取值快捷 ──
 function $val(id) { return document.getElementById(id)?.value || ''; }
 
+
 // ══════════════════════════════════════════════════════════
-// 分镜表
+// MODULE: storyboard — 分镜表
 // ══════════════════════════════════════════════════════════
 
 const SB_FIELDS = ['scene', 'characters', 'action', 'dialogue', 'camera', 'shot_type', 'duration', 'emotion', 'language'];
@@ -1491,8 +1511,9 @@ function setSBView(mode) {
   loadStoryboard();
 }
 
+
 // ══════════════════════════════════════════════════════════
-// AI 生成
+// MODULE: ai-gen — AI 生成
 // ══════════════════════════════════════════════════════════
 
 // ── AI 生成通用执行器 ──
@@ -1693,8 +1714,9 @@ async function addShot() {
   try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.created')); loadStoryboard(); } catch (e) { toast(e.message, 'error'); }
 }
 
+
 // ══════════════════════════════════════════════════════════
-// Seko 影视策划案
+// MODULE: seko — Seko 影视策划案
 // ══════════════════════════════════════════════════════════
 
 const _sekoTasks = [];  // { task_id, prompt, status, created, result }
@@ -1897,8 +1919,9 @@ async function _pollSekoImportTask(taskId, projectName) {
   toast(t('seko.import_timeout') || '导入任务超时，请稍后查看结果');
 }
 
+
 // ══════════════════════════════════════════════════════════
-// 项目管理
+// MODULE: projects — 项目管理
 // ══════════════════════════════════════════════════════════
 
 async function loadProjects() {
@@ -1939,8 +1962,9 @@ async function deleteProj(n) {
   }).catch(e => toast(e.message, 'error'));
 }
 
+
 // ══════════════════════════════════════════════════════════
-// 系统设置
+// MODULE: settings — 系统设置
 // ══════════════════════════════════════════════════════════
 
 function _backendSection(label, icon, idPrefix, backends, backend, url, available, reason, opts = {}) {
@@ -2171,9 +2195,11 @@ async function testTtsPreview() {
   if (btn) btn.disabled = false;
 }
 
+
 // ══════════════════════════════════════════════════════════
-// 3.1 拖拽排序
+// MODULE: extras — 辅助功能
 // ══════════════════════════════════════════════════════════
+// ── 3.1 拖拽排序 ──
 
 function _initSortable() {
   const tbody = document.querySelector('#page-storyboard tbody');
@@ -2221,9 +2247,7 @@ function _initTimelineSortable() {
   });
 }
 
-// ══════════════════════════════════════════════════════════
-// 3.2 批量导入/导出
-// ══════════════════════════════════════════════════════════
+// ── 3.2 批量导入/导出 ──
 
 /** CSV 字段转义（处理换行、逗号、引号） */
 function _csvEscape(s) {
@@ -2322,9 +2346,7 @@ async function doImport() {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-// ══════════════════════════════════════════════════════════
-// 3.3 引用计数
-// ══════════════════════════════════════════════════════════
+// ── 3.3 引用计数 ──
 
 async function _getRefCounts(type) {
   try {
@@ -2359,9 +2381,7 @@ async function deleteSceneWithRef(id) {
   _crudDelete('scenes', id, t('scene.title'), loadScenes);
 }
 
-// ══════════════════════════════════════════════════════════
-// 3.4 配置预设模板
-// ══════════════════════════════════════════════════════════
+// ── 3.4 配置预设模板 ──
 
 const CONFIG_PRESETS = {
   local_comfyui: {
@@ -2423,9 +2443,7 @@ function applyPreset(key) {
   saveCfg();
 }
 
-// ══════════════════════════════════════════════════════════
-// 3.5 成片预览
-// ══════════════════════════════════════════════════════════
+// ── 3.5 成片预览 ──
 
 async function _loadFinalPreview() {
   const el = document.getElementById('final-preview-area');
@@ -2445,9 +2463,7 @@ async function _loadFinalPreview() {
   }
 }
 
-// ══════════════════════════════════════════════════════════
-// 4.1 对话式编辑
-// ══════════════════════════════════════════════════════════
+// ── 4.1 对话式编辑 ──
 
 let _chatOpen = false;
 let _chatHistory = [];
@@ -2532,9 +2548,7 @@ async function sendChatMsg() {
   _renderChatHistory();
 }
 
-// ══════════════════════════════════════════════════════════
-// 4.2 主体库管理
-// ══════════════════════════════════════════════════════════
+// ── 4.2 主体库管理 ──
 
 async function loadAssets() {
   const el = document.getElementById('page-assets');
@@ -2577,9 +2591,7 @@ async function addToSharedLibrary(type, id) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-// ══════════════════════════════════════════════════════════
-// 4.3 多剧集管理
-// ══════════════════════════════════════════════════════════
+// ── 4.3 多剧集管理 ──
 
 async function loadEpisodeManager() {
   // This is embedded in the projects page
@@ -2601,9 +2613,7 @@ async function loadEpisodeManager() {
   } catch (e) { el.innerHTML = `<div class="dim">${e.message}</div>`; }
 }
 
-// ══════════════════════════════════════════════════════════
-// 4.4 Worker 实时状态
-// ══════════════════════════════════════════════════════════
+// ── 4.4 Worker 实时状态 ──
 
 async function _updateWorkerStatus() {
   const el = document.getElementById('sidebar-worker');
