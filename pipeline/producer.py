@@ -212,12 +212,19 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path):
                     video_comfyui = video_backend._get_comfyui() if hasattr(video_backend, "_get_comfyui") else video_backend
                     shot_id = shot.get("shot_id", "000")
                     project_name = os.path.basename(cfg.project_dir) or "project"
+                    # ComfyUI LoadImage 节点不接受非 ASCII 文件名
+                    import hashlib as _hashlib
+                    import re as _re
+                    if _re.search(r'[^\x00-\x7f]', project_name):
+                        ascii_name = "proj_" + _hashlib.md5(project_name.encode("utf-8")).hexdigest()[:8]
+                    else:
+                        ascii_name = project_name
                     # 从路径提取集号: .../output/ep01/001/ → ep01
                     ep_tag = ""
                     parent = shot_out.parent.name
                     if parent.startswith("ep") and parent[2:].isdigit():
                         ep_tag = f"_{parent}"
-                    server_filename = f"{project_name}{ep_tag}_{shot_id}_frame.png"
+                    server_filename = f"{ascii_name}{ep_tag}_{shot_id}_frame.png"
 
                     # 判断是否需要上传：tracker 记录 + 服务端存在 → 跳过
                     # 避免"删除项目→重建同名"时旧图残留
@@ -237,7 +244,7 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path):
                             pass
                     if need_upload:
                         try:
-                            video_comfyui.upload_image(str(frame_path))
+                            video_comfyui.upload_image(str(frame_path), filename=server_filename)
                             tracker.mark_image_tracked(video_server_url, server_filename)
                         except Exception as e:
                             logger.warning(f"  ⚠ 首帧上传失败: {e}")
