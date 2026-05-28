@@ -11,6 +11,7 @@ __all__ = [
     "StoryboardGenRequest", "CharacterGenRequest", "SceneGenRequest", "ChatEditRequest",
     "SekoProposalRequest", "SekoProposalStatusRequest", "SekoProposalModifyRequest",
     "SekoImportRequest",
+    "TrainingRequest",
 ]
 
 
@@ -205,3 +206,22 @@ class SekoImportRequest(BaseModel):
     import_storyboard: bool = Field(True, description="是否导入分镜")
     download_images: bool = Field(True, description="是否下载角色/场景图片")
     project_name: str = Field("", max_length=100, description="创建新项目并导入（留空则导入当前项目）")
+
+
+# ── LoRA 训练 ──
+
+class TrainingRequest(BaseModel):
+    char_id: str = Field(..., min_length=1, max_length=50, description="角色 ID")
+    trigger_word: str = Field("", max_length=100, description="触发词（留空自动生成）")
+    steps: int = Field(1000, ge=100, le=10000, description="训练步数")
+    learning_rate: float = Field(1e-4, gt=0, le=1, description="学习率")
+    rank: int = Field(16, ge=4, le=128, description="LoRA rank")
+    resolution: str = Field("512x768", description="训练分辨率")
+    force: bool = Field(False, description="强制覆盖已有 LoRA")
+
+    @field_validator("char_id")
+    @classmethod
+    def validate_char_id(cls, v: str) -> str:
+        if not re.match(r"^[a-zA-Z0-9_\-\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]+$", v):
+            raise ValueError("角色 ID 只允许字母、数字、中文、下划线、连字符")
+        return v

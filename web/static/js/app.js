@@ -224,8 +224,8 @@ function _crudTable(cols, items, editFn, delFn) {
   const rows = items.length
     ? items.map(it => {
       const tds = cols.map(c => `<td>${c.render ? c.render(it) : esc(it[c.key] || '')}</td>`).join('');
-      return `<tr>${tds}<td><button class="btn btn-xs" onclick="${editFn}('${it.id}')">✏️</button>
-        <button class="btn btn-xs btn-danger" onclick="${delFn}('${it.id}')">🗑️</button></td></tr>`;
+      return `<tr>${tds}<td><button class="btn btn-xs" onclick="${editFn}('${it.id}')">✏</button>
+        <button class="btn btn-xs btn-danger" onclick="${delFn}('${it.id}')">🗑</button></td></tr>`;
     }).join('')
     : `<tr><td colspan="${cols.length + 1}" class="dim" style="text-align:center">${t('common.none')}</td></tr>`;
   return `<table><thead><tr>${ths}</tr></thead><tbody>${rows}</tbody></table>`;
@@ -248,7 +248,7 @@ async function _crudSave(endpoint, id, fieldsFn, overlayId, reload) {
 
 function _showOverlay(id, title, bodyHtml, saveFn, saveLabel, deleteFn) {
   const btnText = saveLabel || `💾 ${t('btn.save')}`;
-  const deleteBtn = deleteFn ? `<button class="btn btn-danger" onclick="${deleteFn}" style="margin-right:auto">🗑️ ${t('btn.delete')}</button>` : '';
+  const deleteBtn = deleteFn ? `<button class="btn btn-danger" onclick="${deleteFn}" style="margin-right:auto">🗑 ${t('btn.delete')}</button>` : '';
   const o = document.createElement('div'); o.className = 'edit-overlay'; o.id = id;
   o.innerHTML = `<div class="edit-panel"><div class="edit-header"><h3>${esc(title)}</h3>
     <button class="btn btn-sm btn-outline" onclick="document.getElementById('${id}')?.remove()">✕</button></div>
@@ -263,7 +263,7 @@ function _showOverlay(id, title, bodyHtml, saveFn, saveLabel, deleteFn) {
 // 仪表盘
 // ══════════════════════════════════════════════════════════
 
-const TOOL_META = { redis:{icon:'🔴',label:'Redis'}, celery:{icon:'🔧',label:'Celery'}, ffmpeg:{icon:'🎞️',label:'FFmpeg'}, tts:{icon:'🎤',label:'TTS'}, comfyui:{icon:'🎨',label:'ComfyUI'}, lipsync:{icon:'👄',label:'LipSync'}, llm:{icon:'🧠',label:'LLM'}, music:{icon:'🎵',label:'Music'}, seko:{icon:'🎬',label:'Seko'}, training:{icon:'🏋️',label:'Training'} };
+const TOOL_META = { redis:{icon:'🔴',label:'Redis'}, celery:{icon:'🔧',label:'Celery'}, ffmpeg:{icon:'🎞',label:'FFmpeg'}, tts:{icon:'🎤',label:'TTS'}, comfyui:{icon:'🎨',label:'ComfyUI'}, lipsync:{icon:'👄',label:'LipSync'}, llm:{icon:'🧠',label:'LLM'}, music:{icon:'🎵',label:'Music'}, seko:{icon:'🎬',label:'Seko'}, training:{icon:'🏋',label:'Training'} };
 
 async function loadDashboard() {
   const el = document.getElementById('page-dashboard');
@@ -339,10 +339,10 @@ async function loadDashboard() {
         <div class="quick-entry-grid">
           <div class="quick-entry" onclick="navTo('storyboard')"><span class="quick-entry-icon">📝</span><div><div class="quick-entry-text">${t('nav.storyboard')}</div><div class="quick-entry-desc">${t('dash.qe_storyboard')}</div></div></div>
           <div class="quick-entry" onclick="navTo('characters')"><span class="quick-entry-icon">👤</span><div><div class="quick-entry-text">${t('nav.characters')}</div><div class="quick-entry-desc">${t('dash.qe_characters')}</div></div></div>
-          <div class="quick-entry" onclick="navTo('scenes')"><span class="quick-entry-icon">🏔️</span><div><div class="quick-entry-text">${t('nav.scenes')}</div><div class="quick-entry-desc">${t('dash.qe_scenes')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('scenes')"><span class="quick-entry-icon">🏔</span><div><div class="quick-entry-text">${t('nav.scenes')}</div><div class="quick-entry-desc">${t('dash.qe_scenes')}</div></div></div>
           <div class="quick-entry" onclick="navTo('pipeline')"><span class="quick-entry-icon">🎬</span><div><div class="quick-entry-text">${t('nav.pipeline')}</div><div class="quick-entry-desc">${t('dash.qe_pipeline')}</div></div></div>
           <div class="quick-entry" onclick="navTo('projects')"><span class="quick-entry-icon">📂</span><div><div class="quick-entry-text">${t('nav.projects')}</div><div class="quick-entry-desc">${t('dash.qe_projects')}</div></div></div>
-          <div class="quick-entry" onclick="navTo('settings')"><span class="quick-entry-icon">⚙️</span><div><div class="quick-entry-text">${t('nav.settings')}</div><div class="quick-entry-desc">${t('dash.qe_settings')}</div></div></div>
+          <div class="quick-entry" onclick="navTo('settings')"><span class="quick-entry-icon">⚙</span><div><div class="quick-entry-text">${t('nav.settings')}</div><div class="quick-entry-desc">${t('dash.qe_settings')}</div></div></div>
         </div>
       </div>
 
@@ -418,9 +418,9 @@ const _stepBtns = () => [
 
 function _shotId(s, i) { return s.shot_id || String(i + 1).padStart(3, '0'); }
 function _actionBtns(idx) {
-  return `<button class="btn btn-xs" onclick="editShot(${idx})" title="${t('btn.edit')}">✏️</button>` +
+  return `<button class="btn btn-xs" onclick="editShot(${idx})" title="${t('btn.edit')}">✏</button>` +
     _stepBtns().map(b => `<button class="btn btn-xs" onclick="runOne('${b.step}',${idx})" title="${b.label}">${b.icon}</button>`).join('') +
-    `<button class="btn btn-xs btn-danger" onclick="deleteShot(${idx})" title="${t('btn.delete')}">🗑️</button>`;
+    `<button class="btn btn-xs btn-danger" onclick="deleteShot(${idx})" title="${t('btn.delete')}">🗑</button>`;
 }
 
 async function loadPipeline() {
@@ -443,12 +443,12 @@ function renderWB(episodes) {
   // 流程图
   const flowSteps = [
     { icon: '📸', label: t('wb.portrait_short'), step: 'portrait' },
-    { icon: '🏔️', label: t('wb.scene_short'), step: 'scene' },
+    { icon: '🏔', label: t('wb.scene_short'), step: 'scene' },
     { icon: '🎤', label: t('step.tts'), step: 'tts' },
     { icon: '🎨', label: t('step.first_frame'), step: 'first-frame' },
     { icon: '🎬', label: t('step.video'), step: 'video' },
     { icon: '👄', label: t('step.lipsync'), step: 'lipsync' },
-    { icon: '🎞️', label: t('wb.post_short'), step: 'post' },
+    { icon: '🎞', label: t('wb.post_short'), step: 'post' },
   ];
   const flowHtml = `<div class="pipeline-flow">${flowSteps.map((s, i) => {
     const arrow = i < flowSteps.length - 1 ? '<div class="pipeline-arrow"></div>' : '';
@@ -462,8 +462,8 @@ function renderWB(episodes) {
       ${_stepBtns().map(b => `<button class="btn btn-outline" onclick="batchRun('${b.step}')">${b.icon} ${t('wb.batch_label')} ${b.label}</button>`).join('')}
       <span class="dim" style="margin:0 0.3rem">|</span>
       <button class="btn btn-outline" onclick="runPortraits()">📸 ${t('wb.gen_portraits')}</button>
-      <button class="btn btn-outline" onclick="runSceneImages()">🏔️ ${t('wb.gen_scene_images')}</button>
-      <button class="btn btn-outline" onclick="runPost()">🎞️ ${t('wb.post_process')}</button>
+      <button class="btn btn-outline" onclick="runSceneImages()">🏔 ${t('wb.gen_scene_images')}</button>
+      <button class="btn btn-outline" onclick="runPost()">🎞 ${t('wb.post_process')}</button>
       <button class="btn btn-outline" onclick="runMusic()">🎵 ${t('wb.gen_music')}</button>
       <button class="btn btn-outline" onclick="runSubtitle()">📝 ${t('wb.gen_subtitle')}</button>
       <button class="btn btn-primary" onclick="runAll()">🚀 ${t('wb.run_all')}</button>
@@ -911,7 +911,7 @@ async function loadCharacters() {
     card: c => {
       const avatar = c.appearance ? esc(c.appearance.substring(0, 2)) : '👤';
       const thumb = (c.reference_images?.length) ? `<img src="${esc(c.reference_images[0])}" loading="lazy">` : avatar;
-      return `<div class="entity-card" onclick="editChar('${esc(c.id)}')"><div class="entity-card-thumb">${thumb}</div><div class="entity-card-body"><h3>${esc(c.name || c.id)}</h3><p>${esc(c.appearance || '')}</p></div><div class="entity-card-footer"><span class="entity-card-id">${esc(c.id)}</span><span>${c.gender === 'male' ? '♂' : c.gender === 'female' ? '♀' : ''} <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteChar('${esc(c.id)}')" title="${t('btn.delete')}">🗑️</button></span></div></div>`;
+      return `<div class="entity-card" onclick="editChar('${esc(c.id)}')"><div class="entity-card-thumb">${thumb}</div><div class="entity-card-body"><h3>${esc(c.name || c.id)}</h3><p>${esc(c.appearance || '')}</p></div><div class="entity-card-footer"><span class="entity-card-id">${esc(c.id)}</span><span>${c.gender === 'male' ? '♂' : c.gender === 'female' ? '♀' : ''} <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteChar('${esc(c.id)}')" title="${t('btn.delete')}">🗑</button></span></div></div>`;
     }
   });
 }
@@ -949,7 +949,7 @@ async function _getTtsBackend() {
 function _ttsVoiceFieldsHtml(prefix, voiceData = {}) {
   const backend = _cache.get('sysconfig')?.data?.models?.tts_backend || 'mimo-voicedesign';
   const fields = TTS_VOICE_FIELDS[backend] || TTS_VOICE_FIELDS['mimo-voicedesign'];
-  return `<div class="edit-field" style="margin-top:.5rem"><label>⚙️ ${t('char.voice_params')} <span class="dim" style="font-size:.75rem">(${backend})</span></label></div>` +
+  return `<div class="edit-field" style="margin-top:.5rem"><label>⚙ ${t('char.voice_params')} <span class="dim" style="font-size:.75rem">(${backend})</span></label></div>` +
     fields.map(f => {
       const v = voiceData[f.key] || '';
       const lbl = typeof f.label === 'function' ? f.label() : f.label;
@@ -1186,6 +1186,100 @@ async function generateAllOutfits(charId) {
 
 var _currentEditCharId = '';
 
+// ══════════════════════════════════════════════════════════
+// LoRA 训练
+// ══════════════════════════════════════════════════════════
+
+function _loraTrainHtml(charId, item) {
+  const loraPath = item.lora_path || '';
+  const hasLora = !!loraPath;
+  const statusDot = hasLora ? '<span class="status-dot ok"></span>' : '<span class="status-dot err"></span>';
+  const statusText = hasLora ? t('train.trained') : t('train.not_trained');
+  return `
+    <div class="config-section" style="margin-top:1rem;border-top:1px solid var(--bg3);padding-top:1rem">
+      <h3>${t('train.title')}</h3>
+      <p class="dim" style="font-size:.8rem;margin-bottom:.8rem">${t('train.desc')}</p>
+      <div id="lora-status-row" style="display:flex;align-items:center;gap:.5rem;margin-bottom:.8rem">
+        ${statusDot}<span id="lora-status-text">${statusText}</span>
+        <span id="lora-status-detail" class="dim" style="font-size:.75rem">${loraPath ? loraPath.split('/').pop() : ''}</span>
+      </div>
+      <div class="edit-field"><label>${t('train.trigger')}</label><input id="train-trigger" value="${esc(item.lora_trigger || '')}" placeholder="ohwx ${esc(item.name || charId)}"><span class="dim" style="font-size:.7rem">${t('train.trigger_hint')}</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem">
+        <div class="edit-field"><label>${t('train.steps')}</label><input id="train-steps" type="number" value="1000" min="100" max="10000" step="100"></div>
+        <div class="edit-field"><label>${t('train.lr')}</label><input id="train-lr" type="text" value="0.0001"></div>
+        <div class="edit-field"><label>${t('train.rank')}</label><select id="train-rank"><option value="4">4</option><option value="8">8</option><option value="16" selected>16</option><option value="32">32</option><option value="64">64</option><option value="128">128</option></select></div>
+      </div>
+      <div class="edit-field"><label>${t('train.resolution')}</label><select id="train-resolution"><option value="512x512">512x512</option><option value="512x768" selected>512x768</option><option value="768x768">768x768</option><option value="768x1024">768x1024</option></select></div>
+      <div style="display:flex;align-items:center;gap:.8rem;margin-top:.5rem">
+        <button class="btn btn-primary btn-sm" onclick="startLoraTraining('${esc(charId)}')" id="train-lora-btn">${t('train.start')}</button>
+        <label class="inspire-check" style="font-size:.8rem"><input type="checkbox" id="train-force"> ${t('train.force')}</label>
+        <span id="train-lora-status" class="dim" style="font-size:.8rem"></span>
+      </div>
+      <div id="train-lora-progress" style="margin-top:.5rem"></div>
+    </div>`;
+}
+
+async function _loadLoraStatus(charId) {
+  try {
+    const d = await api(`/training/status/${charId}`);
+    const dot = document.querySelector('#lora-status-row .status-dot');
+    const text = document.getElementById('lora-status-text');
+    const detail = document.getElementById('lora-status-detail');
+    if (!dot || !text) return;
+    if (d.has_lora) {
+      dot.className = 'status-dot ok';
+      text.textContent = t('train.trained');
+      const sizeMB = d.lora_size ? (d.lora_size / 1024 / 1024).toFixed(1) : '?';
+      detail.textContent = `${t('train.size')}: ${sizeMB}MB`;
+    } else {
+      dot.className = 'status-dot err';
+      text.textContent = t('train.not_trained');
+      detail.textContent = '';
+    }
+  } catch {}
+}
+
+async function startLoraTraining(charId) {
+  const btn = document.getElementById('train-lora-btn');
+  const statusEl = document.getElementById('train-lora-status');
+  const progressEl = document.getElementById('train-lora-progress');
+  const reset = _btnLoad(btn, '⏳');
+  _html(statusEl, t('train.progress'));
+  _html(progressEl, '');
+  try {
+    const body = {
+      char_id: charId,
+      trigger_word: $val('train-trigger') || '',
+      steps: parseInt($val('train-steps')) || 1000,
+      learning_rate: parseFloat($val('train-lr')) || 0.0001,
+      rank: parseInt($val('train-rank')) || 16,
+      resolution: $val('train-resolution') || '512x768',
+      force: document.getElementById('train-force')?.checked || false,
+    };
+    const { task_id } = await api('/training/lora', { method: 'POST', body });
+    const result = await pollTask(task_id, info => {
+      _html(progressEl, `<div style="background:var(--bg2);border-radius:6px;padding:.4rem .6rem;font-size:.8rem">
+        <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><span>${esc(info.message || '训练中...')}</span><span>${info.progress || 0}%</span></div>
+        <div style="background:var(--bg4);border-radius:3px;height:6px;overflow:hidden"><div style="background:var(--primary);height:100%;width:${info.progress || 0}%;transition:width .3s"></div></div>
+      </div>`);
+    });
+    if (result.status === 'success' && result.result?.status === 'done') {
+      const r = result.result;
+      _html(statusEl, `✅ ${t('train.done')} (${r.images} imgs, ${r.steps} steps)`);
+      _html(progressEl, '');
+      toast(`✅ LoRA 训练完成: ${charId}`);
+      _loadLoraStatus(charId);
+      invalidateCache('characters');
+    } else {
+      const err = result.result?.reason || result.error || t('train.failed');
+      _html(statusEl, `❌ ${err}`);
+      _html(progressEl, '');
+      toast(`❌ ${err}`, 'error');
+    }
+  } catch (e) { _html(statusEl, `❌ ${e.message}`); toast(`❌ ${e.message}`, 'error'); }
+  reset();
+}
+
 async function editChar(id) {
   _currentEditCharId = id;
   await _getTtsBackend();
@@ -1194,7 +1288,7 @@ async function editChar(id) {
     reload: loadCharacters,
     deleteFn: deleteCharWithRef,
     buildExtra() { return { voice: _collectVoiceConfig('ec'), outfits: _collectOutfits() }; },
-    extraHtml: (item) => `<div class="edit-field"><button class="btn btn-ai btn-sm" onclick="generatePortrait('${esc(id)}')" id="gen-portrait-btn">🎨 AI 生成定妆照</button><span id="gen-portrait-status" class="dim" style="font-size:.8rem;margin-left:.5rem"></span></div>` + _outfitFieldsHtml(id, item.outfits || {}) + _ttsVoiceFieldsHtml('ec', item.voice || {}),
+    extraHtml: (item) => `<div class="edit-field"><button class="btn btn-ai btn-sm" onclick="generatePortrait('${esc(id)}')" id="gen-portrait-btn">🎨 AI 生成定妆照</button><span id="gen-portrait-status" class="dim" style="font-size:.8rem;margin-left:.5rem"></span></div>` + _outfitFieldsHtml(id, item.outfits || {}) + _ttsVoiceFieldsHtml('ec', item.voice || {}) + _loraTrainHtml(id, item),
     fields: [
       { key: 'name', label: t('char.name') },
       { key: 'gender', label: t('char.gender'), type: 'select', options: [{ value: '', label: '-' }, { value: 'male', label: t('char.gender.male') }, { value: 'female', label: t('char.gender.female') }] },
@@ -1202,6 +1296,8 @@ async function editChar(id) {
       { key: 'personality', label: t('char.personality') || '性格', type: 'textarea', getValue: c => c.personality || '' },
     ],
   });
+  // 异步加载 LoRA 状态
+  _loadLoraStatus(id);
 }
 
 /** 通用图片上传 */
@@ -1242,12 +1338,12 @@ function _handleImgDrop(e, entityType, id) {
 
 async function loadScenes() {
   _loadEntityPage('scenes', {
-    pageId: 'page-scenes', icon: '🏔️', titleKey: 'scene.title',
+    pageId: 'page-scenes', icon: '🏔', titleKey: 'scene.title',
     emptyHintKey: 'scene.empty_hint', emptyDescKey: 'scene.empty_desc',
     editFn: 'editScene', newFn: 'newScene', aiFn: 'showAIGenScene',
     card: s => {
-      const thumb = (s.reference_images?.length) ? `<img src="${esc(s.reference_images[0])}" loading="lazy">` : '🏔️';
-      return `<div class="entity-card" onclick="editScene('${esc(s.id)}')"><div class="entity-card-thumb">${thumb}</div><div class="entity-card-body"><h3>${esc(s.name || s.id)}</h3><p>${esc(s.description || '')}</p></div><div class="entity-card-footer"><span class="entity-card-id">${esc(s.id)}</span><span class="dim" style="font-size:.7rem">${esc(s.lighting || '')} <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteScene('${esc(s.id)}')" title="${t('btn.delete')}">🗑️</button></span></div></div>`;
+      const thumb = (s.reference_images?.length) ? `<img src="${esc(s.reference_images[0])}" loading="lazy">` : '🏔';
+      return `<div class="entity-card" onclick="editScene('${esc(s.id)}')"><div class="entity-card-thumb">${thumb}</div><div class="entity-card-body"><h3>${esc(s.name || s.id)}</h3><p>${esc(s.description || '')}</p></div><div class="entity-card-footer"><span class="entity-card-id">${esc(s.id)}</span><span class="dim" style="font-size:.7rem">${esc(s.lighting || '')} <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteScene('${esc(s.id)}')" title="${t('btn.delete')}">🗑</button></span></div></div>`;
     }
   });
 }
@@ -1436,7 +1532,7 @@ async function loadStoryboard() {
         <td><input class="sb-inline-input" type="number" value="${s.duration || 4}" min="1" max="30" data-idx="${i}" data-field="duration" onchange="updateShotField(this)"></td>
         <td><select class="sb-inline-input" data-idx="${i}" data-field="emotion" onchange="updateShotField(this)">${_selectOpts(EMOTIONS, s.emotion)}</select></td>
         <td><select class="sb-inline-input" data-idx="${i}" data-field="language" onchange="updateShotField(this)">${LANGUAGES.map(l => `<option value="${l.value}" ${(s.language || 'zh') === l.value ? 'selected' : ''}>${l.label}</option>`).join('')}</select></td>
-        <td><button class="btn btn-xs btn-danger" onclick="deleteShotFromSB(${i})">🗑️</button></td></tr>`).join('');
+        <td><button class="btn btn-xs btn-danger" onclick="deleteShotFromSB(${i})">🗑</button></td></tr>`).join('');
       el.innerHTML = header + `<div style="overflow-x:auto"><table><thead><tr><th></th><th>${t('sb.shot_id')}</th><th>${t('edit.scene')}</th><th>${t('edit.characters')}</th><th>${t('edit.action')}</th><th>${t('edit.dialogue')}</th><th>${t('edit.camera')}</th><th>${t('edit.shot_type')}</th><th>${t('edit.duration')}</th><th>${t('sb.emotion')}</th><th>${t('edit.language')}</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div></div>`;
       _initSortable();
@@ -1717,7 +1813,7 @@ async function loadProjects() {
     const d = await api('/projects');
     const rows = (d.projects || []).map(p => {
       const switchBtn = p.active ? '' : `<button class="btn btn-sm btn-primary" onclick="switchProj('${esc(p.name)}')">${t('common.switch')}</button> `;
-      const deleteBtn = (!p.active && !p.isDefault) ? `<button class="btn btn-sm btn-danger" onclick="deleteProj('${esc(p.name)}')">🗑️</button>` : '';
+      const deleteBtn = (!p.active && !p.isDefault) ? `<button class="btn btn-sm btn-danger" onclick="deleteProj('${esc(p.name)}')">🗑</button>` : '';
       return `<tr><td>${p.active ? '→' : ''}</td><td>${esc(p.name)}</td><td class="dim" style="font-size:0.75rem">${esc(p.path)}</td><td>${p.active ? `<span class="badge badge-green">${t('common.current')}</span>` : switchBtn + deleteBtn}</td></tr>`;
     }).join('');
     el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:1rem"><h2>${t('proj.title')}</h2><button class="btn btn-success" onclick="newProj()">+ ${t('btn.add')}</button></div>
@@ -1844,7 +1940,7 @@ async function loadSettings() {
         <div class="config-section"><h3>🎬 Seko 影视策划</h3>
           <div class="form-row"><label>API Key</label><div style="display:flex;gap:.3rem;flex:1"><input id="cfg-seko-key" type="password" value="${esc(sysCfg.seko?.api_key || '')}" style="flex:1" placeholder="获取: seko.sensetime.com/explore"><button class="btn btn-xs btn-outline" onclick="_toggleKeyVis('cfg-seko-key','cfg-seko-key-toggle')" id="cfg-seko-key-toggle">👁</button></div></div>
           <div class="tool-status-inline"><span class="status-dot ${tools.seko?.available ? 'ok' : 'err'}"></span>${tools.seko?.available ? t('dash.available') : tools.seko?.reason || t('dash.unavailable')}</div></div>
-        <div class="config-section"><h3>🏋️ ${t('set.training')}</h3>
+        <div class="config-section"><h3>🏋 ${t('set.training')}</h3>
           <div class="form-row"><label>${t('set.backend')}</label><select id="cfg-training-backend"><option value="fluxgym" selected>FluxGym</option></select></div>
           <div class="form-row"><label>${t('set.address')}</label><input id="cfg-training-url" value="${esc(training.api_url || '')}" placeholder="http://127.0.0.1:7860"></div>
           <div class="form-row"><label>${t('set.training_timeout')}</label><input id="cfg-training-timeout" type="number" value="${training.timeout || 3600}" min="60" max="86400"></div>
@@ -2361,7 +2457,7 @@ async function loadAssets() {
       return `<div class="asset-card"><div class="asset-card-thumb">${thumb}</div><div class="asset-card-info"><h4>${esc(c.name || c.id)}</h4><p>${esc(c.appearance || '')}</p></div><button class="btn btn-xs btn-outline" onclick="copyAssetToProject('characters','${esc(c.id)}')">${t('asset.copy_to_proj')}</button></div>`;
     }).join('');
     const sceneCards = scenes.map(s => {
-      const thumb = s.reference_images?.length ? `<img src="${esc(s.reference_images[0])}" loading="lazy">` : '🏔️';
+      const thumb = s.reference_images?.length ? `<img src="${esc(s.reference_images[0])}" loading="lazy">` : '🏔';
       return `<div class="asset-card"><div class="asset-card-thumb">${thumb}</div><div class="asset-card-info"><h4>${esc(s.name || s.id)}</h4><p>${esc(s.description || '')}</p></div><button class="btn btn-xs btn-outline" onclick="copyAssetToProject('scenes','${esc(s.id)}')">${t('asset.copy_to_proj')}</button></div>`;
     }).join('');
 

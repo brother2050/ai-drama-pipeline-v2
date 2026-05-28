@@ -108,6 +108,7 @@ from web.schemas import (
     ChatEditRequest,
     SekoProposalRequest, SekoProposalStatusRequest, SekoProposalModifyRequest,
     SekoImportRequest,
+    TrainingRequest,
 )
 
 # ── 工具函数 ──
@@ -1374,6 +1375,52 @@ def llm_chat_edit(req: ChatEditRequest):
 
     from pipeline.tasks import ai_chat_edit_task
     return _submit_task(ai_chat_edit_task, cfg, req.episode, req.message, req.shots)
+
+
+# ══════════════════════════════════════════════════════════
+# LoRA 训练
+# ══════════════════════════════════════════════════════════
+
+@router.post("/training/lora")
+def train_lora(req: TrainingRequest):
+    """为角色训练 LoRA 模型（异步）"""
+    _check_id(req.char_id, "角色 ID")
+    # 检查角色是否存在
+    char_yaml_path = _proj() / "config" / "characters" / f"{req.char_id}.yaml"
+    if not char_yaml_path.exists():
+        raise HTTPException(404, f"角色 {req.char_id} 不存在")
+    cfg = _cfg_path()
+    from pipeline.tasks import train_lora_task
+    return _submit_task(train_lora_task, cfg, req.char_id,
+                        trigger_word=req.trigger_word, steps=req.steps,
+                        learning_rate=req.learning_rate, rank=req.rank,
+                        resolution=req.resolution, force=req.force)
+
+
+@router.get("/training/status/{char_id}")
+def training_status(char_id: str):
+    """查询角色 LoRA 训练状态"""
+    _check_id(char_id, "角色 ID")
+    project = _proj()
+    lora_path = project / "assets" / "loras" / f"{char_id}_lora.safetensors"
+    char_yaml = project / "config" / "characters" / f"{char_id}.yaml"
+    has_lora = lora_path.exists()
+    lora_size = lora_path.stat().st_size if has_lora else 0
+    # 读取角色配置中的 lora_path
+    lora_path_in_yaml = ""
+    if char_yaml.exists():
+        try:
+            data = yaml.safe_load(char_yaml.read_text(encoding="utf-8")) or {}
+            lora_path_in_yaml = data.get("character", {}).get("lora_path", "")
+        except Exception:
+            pass
+    return {
+        "char_id": char_id,
+        "has_lora": has_lora,
+        "lora_size": lora_size,
+        "lora_path": str(lora_path) if has_lora else "",
+        "lora_path_in_yaml": lora_path_in_yaml,
+    }
 
 
 # ══════════════════════════════════════════════════════════

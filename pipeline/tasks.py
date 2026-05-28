@@ -2045,3 +2045,106 @@ def seko_import_task(
 
     self.update_state(state="PROGRESS", meta={"step": "seko_import", "progress": 100, "message": "导入完成"})
     return {"status": "done", **result}
+
+
+# ══════════════════════════════════════════════════════════
+#  LoRA 训练任务
+# ══════════════════════════════════════════════════════════
+
+@app.task(bind=True, name="pipeline.train_lora", soft_time_limit=7200)
+def train_lora_task(self, config_path: str, char_id: str, *,
+                    trigger_word: str = "", steps: int = 1000,
+                    learning_rate: float = 1e-4, rank: int = 16,
+                    resolution: str = "512x768", force: bool = False) -> dict:
+    """为角色训练 LoRA 模型（异步）"""
+    _ensure_path()
+
+    self.update_state(state="PROGRESS", meta={
+        "step": "train_lora", "progress": 5,
+        "message": f"准备训练 {char_id} 的 LoRA..."})
+
+    cfg, cont = _init_ctx(config_path)
+    project_dir = _cfg_dir(config_path)
+
+    # 检查角色是否存在
+    char_yaml_path = project_dir / "config" / "characters" / f"{char_id}.yaml"
+    if not char_yaml_path.exists():
+        return {"status": "error", "reason": f"角色 {char_id} 不存在"}
+
+    # 检查是否已有 LoRA
+    lora_path = project_dir / "assets" / "loras" / f"{char_id}_lora.safetensors"
+    if lora_path.exists() and not force:
+        return {"status": "skipped", "reason": f"LoRA 已存在: {lora_path.name}，使用 force 覆盖"}
+
+    # 收集训练图片（角色定妆照 + outfit 图片）
+    char_assets_dir = project_dir / "assets" / "characters" / char_id
+    if not char_assets_dir.exists():
+        return {"status": "error", "reason": f"角色 {char_id} 无定妆照，请先生成定妆照"}
+
+    # 统计图片数量
+    img_count = 0
+    for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
+        img_count += len(list(char_assets_dir.glob(ext)))
+        # 也收集 outfit 子目录的图片
+        for outfit_dir in char_assets_dir.iterdir():
+            if outfit_dir.is_dir():
+                img_count += len(list(outfit_dir.glob(ext)))
+
+    if img_count < 3:
+        return {"status": "error", "reason": f"训练图片不足（{img_count} 张），至少需要 3 张"}
+
+    self.update_state(state="PROGRESS", meta={
+        "step": "train_lora", "progress": 15,
+        "message": f"找到 {img_count} 张训练图片，开始训练..."})
+
+    # 获取训练后端
+    try:
+        trainer = cont.get("training")
+    except Exception as e:
+        return {"status": "error", "reason": f"训练后端不可用: {e}"}
+
+    # 读取角色名作为默认触发词
+    if not trigger_word:
+        import yaml
+        try:
+            with open(char_yaml_path, encoding="utf-8") as f:
+                char_data = yaml.safe_load(f) or {}
+            char_name = char_data.get("character", {}).get("name", char_id)
+            trigger_word = f"ohwx {char_name}"
+        except Exception:
+            trigger_word = f"ohwx {char_id}"
+
+    # 执行训练
+    try:
+        result_path = trainer.train_lora(
+            char_id, str(char_assets_dir),
+            trigger_word=trigger_word,
+            steps=steps,
+            learning_rate=learning_rate,
+            rank=rank,
+            resolution=resolution,
+            output_name=f"{char_id}_lora",
+        )
+    except Exception as e:
+        logger.error(f"LoRA 训练失败: {e}")
+        return {"status": "error", "reason": f"训练失败: {e}"}
+
+    self.update_state(state="PROGRESS", meta={
+        "step": "train_lora", "progress": 95,
+        "message": "训练完成，更新角色配置..."})
+
+    # 更新角色 YAML，标记 LoRA 路径
+    try:
+        import yaml
+        with open(char_yaml_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        char = data.get("character", {})
+        char["lora_path"] = result_path
+        data["character"] = char
+        from infra.config import save_yaml
+        save_yaml(char_yaml_path, data)
+    except Exception as e:
+        logger.warning(f"更新角色 LoRA 路径失败: {e}")
+
+    return {"status": "done", "char_id": char_id, "lora_path": result_path,
+            "trigger_word": trigger_word, "steps": steps, "images": img_count}

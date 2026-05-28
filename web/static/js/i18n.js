@@ -5,8 +5,8 @@ const I18N = {
   'btn.save': { zh: '保存', en: 'Save' },
   'btn.cancel': { zh: '取消', en: 'Cancel' },
   'btn.close': { zh: '关闭', en: 'Close' },
-  'btn.delete': { zh: '🗑️', en: '🗑️' },
-  'btn.edit': { zh: '✏️', en: '✏️' },
+  'btn.delete': { zh: '🗑', en: '🗑' },
+  'btn.edit': { zh: '✏', en: '✏' },
   'btn.add': { zh: '新建', en: 'New' },
   'btn.confirm': { zh: '确认', en: 'Confirm' },
 
@@ -56,7 +56,7 @@ const I18N = {
   'wb.loading': { zh: '⏳ 加载...', en: '⏳ Loading...' },
 
   // 编辑
-  'edit.shot_title': { zh: '✏️ 编辑镜头', en: '✏️ Edit Shot' },
+  'edit.shot_title': { zh: '✏ 编辑镜头', en: '✏ Edit Shot' },
   'edit.scene': { zh: '场景', en: 'Scene' },
   'edit.characters': { zh: '角色', en: 'Characters' },
   'edit.action': { zh: '动作', en: 'Action' },
@@ -95,7 +95,7 @@ const I18N = {
   'char.gender': { zh: '性别', en: 'Gender' },
   'char.appearance': { zh: '外观', en: 'Appearance' },
   'char.operations': { zh: '操作', en: 'Actions' },
-  'char.edit_title': { zh: '✏️ 编辑角色', en: '✏️ Edit Character' },
+  'char.edit_title': { zh: '✏ 编辑角色', en: '✏ Edit Character' },
 
   // 场景
   'scene.title': { zh: '场景', en: 'Scenes' },
@@ -104,7 +104,7 @@ const I18N = {
   'scene.desc': { zh: '描述', en: 'Description' },
   'scene.lighting': { zh: '光照', en: 'Lighting' },
   'scene.operations': { zh: '操作', en: 'Actions' },
-  'scene.edit_title': { zh: '✏️ 编辑场景', en: '✏️ Edit Scene' },
+  'scene.edit_title': { zh: '✏ 编辑场景', en: '✏ Edit Scene' },
   'scene.gen_image': { zh: '🎨 AI 生成场景图', en: '🎨 AI Generate Scene Image' },
 
   // 分镜表
@@ -236,6 +236,26 @@ const I18N = {
   'set.training_timeout': { zh: '训练超时(秒)', en: 'Train Timeout(s)' },
   'set.training_poll': { zh: '轮询间隔(秒)', en: 'Poll Interval(s)' },
 
+  // LoRA 训练面板
+  'train.title': { zh: '🏋 LoRA 训练', en: '🏋 LoRA Training' },
+  'train.desc': { zh: '用角色定妆照训练专属 LoRA 模型，提升角色一致性', en: 'Train a dedicated LoRA model with character portraits for better consistency' },
+  'train.status': { zh: 'LoRA 状态', en: 'LoRA Status' },
+  'train.trained': { zh: '已训练', en: 'Trained' },
+  'train.not_trained': { zh: '未训练', en: 'Not Trained' },
+  'train.trigger': { zh: '触发词', en: 'Trigger Word' },
+  'train.trigger_hint': { zh: '留空自动生成（如 ohwx 角色名）', en: 'Leave empty to auto-generate (e.g. ohwx character name)' },
+  'train.steps': { zh: '训练步数', en: 'Steps' },
+  'train.lr': { zh: '学习率', en: 'Learning Rate' },
+  'train.rank': { zh: 'Rank', en: 'Rank' },
+  'train.resolution': { zh: '分辨率', en: 'Resolution' },
+  'train.start': { zh: '🚀 开始训练', en: '🚀 Start Training' },
+  'train.force': { zh: '覆盖已有 LoRA', en: 'Overwrite existing LoRA' },
+  'train.progress': { zh: '训练中...', en: 'Training...' },
+  'train.done': { zh: '训练完成', en: 'Training Complete' },
+  'train.failed': { zh: '训练失败', en: 'Training Failed' },
+  'train.no_portrait': { zh: '请先生成定妆照', en: 'Generate portrait first' },
+  'train.size': { zh: '大小', en: 'Size' },
+
   // 批量补充
   'batch.cancel_btn': { zh: '⏹ 取消', en: '⏹ Cancel' },
   'batch.close_btn': { zh: '关闭', en: 'Close' },
@@ -301,7 +321,7 @@ const I18N = {
   'dash.inspire_placeholder': { zh: '输入你的剧情灵感，例如：\n"林夏独自在家等顾辰来过生日，等了很久他都没回消息..."', en: 'Enter your story idea, e.g.:\n"Lin Xia waits alone at home for Gu Chen to arrive for her birthday..."' },
   'dash.inspire_btn': { zh: '🚀 AI 生成分镜', en: '🚀 AI Generate Storyboard' },
   'dash.inspire_hint': { zh: '输入一句话，AI 自动生成完整分镜表', en: 'One sentence → AI generates a full storyboard' },
-  'dash.inspire_advanced': { zh: '⚙️ 高级选项', en: '⚙️ Advanced' },
+  'dash.inspire_advanced': { zh: '⚙ 高级选项', en: '⚙ Advanced' },
   'dash.inspire_ep': { zh: '集数', en: 'Episode' },
   'dash.inspire_dur': { zh: '目标时长(秒)', en: 'Target Duration(s)' },
   'dash.inspire_append': { zh: '追加到现有分镜表', en: 'Append to existing storyboard' },
@@ -347,7 +367,7 @@ const I18N = {
   // 3.4 配置预设
   'set.presets': { zh: '⚡ 快速配置', en: '⚡ Quick Presets' },
   'set.preset_local': { zh: '🏠 本地 ComfyUI', en: '🏠 Local ComfyUI' },
-  'set.preset_cloud': { zh: '☁️ 云端 SiliconFlow', en: '☁️ Cloud SiliconFlow' },
+  'set.preset_cloud': { zh: '☁ 云端 SiliconFlow', en: '☁ Cloud SiliconFlow' },
   'set.preset_ollama': { zh: '🦙 Ollama 本地', en: '🦙 Ollama Local' },
   'set.preset_applied': { zh: '✅ 预设已应用', en: '✅ Preset applied' },
 
@@ -397,7 +417,7 @@ const I18N = {
   'nav.seko': { zh: '影视策划', en: 'Seko Proposal' },
   'seko.title': { zh: '🎬 影视策划案', en: '🎬 Seko Proposal' },
   'seko.desc': { zh: '基于 Seko AI 一键生成影视策划案，包含故事梗概、美术风格、角色/场景设计、分镜剧本', en: 'AI-powered proposal generation: story, art style, characters, scenes, storyboard' },
-  'seko.api_key_unset': { zh: '⚠️ 请先在系统设置中配置 SEKO_API_KEY', en: '⚠️ Please set SEKO_API_KEY in Settings first' },
+  'seko.api_key_unset': { zh: '⚠ 请先在系统设置中配置 SEKO_API_KEY', en: '⚠ Please set SEKO_API_KEY in Settings first' },
   'seko.new_proposal': { zh: '📝 新建策划案', en: '📝 New Proposal' },
   'seko.prompt_label': { zh: '故事描述', en: 'Story Description' },
   'seko.prompt_ph': { zh: '输入你的故事想法，例如：\n"一个程序员穿越到古代用代码拯救世界"', en: 'Enter your story idea, e.g.:\n"A programmer travels back in time to save the ancient world with code"' },
@@ -413,7 +433,7 @@ const I18N = {
   'seko.check_btn': { zh: '🔄 查询状态', en: '🔄 Check Status' },
   'seko.checking': { zh: '查询中...', en: 'Checking...' },
   'seko.download_btn': { zh: '⬇ 下载图片', en: '⬇ Download Images' },
-  'seko.modify_btn': { zh: '✏️ 修改', en: '✏️ Modify' },
+  'seko.modify_btn': { zh: '✏ 修改', en: '✏ Modify' },
   'seko.modify_title': { zh: '修改策划案', en: 'Modify Proposal' },
   'seko.modify_ph': { zh: '输入修改指令，例如：\n"把主角改成女性，背景改成赛博朋克"', en: 'Enter modification, e.g.:\n"Change protagonist to female, set in cyberpunk world"' },
   'seko.modify_submit': { zh: '提交修改', en: 'Submit Modification' },
@@ -442,11 +462,11 @@ let _lang = localStorage.getItem('drama_lang') || 'zh';
 const NAV_ICONS = {
   'nav.dashboard': '📊',
   'nav.characters': '👤',
-  'nav.scenes': '🏔️',
+  'nav.scenes': '🏔',
   'nav.storyboard': '📝',
   'nav.pipeline': '🎬',
   'nav.projects': '📂',
-  'nav.settings': '⚙️',
+  'nav.settings': '⚙',
   'nav.seko': '🎬',
   'nav.assets': '📦',
 };
