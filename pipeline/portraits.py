@@ -94,6 +94,16 @@ def run_portraits(config_path: str, force: bool = False):
                     if files:
                         logger.info(f"    ✅ 生成 {len(files)} 张")
                         generated += 1
+                        # 回写 reference_images 到 YAML
+                        img_url = f"/api/assets/characters/{char_id}/{Path(files[0]).name}"
+                        char.setdefault("reference_images", [])
+                        prefix = f"/api/assets/characters/{char_id}/cover"
+                        char["reference_images"] = [u for u in char["reference_images"] if not u.startswith(prefix)]
+                        char["reference_images"].append(img_url)
+                        data["character"] = char
+                        with open(f, "w", encoding="utf-8") as fh:
+                            yaml.dump(data, fh, allow_unicode=True, default_flow_style=False)
+                        logger.info(f"    📝 已更新 YAML: {img_url}")
                     else:
                         logger.warning(f"    ⚠ 未生成任何图片")
                 else:

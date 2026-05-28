@@ -56,6 +56,17 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None) -> str
             if wf:
                 files = comfyui.generate(wf, str(portrait_dir))
                 if files:
+                    # 回写 reference_images 到 YAML
+                    import yaml as _yaml
+                    img_url = f"/api/assets/characters/{char_id}/{Path(files[0]).name}"
+                    char.setdefault("reference_images", [])
+                    prefix = f"/api/assets/characters/{char_id}/cover"
+                    char["reference_images"] = [u for u in char["reference_images"] if not u.startswith(prefix)]
+                    char["reference_images"].append(img_url)
+                    data["character"] = char
+                    with open(char_file, "w", encoding="utf-8") as fh:
+                        _yaml.dump(data, fh, allow_unicode=True, default_flow_style=False)
+                    logger.info(f"已更新角色 YAML: {img_url}")
                     return files[0]
         except Exception as e:
             logger.error(f"定妆照生成失败: {e}")
