@@ -809,11 +809,15 @@ def _parse_entity(req) -> tuple[str, dict]:
 
 
 def _yaml_delete(yaml_dir: str, entity_id: str, label: str, db_delete=None) -> None:
-    """通用 YAML 实体删除（文件 + DB）"""
+    """通用 YAML 实体删除（文件 + DB + 资产目录）"""
     path = _proj() / "config" / yaml_dir / f"{entity_id}.yaml"
     if not path.exists():
         raise HTTPException(404, f"{label} {entity_id} 不存在")
     path.unlink()
+    # 清理资产目录（图片、服装等）
+    asset_dir = _proj() / "assets" / yaml_dir / entity_id
+    if asset_dir.exists():
+        shutil.rmtree(asset_dir, ignore_errors=True)
     if db_delete:
         try:
             from infra.database.pool import get_pool
@@ -1035,9 +1039,8 @@ def save_storyboard(episode: int, data: dict):
 
     sb_path = _proj() / "storyboard" / "episodes.csv"
     sb_path.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = ["episode", "shot_id", "scene", "characters", "action", "dialogue",
-                  "camera", "shot_type", "duration", "outfit", "emotion",
-                  "action_en", "dialogue_en", "language"]
+    from engines.storyboard import STORYBOARD_FIELDNAMES
+    fieldnames = STORYBOARD_FIELDNAMES
     lock_path = sb_path.with_suffix(".lock")
     with open(lock_path, "w") as lock_f:
         _file_lock(lock_f)

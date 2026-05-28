@@ -1506,8 +1506,8 @@ def ai_chat_edit_task(self, config_path: str, episode: int, message: str, curren
 #  Seko 策划案导入（异步，含图片下载）
 # ══════════════════════════════════════════════════════════
 
-def _parse_seko_characters(steps: list[dict]) -> list[dict]:
-    """从 Seko steps 中解析角色列表"""
+def _parse_seko_characters(steps: list[dict], elements: list[dict] | None = None) -> list[dict]:
+    """从 Seko steps 中解析角色列表，关联 elements 图片"""
     char_step = next((s for s in steps if s.get("step") == "character_design"), None)
     if not char_step:
         return []
@@ -1537,19 +1537,30 @@ def _parse_seko_characters(steps: list[dict]) -> list[dict]:
         if not safe_id:
             safe_id = f"char_{len(characters) + 1:02d}"
 
+        # 查找对应的 element 图片 URL
+        seko_image_url = ""
+        if elements:
+            char_element = next(
+                (e for e in elements if e.get("elementType") == "CHARACTER" and e.get("elementName") == char_name),
+                None,
+            )
+            if char_element and char_element.get("elementUrl"):
+                seko_image_url = char_element["elementUrl"]
+
         characters.append({
             "id": safe_id,
             "name": char_name,
             "appearance": char_desc,
             "prompt": prompt_text,
             "source": "seko",
+            "seko_image_url": seko_image_url,
         })
 
     return characters
 
 
-def _parse_seko_scenes(steps: list[dict]) -> list[dict]:
-    """从 Seko steps 中解析场景列表"""
+def _parse_seko_scenes(steps: list[dict], elements: list[dict] | None = None) -> list[dict]:
+    """从 Seko steps 中解析场景列表，关联 elements 图片"""
     scene_step = next((s for s in steps if s.get("step") == "scene_design"), None)
     if not scene_step:
         return []
@@ -1575,12 +1586,23 @@ def _parse_seko_scenes(steps: list[dict]) -> list[dict]:
         if not safe_id:
             safe_id = f"scene_{len(scenes) + 1:02d}"
 
+        # 查找对应的 element 图片 URL
+        seko_image_url = ""
+        if elements:
+            scene_element = next(
+                (e for e in elements if e.get("elementType") == "SCENE" and e.get("elementName") == scene_name),
+                None,
+            )
+            if scene_element and scene_element.get("elementUrl"):
+                seko_image_url = scene_element["elementUrl"]
+
         scenes.append({
             "id": safe_id,
             "name": scene_name,
             "description": scene_desc,
             "prompt": prompt_text,
             "source": "seko",
+            "seko_image_url": seko_image_url,
         })
 
     return scenes
@@ -1708,27 +1730,24 @@ def seko_import_task(
     # ── 1. 导入角色 ──
     if import_characters:
         self.update_state(state="PROGRESS", meta={"step": "seko_import", "progress": 10, "message": "解析角色..."})
-        chars = _parse_seko_characters(steps)
+        chars = _parse_seko_characters(steps, elements)
         char_dir = project_dir / "config" / "characters"
         char_dir.mkdir(parents=True, exist_ok=True)
 
         for char in chars:
             cid = char["id"]
-            # 构建 YAML 数据
+            # 构建 YAML 数据（含前端需要的 outfits/voice 字段）
             char_yaml = {
                 "id": cid,
                 "name": char.get("name", ""),
                 "appearance": char.get("appearance", ""),
+                "outfits": {"default": {"description": "", "reference_images": []}},
+                "voice": {"voice_description": ""},
                 "reference_images": [],
                 "source": "seko",
             }
-            # 查找对应的 element 图片
-            char_element = next(
-                (e for e in elements if e.get("elementType") == "CHARACTER" and e.get("elementName") == char.get("name")),
-                None,
-            )
-            if char_element and char_element.get("elementUrl"):
-                char_yaml["seko_image_url"] = char_element["elementUrl"]
+            if char.get("seko_image_url"):
+                char_yaml["seko_image_url"] = char["seko_image_url"]
 
             path = char_dir / f"{cid}.yaml"
             with open(path, "w", encoding="utf-8") as f:
@@ -1747,25 +1766,23 @@ def seko_import_task(
     # ── 2. 导入场景 ──
     if import_scenes:
         self.update_state(state="PROGRESS", meta={"step": "seko_import", "progress": 30, "message": "解析场景..."})
-        scenes = _parse_seko_scenes(steps)
+        scenes = _parse_seko_scenes(steps, elements)
         scene_dir = project_dir / "config" / "scenes"
         scene_dir.mkdir(parents=True, exist_ok=True)
 
         for scene in scenes:
             sid = scene["id"]
+            # 构建 YAML 数据（含前端需要的 lighting 字段）
             scene_yaml = {
                 "id": sid,
                 "name": scene.get("name", ""),
                 "description": scene.get("description", ""),
+                "lighting": "",
                 "reference_images": [],
                 "source": "seko",
             }
-            scene_element = next(
-                (e for e in elements if e.get("elementType") == "SCENE" and e.get("elementName") == scene.get("name")),
-                None,
-            )
-            if scene_element and scene_element.get("elementUrl"):
-                scene_yaml["seko_image_url"] = scene_element["elementUrl"]
+            if scene.get("seko_image_url"):
+                scene_yaml["seko_image_url"] = scene["seko_image_url"]
 
             path = scene_dir / f"{sid}.yaml"
             with open(path, "w", encoding="utf-8") as f:
@@ -1804,6 +1821,16 @@ def seko_import_task(
             result["shots"] = len(shots)
 
     # ── 4. 异步下载图片 ──
+    # 构建 elementName → entity_id 映射（复用已解析的角色/场景 ID，避免命名不一致）
+    _char_id_map: dict[str, str] = {}
+    _scene_id_map: dict[str, str] = {}
+    if import_characters:
+        for c in chars:
+            _char_id_map[c["name"]] = c["id"]
+    if import_scenes:
+        for s in scenes:
+            _scene_id_map[s["name"]] = s["id"]
+
     if download_images and elements:
         self.update_state(state="PROGRESS", meta={"step": "seko_import", "progress": 70, "message": "下载图片..."})
         total = len(elements)
@@ -1814,19 +1841,28 @@ def seko_import_task(
             if not url or not name:
                 continue
 
-            # 确定保存路径
+            # 使用与 YAML 文件一致的 ID 作为目录名
             if elem_type == "CHARACTER":
-                safe_name = "".join(c for c in name if c.isalnum() or c in ("-", "_")).strip()
-                if not safe_name:
-                    safe_name = f"char_{idx + 1:02d}"
-                img_dir = project_dir / "assets" / "characters" / safe_name
+                entity_id = _char_id_map.get(name)
+                if not entity_id:
+                    entity_id = "".join(c for c in name if c.isalnum() or c in ("-", "_")).strip() or f"char_{idx + 1:02d}"
+                img_dir = project_dir / "assets" / "characters" / entity_id
+                yaml_path = project_dir / "config" / "characters" / f"{entity_id}.yaml"
+                asset_type = "characters"
+                entity_key = "character"
             elif elem_type == "SCENE":
-                safe_name = "".join(c for c in name if c.isalnum() or c in ("-", "_")).strip()
-                if not safe_name:
-                    safe_name = f"scene_{idx + 1:02d}"
-                img_dir = project_dir / "assets" / "scenes" / safe_name
+                entity_id = _scene_id_map.get(name)
+                if not entity_id:
+                    entity_id = "".join(c for c in name if c.isalnum() or c in ("-", "_")).strip() or f"scene_{idx + 1:02d}"
+                img_dir = project_dir / "assets" / "scenes" / entity_id
+                yaml_path = project_dir / "config" / "scenes" / f"{entity_id}.yaml"
+                asset_type = "scenes"
+                entity_key = "scene"
             else:
                 img_dir = project_dir / "assets" / "seko"
+                yaml_path = None
+                asset_type = "seko"
+                entity_key = ""
 
             img_dir.mkdir(parents=True, exist_ok=True)
             img_path = img_dir / "cover.png"
@@ -1840,21 +1876,12 @@ def seko_import_task(
             if _download_seko_image(url, str(img_path)):
                 result["images_downloaded"] += 1
                 # 更新 YAML 中的 reference_images
-                if elem_type == "CHARACTER":
-                    yaml_path = project_dir / "config" / "characters" / f"{safe_name}.yaml"
-                elif elem_type == "SCENE":
-                    yaml_path = project_dir / "config" / "scenes" / f"{safe_name}.yaml"
-                else:
-                    yaml_path = None
-
                 if yaml_path and yaml_path.exists():
                     try:
                         with open(yaml_path, encoding="utf-8") as f:
                             data = yaml.safe_load(f) or {}
-                        entity_key = "character" if elem_type == "CHARACTER" else "scene"
-                        asset_type = "characters" if elem_type == "CHARACTER" else "scenes"
                         entity = data.get(entity_key, {})
-                        entity["reference_images"] = [f"/api/assets/{asset_type}/{safe_name}/cover.png"]
+                        entity["reference_images"] = [f"/api/assets/{asset_type}/{entity_id}/cover.png"]
                         data[entity_key] = entity
                         with open(yaml_path, "w", encoding="utf-8") as f:
                             yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
