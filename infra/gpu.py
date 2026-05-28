@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 _DEFAULTS: dict[str, Any] = {
     "resolution": [512, 512],
     "image_steps": 20,
-    "video_frames": 8,
     "image_backend": "sd15",
     "video_backend": "animatediff",
 }
@@ -29,7 +28,8 @@ def get_generation_config(config=None) -> dict:
                 传 dict 时直接读取；不传则自行实例化 Config。
 
     Returns:
-        包含 resolution / image_steps / video_frames 等键的字典。
+        包含 resolution / image_steps 等键的字典。
+        video_frames 不再由此处决定，由 build_video() 根据镜头 duration 动态计算。
     """
     result = dict(_DEFAULTS)
 
@@ -52,7 +52,7 @@ def get_generation_config(config=None) -> dict:
         gen = config.get("generation", {}) if isinstance(config, dict) else {}
 
     if gen:
-        for key in ("resolution", "image_steps", "video_frames",
+        for key in ("resolution", "image_steps",
                      "image_backend", "video_backend"):
             if key in gen and gen[key] is not None:
                 result[key] = gen[key]
@@ -60,7 +60,6 @@ def get_generation_config(config=None) -> dict:
         result["note"] = "未配置 generation 段，使用默认值。建议在 config/system.yaml 中添加：\n" \
                          "generation:\n" \
                          "  resolution: [512, 512]   # [宽, 高]\n" \
-                         "  image_steps: 20          # 生图步数\n" \
-                         "  video_frames: 8          # 视频帧数"
+                         "  image_steps: 20          # 生图步数"
 
     return result

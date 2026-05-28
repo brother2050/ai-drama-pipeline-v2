@@ -108,7 +108,6 @@ class WorkflowBuilder:
         """应用生成参数到工作流（分辨率 + 步数）"""
         resolution = gpu_cfg.get("resolution")
         image_steps = gpu_cfg.get("image_steps")
-        video_frames = gpu_cfg.get("video_frames")
 
         for nid, node in wf.items():
             ct = node.get("class_type", "")
@@ -125,10 +124,8 @@ class WorkflowBuilder:
                 if image_steps:
                     inp["steps"] = image_steps
 
-            # 视频帧数 → ADE_StandardStaticContextOptions.context_length
-            if ct == "ADE_StandardStaticContextOptions" and stage == "video":
-                if video_frames:
-                    inp["context_length"] = video_frames
+        # 视频帧数由 build_video() → _apply_duration() 根据镜头 duration 动态计算，
+        # 不再从 generation.video_frames 硬编码读取。
 
     # ── Seed 随机化 ────────────────────────────────────────
 

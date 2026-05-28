@@ -53,4 +53,3 @@ generation:
   - 512
   - 512
   image_steps: 20
-  video_frames: 8

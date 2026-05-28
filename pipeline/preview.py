@@ -53,12 +53,11 @@ def run_preview(config_path: str, episode: int, level: str = "draft", force: boo
     gen = get_generation_config(cfg)
     base_steps = gen.get("image_steps", 20)
     base_res = gen.get("resolution", [512, 512])
-    base_frames = gen.get("video_frames", 8)
 
     presets = {
-        "draft": {"steps": max(4, base_steps // 3), "resolution": [max(256, base_res[0] // 2), max(144, base_res[1] // 2)], "video_frames": max(4, base_frames // 2)},
-        "standard": {"steps": base_steps, "resolution": base_res, "video_frames": base_frames},
-        "high": {"steps": int(base_steps * 1.4), "resolution": [min(1920, int(base_res[0] * 1.5)), min(1080, int(base_res[1] * 1.5))], "video_frames": min(16, int(base_frames * 2))},
+        "draft": {"steps": max(4, base_steps // 3), "resolution": [max(256, base_res[0] // 2), max(144, base_res[1] // 2)]},
+        "standard": {"steps": base_steps, "resolution": base_res},
+        "high": {"steps": int(base_steps * 1.4), "resolution": [min(1920, int(base_res[0] * 1.5)), min(1080, int(base_res[1] * 1.5))]},
     }
     preset = presets.get(level, presets["draft"])
 
@@ -94,7 +93,6 @@ def _process_shot(shot: dict, container, cfg, shot_out: Path, preset: dict, *, f
     overrides = {k: v for k, v in {
         "image_steps": preset.get("steps"),
         "resolution": preset.get("resolution"),
-        "video_frames": preset.get("video_frames"),
     }.items() if v is not None}
     orig_gen = cfg.data.get("generation", {}).copy()
     if overrides:

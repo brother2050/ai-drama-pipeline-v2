@@ -20,7 +20,7 @@ def get_gpu_config(config: Any = None) -> dict:
                 传 dict 时直接读取；不传则自行加载。
 
     Returns:
-        包含 resolution / image_steps / video_frames / image_backend / video_backend 的字典。
+        包含 resolution / image_steps / image_backend / video_backend 的字典。
     """
     from infra.gpu import get_generation_config
     return get_generation_config(config)

@@ -673,12 +673,10 @@ def _apply_preset(config_path: str, preset: str) -> str:
     gen = cfg.get("generation", {})
     base_steps = gen.get("image_steps", 20)
     base_res = gen.get("resolution", [512, 512])
-    base_frames = gen.get("video_frames", 8)
     if preset == "high":
         overrides = {
             "image_steps": int(base_steps * 1.4),
             "resolution": [min(1920, int(base_res[0] * 1.5)), min(1080, int(base_res[1] * 1.5))],
-            "video_frames": min(16, int(base_frames * 2)),
         }
     else:  # standard
         return config_path

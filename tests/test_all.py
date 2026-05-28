@@ -85,7 +85,6 @@ def test_generation_config():
     cfg = get_generation_config()
     assert "resolution" in cfg
     assert "image_steps" in cfg
-    assert "video_frames" in cfg
     assert cfg["resolution"] == [512, 512]
     print("✅ 生成参数配置读取正常（默认值）")
 
