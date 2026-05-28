@@ -75,13 +75,37 @@ CREATE TABLE IF NOT EXISTS comfyui_assets (
 
 
 def init_schema(conn):
-    """初始化数据库 Schema"""
+    """初始化数据库 Schema（含自动迁移）"""
     cursor = conn.cursor()
     try:
+        # 1. 创建表（IF NOT EXISTS 保证幂等）
         for stmt in SCHEMA_SQL.split(";"):
             stmt = stmt.strip()
             if stmt:
                 cursor.execute(stmt)
+
+        # 2. 自动迁移：scenes.reference_image → reference_images
+        _migrate_scenes_reference_images(cursor)
+
         conn.commit()
     finally:
         cursor.close()
+
+
+def _migrate_scenes_reference_images(cursor) -> None:
+    """迁移 scenes 表的 reference_image 列名为 reference_images
+
+    旧版 schema 使用 reference_image（单数），新版改为 reference_images（复数/JSON）。
+    使用 ALTER TABLE RENAME COLUMN（PostgreSQL 10+），已迁移时静默跳过。
+    """
+    try:
+        # 检查旧列是否存在
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'scenes' AND column_name = 'reference_image'
+        """)
+        if cursor.fetchone():
+            cursor.execute("ALTER TABLE scenes RENAME COLUMN reference_image TO reference_images")
+    except Exception:
+        # 列已迁移或表不存在，静默跳过
+        pass

@@ -568,6 +568,17 @@ class WorkflowBuilder:
             if refs:
                 return sorted(refs)
 
+            # outfit 目录为空，尝试触发 ensure_portrait（auto_outfit 会补充 outfit 图）
+            portrait = ensure_portrait(char_id, self.config,
+                                       _SimpleContainer(self.comfyui) if self.comfyui else None,
+                                       llm=self.llm)
+            # 重新检查 outfit 目录
+            if outfit_dir.exists():
+                for ext in ("*.png", "*.jpg", "*.jpeg"):
+                    refs.extend(str(p) for p in outfit_dir.glob(ext))
+            if refs:
+                return sorted(refs)
+
         # 2. 回退到角色根目录
         refs = []
         if char_dir.exists():
@@ -576,7 +587,7 @@ class WorkflowBuilder:
         if refs:
             return sorted(refs)
 
-        # 3. 尝试自动定妆照
+        # 3. 尝试自动定妆照（主图也不存在时）
         portrait = ensure_portrait(char_id, self.config,
                                    _SimpleContainer(self.comfyui) if self.comfyui else None,
                                    llm=self.llm)

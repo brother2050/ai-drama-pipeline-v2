@@ -57,12 +57,10 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None) -> str
             _generating.add(char_id)
         try:
             comfyui = container.get("image")
-            # 使用 WorkflowBuilder 构建正确的定妆照工作流
             from engines.workflow_builder import WorkflowBuilder
             models = config.get("models", {})
             wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui, llm=llm)
             wb.load_workflows()
-            # 构建一个简单的首帧工作流（单角色，无场景）
             fake_shot = {"characters": char_id, "emotion": "neutral",
                          "shot_type": "特写", "camera": "固定"}
             prompt, wf = wb.build_first_frame(fake_shot, character_desc=appearance)
@@ -80,7 +78,7 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None) -> str
                     save_yaml(char_file, data)
                     logger.info(f"已更新角色 YAML: {img_url}")
 
-                    # 检查是否需要同时生成 outfit 图
+                    # 主图已落盘，检查是否需要同时生成 outfit 图
                     auto_outfit = config.get("portraits", {}).get("auto_outfit", False)
                     if auto_outfit:
                         _ensure_outfit_images(char_id, config, container, llm, project_dir, portrait_dir)
@@ -101,6 +99,10 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
 
     仅在 portraits.auto_outfit=True 时由 ensure_portrait 调用。
     跳过已有图片的 outfit，不会重复生成。
+
+    注意：此函数内部不使用 build_first_frame 的 IP-Adapter 注入逻辑，
+    避免 _get_character_refs → ensure_portrait 的重入死循环。
+    直接构建简单工作流，将 outfit 描述拼入 character_desc。
     """
     import yaml
     char_file = Path(project_dir) / "config" / "characters" / f"{char_id}.yaml"
@@ -125,7 +127,7 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
     from engines.prompt import translate_to_english
 
     models = config.get("models", {})
-    wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui, llm=llm)
+    wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui, llm=None)
     wb.load_workflows()
 
     for outfit_key, outfit_val in outfits.items():
@@ -145,9 +147,11 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
         outfit_dir.mkdir(parents=True, exist_ok=True)
         full_desc = f"{appearance}, wearing {outfit_desc}"
         if any(ord(c) > 127 for c in full_desc):
-            full_desc = translate_to_english(full_desc, llm=llm)
+            full_desc = translate_to_english(full_desc, llm=None)
 
-        fake_shot = {"characters": char_id, "emotion": "neutral",
+        # 构建简单工作流（不注入 IP-Adapter，避免重入 ensure_portrait）
+        # outfit 描述已拼入 character_desc，直接作为正向 prompt
+        fake_shot = {"characters": "", "emotion": "neutral",
                      "shot_type": "全身", "camera": "固定"}
         _, wf = wb.build_first_frame(fake_shot, character_desc=full_desc)
         if not wf:

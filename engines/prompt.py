@@ -68,7 +68,7 @@ def _strip_dialogue(text: str) -> str:
     # 兜底：说：后面无引号的短对话（最多30字符到逗号/句号）
     text = re.sub(r'(?:嘟囔|嘀咕|[说喊道问答呼吼叫骂叹])\s*[：:]\s*[^，。,.]{0,30}[，。,.]?\s*', '', text)
     # 2. 先处理英文 says: 后的引号对话内容（保留后续动作）
-    _SPEECH = r'(?:says?|said|asks?|answers?|replies?|shouts?|yells?|whispers?|mutters?|screams?|cries?|exclaims?|mutters?|responds?|states?|remarks?|calls?|begs?|pleads?|demands?|insists?|suggests?)'
+    _SPEECH = r'(?:says?|said|asks?|answers?|replies?|shouts?|yells?|whispers?|mutters?|screams?|cries?|exclaims?|responds?|states?|remarks?|calls?|begs?|pleads?|demands?|insists?|suggests?)'
     text = re.sub(rf'\b{_SPEECH}\s*:\s*"[^"]*"', '', text, flags=re.IGNORECASE)
     text = re.sub(rf"\b{_SPEECH}\s*:\s*'[^']*'", '', text, flags=re.IGNORECASE)
     # 3. 移除 says: 后面无引号的短内容（对话）
