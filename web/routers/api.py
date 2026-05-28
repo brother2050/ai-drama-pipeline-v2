@@ -735,24 +735,31 @@ def delete_project(name: str):
 # ── 通用 YAML CRUD 工厂 ──
 
 _proj_cache: tuple[float, Path] | None = None
+_proj_cache_lock = _threading.Lock()
 
 def _proj() -> Path:
-    """返回当前活动项目目录（带 mtime 缓存）"""
+    """返回当前活动项目目录（带 mtime 缓存，线程安全）"""
     global _proj_cache
     active_file = ROOT / "projects" / ".active"
     try:
         mt = active_file.stat().st_mtime
     except FileNotFoundError:
         mt = 0.0
-    if _proj_cache and _proj_cache[0] == mt:
-        return _proj_cache[1]
-    d = ROOT / "projects" / "default"
-    if active_file.exists():
-        p = Path(active_file.read_text().strip())
-        if p.exists():
-            d = p
-    _proj_cache = (mt, d)
-    return d
+    # 快速路径：缓存命中
+    cached = _proj_cache
+    if cached and cached[0] == mt:
+        return cached[1]
+    # 慢速路径：加锁更新
+    with _proj_cache_lock:
+        if _proj_cache and _proj_cache[0] == mt:
+            return _proj_cache[1]
+        d = ROOT / "projects" / "default"
+        if active_file.exists():
+            p = Path(active_file.read_text().strip())
+            if p.exists():
+                d = p
+        _proj_cache = (mt, d)
+        return d
 
 
 def _yaml_list(yaml_dir: str, entity_key: str) -> list[dict]:
