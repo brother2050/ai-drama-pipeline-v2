@@ -1,6 +1,6 @@
 # TODO — 待开发功能 & 已知缺陷
 
-> 更新：2026-05-28
+> 更新：2026-05-29
 
 ## 已修复（本次审查）
 
@@ -15,13 +15,8 @@
 - [x] **[MEDIUM]** Seko 图片下载无重试 → 3 次指数退避重试
 - [x] **[MEDIUM]** post/production.py 中间文件残留 → 启动时清理
 - [x] **[LOW]** 多处 except Exception: pass 静默吞错 → 关键位置加 logger.debug
+- [x] **[MEDIUM]** ensure_portrait 管线中不生成 outfit 图 → 新增 `portraits.auto_outfit` 配置项，由用户决定
 
 ## 剩余缺陷
 
-### MEDIUM — ensure_portrait 不生成 outfit 图
-
-**位置**: `engines/portrait.py::ensure_portrait()`
-
-管线自动触发的定妆照只生成主图，不遍历 outfits。与 `portrait_single_task` 行为不一致。
-
-**设计决策**: `ensure_portrait` 在管线执行中被调用（同步阻塞），加 outfit 生成会让每次构建工作流都卡住。主图足以满足 IP-Adapter 需求。完整 outfit 生成请使用 Web UI 或 `drama portraits` 命令。
+（暂无）
