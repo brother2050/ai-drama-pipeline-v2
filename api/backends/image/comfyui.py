@@ -41,12 +41,19 @@ class ComfyUI:
         except Exception:
             return False
 
-    def upload_image(self, filepath: str, overwrite: bool = True) -> dict:
-        """上传图片到 ComfyUI 服务器（用于 IP-Adapter 等需要参考图的节点）"""
+    def upload_image(self, filepath: str, overwrite: bool = True, filename: str | None = None) -> dict:
+        """上传图片到 ComfyUI 服务器（用于 IP-Adapter 等需要参考图的节点）
+
+        Args:
+            filepath: 本地文件路径
+            overwrite: 是否覆盖同名文件
+            filename: 自定义服务端文件名（None 则使用本地文件名）
+        """
+        upload_name = filename or Path(filepath).name
         headers = auth_headers(self._api_key, content_type="")
         with open(filepath, "rb") as f:
             r = self._client.post(f"{self._url}/upload/image",
-                           files={"image": (Path(filepath).name, f)},
+                           files={"image": (upload_name, f)},
                            data={"overwrite": str(overwrite).lower()},
                            headers=headers)
         r.raise_for_status()

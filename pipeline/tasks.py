@@ -414,13 +414,22 @@ def video_core(shot_id: str, cfg, cont, out_dir: Path) -> dict:
     load_nodes = find_load_image_nodes(video_wf)
 
     # 构建全局唯一服务器文件名: {项目}_{集}_{镜头}_frame.png
+    # ComfyUI LoadImage 节点不接受非 ASCII 文件名，需做安全化处理
     project_name = os.path.basename(cfg.project_dir) or "project"
+    import hashlib as _hashlib
+    import re as _re
+    if _re.search(r'[^\x00-\x7f]', project_name):
+        # 含非 ASCII 字符（如中文）：用原名的短 hash 替代，确保唯一且纯 ASCII
+        ascii_name = "proj_" + _hashlib.md5(project_name.encode("utf-8")).hexdigest()[:8]
+        logger.debug(f"项目名含非 ASCII 字符 '{project_name}' → 服务端文件名使用 '{ascii_name}'")
+    else:
+        ascii_name = project_name
     # 尝试从路径中提取集号: .../output/ep01/001/ → ep01
     ep_tag = ""
     parent = out_dir.parent.name
     if parent.startswith("ep") and parent[2:].isdigit():
         ep_tag = f"_{parent}"
-    server_filename = f"{project_name}{ep_tag}_{shot_id}_frame.png"
+    server_filename = f"{ascii_name}{ep_tag}_{shot_id}_frame.png"
 
     if load_nodes:
         video_comfyui = video_backend._get_comfyui() if hasattr(video_backend, "_get_comfyui") else video_backend
@@ -444,10 +453,10 @@ def video_core(shot_id: str, cfg, cont, out_dir: Path) -> dict:
             except Exception as e:
                 logger.debug(f"检查首帧图存在性失败: {e}，回退上传")
 
-        # 2) 不存在则上传
+        # 2) 不存在则上传（使用 server_filename 作为服务端文件名，与工作流引用一致）
         if need_upload:
             try:
-                video_comfyui.upload_image(str(frame_path))
+                video_comfyui.upload_image(str(frame_path), filename=server_filename)
                 tracker.mark_image_tracked(video_server_url, server_filename)
                 logger.debug(f"首帧图 {server_filename} 已上传到视频服务器")
             except Exception as e:
