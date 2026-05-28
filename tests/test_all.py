@@ -183,7 +183,7 @@ def test_storyboard():
     """测试分镜表加载"""
     from engines.storyboard import load_storyboard, validate_shot, get_dominant_emotion
 
-    sb_path = str(ROOT / "storyboard" / "episodes.csv")
+    sb_path = str(ROOT / "projects" / "default" / "storyboard" / "episodes.csv")
     if Path(sb_path).exists():
         all_shots = load_storyboard(sb_path)
         assert len(all_shots) > 0
@@ -612,7 +612,7 @@ def run_all():
         test_config_validation,
         test_text_utils,
         test_ttl_cache,
-        test_gpu_detect,
+        test_generation_config,
         test_retry,
         test_postgres_database,
         test_storyboard,

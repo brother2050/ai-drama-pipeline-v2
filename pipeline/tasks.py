@@ -1483,27 +1483,6 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
             "generated_scenes": generated_scenes}
 
 
-def _load_yaml_entities(directory, key: str) -> list:
-    """加载目录下所有 YAML 实体"""
-    import yaml
-    d = Path(directory)
-    if not d.exists():
-        return []
-    result = []
-    for f in d.glob("*.yaml"):
-        if f.stem.endswith(".example"):
-            continue
-        try:
-            with open(f, encoding="utf-8") as fh:
-                data = yaml.safe_load(fh) or {}
-            entity = data.get(key, {})
-            if entity.get("id"):
-                result.append(entity)
-        except Exception:
-            continue
-    return result
-
-
 @app.task(bind=True, name="pipeline.ai.characters", soft_time_limit=300)
 def ai_characters_task(self, config_path: str, descriptions: list[str]) -> dict:
     """AI 生成角色（异步）"""
