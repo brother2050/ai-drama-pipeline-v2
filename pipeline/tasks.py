@@ -397,7 +397,7 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, forc
     return _done(shot_id, "first_frame", frame_path, prompt=prompt.get("positive", ""))
 
 
-def video_core(shot_id: str, cfg, cont, out_dir: Path, *, force: bool = False) -> dict:
+def video_core(shot_id: str, cfg, cont, out_dir: Path, *, shot: dict | None = None, force: bool = False) -> dict:
     """视频生成核心逻辑 — 从首帧生成视频
 
     Args:
@@ -405,6 +405,7 @@ def video_core(shot_id: str, cfg, cont, out_dir: Path, *, force: bool = False) -
         cfg: Config 对象
         cont: DI 容器
         out_dir: 输出目录
+        shot: 镜头数据（含 duration），用于动态计算视频帧数
         force: True 时覆盖已有文件，False 时跳过
 
     Returns:
@@ -423,7 +424,7 @@ def video_core(shot_id: str, cfg, cont, out_dir: Path, *, force: bool = False) -
     from engines.workflow import find_load_image_nodes
     wb = WorkflowBuilder(cfg.data, cfg.get("models", {}), cfg.project_dir, comfyui=cont.get("image"))
     wb.load_workflows()
-    video_wf = wb.build_video(str(frame_path))
+    video_wf = wb.build_video(str(frame_path), shot=shot)
     if not video_wf:
         return _err(shot_id, "video", "视频工作流为空（缺少模板）")
 
@@ -545,10 +546,10 @@ def _run_first_frame(config_path: str, episode: int, shot_id: str, *, force: boo
 
 
 def _run_video(config_path: str, episode: int, shot_id: str, *, force: bool = False) -> dict:
-    cfg, cont, _, err = _prepare(config_path, episode, shot_id, "video", "comfyui", need_shot=False)
+    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "video", "comfyui", need_shot=True)
     if err:
         return err
-    return video_core(shot_id, cfg, cont, _shot_dir(config_path, episode, shot_id), force=force)
+    return video_core(shot_id, cfg, cont, _shot_dir(config_path, episode, shot_id), shot=shot, force=force)
 
 
 def _run_lipsync(config_path: str, episode: int, shot_id: str, *, force: bool = False) -> dict:

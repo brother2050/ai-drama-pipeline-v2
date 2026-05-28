@@ -207,7 +207,7 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
             models = cfg.get("models", {})
             wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=container.get("image"))
             wb.load_workflows()
-            video_wf = wb.build_video(str(frame_path))
+            video_wf = wb.build_video(str(frame_path), shot=shot)
 
             if video_wf:
                 video_backend = container.get("video")

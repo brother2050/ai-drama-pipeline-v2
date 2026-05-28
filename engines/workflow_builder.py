@@ -422,8 +422,13 @@ class WorkflowBuilder:
 
     # ── 构建视频工作流 ──────────────────────────────────────
 
-    def build_video(self, frame_path: str) -> dict:
-        """构建视频生成工作流"""
+    def build_video(self, frame_path: str, shot: dict | None = None) -> dict:
+        """构建视频生成工作流
+
+        Args:
+            frame_path: 首帧图片路径
+            shot: 镜头数据（含 duration），用于计算 video_frames
+        """
         wf = copy.deepcopy(self.video_wf)
         if not wf:
             return {}
@@ -432,6 +437,10 @@ class WorkflowBuilder:
         load_nodes = find_load_image_nodes(wf)
         if load_nodes:
             wf[load_nodes[0]]["inputs"]["image"] = os.path.basename(frame_path)
+
+        # 根据 duration 动态计算 video_frames（修复 video_frames 与 duration 脱节的问题）
+        if shot:
+            self._apply_duration(wf, shot)
 
         # 注入风格 LoRA（视频生成也受益于风格一致性）
         genre = self.config.get("project", {}).get("genre", "")
@@ -445,6 +454,69 @@ class WorkflowBuilder:
         self._randomize_seed(wf)
 
         return wf
+
+    def _apply_duration(self, wf: dict, shot: dict) -> None:
+        """根据镜头 duration 动态调整视频帧数，使生成视频时长匹配分镜预期。
+
+        计算公式: video_frames = max(min_frames, ceil(duration × model_fps))
+        不同后端的帧数参数位置不同，按后端类型设置到正确的节点。
+        """
+        import math
+
+        # 读取 duration（秒），默认 4 秒
+        duration = 4
+        try:
+            duration = int(shot.get("duration", 4))
+        except (ValueError, TypeError):
+            pass
+        duration = max(2, min(8, duration))
+
+        # 获取当前视频后端的 fps
+        video_backend = self.models.get("video_backend", "animatediff")
+        model_fps = 8  # 默认
+        if self.registry:
+            defaults = self.registry.get_video_defaults(video_backend)
+            if defaults.get("fps"):
+                model_fps = defaults["fps"]
+
+        # 计算所需帧数（最少 8 帧，避免过短导致质量问题）
+        min_frames = 8
+        video_frames = max(min_frames, math.ceil(duration * model_fps))
+
+        logger.info(
+            f"视频帧数计算: duration={duration}s × fps={model_fps} → "
+            f"video_frames={video_frames} (backend={video_backend})"
+        )
+
+        # 按后端类型设置到正确的节点参数
+        self._set_video_frames(wf, video_frames, video_backend)
+
+    def _set_video_frames(self, wf: dict, frames: int, backend: str) -> None:
+        """根据不同视频后端，将帧数设置到工作流的正确节点。
+
+        后端帧数参数映射:
+        - animatediff: ADE_StandardStaticContextOptions.context_length
+        - cogvideox: EmptyLatentImage.batch_size
+        - cosmos / cosmos-video: CosmosPredict2ImageToVideoLatent.length
+        """
+        for nid, node in wf.items():
+            ct = node.get("class_type", "")
+            inp = node.get("inputs", {})
+
+            # AnimateDiff: context_length
+            if ct == "ADE_StandardStaticContextOptions" and "context_length" in inp:
+                inp["context_length"] = frames
+                logger.debug(f"  AnimateDiff: {nid}.context_length = {frames}")
+
+            # CogVideoX: EmptyLatentImage.batch_size（帧数 = batch_size）
+            if ct == "EmptyLatentImage" and backend == "cogvideox":
+                inp["batch_size"] = frames
+                logger.debug(f"  CogVideoX: {nid}.batch_size = {frames}")
+
+            # Cosmos: CosmosPredict2ImageToVideoLatent.length
+            if ct == "CosmosPredict2ImageToVideoLatent" and "length" in inp:
+                inp["length"] = frames
+                logger.debug(f"  Cosmos: {nid}.length = {frames}")
 
     # ── 参考图上传映射 ──────────────────────────────────────
 

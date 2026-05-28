@@ -116,7 +116,7 @@ def _process_shot(shot: dict, container, cfg, shot_out: Path, preset: dict, *, f
             logger.warning(f"    ⚠ 首帧失败: {ff_result.get('reason', '')}")
 
         # 3) 视频生成
-        vid_result = video_core(shot_id, cfg, container, shot_out, force=force)
+        vid_result = video_core(shot_id, cfg, container, shot_out, shot=shot, force=force)
         if vid_result.get("status") == "done":
             logger.info(f"    ✅ 视频: video.mp4")
         elif vid_result.get("status") == "error":
