@@ -90,13 +90,15 @@ def _process_shot(shot: dict, container, cfg, shot_out: Path, preset: dict, *, f
 
     shot_id = shot.get("shot_id", "001")
 
-    # 应用 preset 参数：临时覆盖 generation 配置
-    orig_gen = cfg._data.get("generation", {}).copy()
-    cfg._data.setdefault("generation", {}).update({
+    # 应用 preset 参数：临时覆盖 generation 配置（过滤 None 值，避免覆盖已有配置）
+    overrides = {k: v for k, v in {
         "image_steps": preset.get("steps"),
         "resolution": preset.get("resolution"),
         "video_frames": preset.get("video_frames"),
-    })
+    }.items() if v is not None}
+    orig_gen = cfg.data.get("generation", {}).copy()
+    if overrides:
+        cfg.data.setdefault("generation", {}).update(overrides)
 
     try:
         # 1) TTS 语音合成
@@ -128,7 +130,7 @@ def _process_shot(shot: dict, container, cfg, shot_out: Path, preset: dict, *, f
             logger.warning(f"    ⚠ 口型同步失败: {ls_result.get('reason', '')}")
     finally:
         # 恢复原始 generation 配置
-        cfg._data["generation"] = orig_gen
+        cfg.data["generation"] = orig_gen
 
 
 def main():

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import logging
 import os
@@ -220,7 +221,6 @@ def _unique_hash_id(prefix: str, name: str, existing: dict) -> str:
     Returns:
         唯一的 hash ID，如 ch_8a3f2b1c 或 ch_8a3f2b1c_2
     """
-    import hashlib
     h = hashlib.md5(name.encode("utf-8")).hexdigest()[:8]
     base = f"{prefix}_{h}"
     candidate = base
@@ -436,11 +436,9 @@ def video_core(shot_id: str, cfg, cont, out_dir: Path, *, force: bool = False) -
     # 构建全局唯一服务器文件名: {项目}_{集}_{镜头}_frame.png
     # ComfyUI LoadImage 节点不接受非 ASCII 文件名，需做安全化处理
     project_name = os.path.basename(cfg.project_dir) or "project"
-    import hashlib as _hashlib
-    import re as _re
-    if _re.search(r'[^\x00-\x7f]', project_name):
+    if re.search(r'[^\x00-\x7f]', project_name):
         # 含非 ASCII 字符（如中文）：用原名的短 hash 替代，确保唯一且纯 ASCII
-        ascii_name = "proj_" + _hashlib.md5(project_name.encode("utf-8")).hexdigest()[:8]
+        ascii_name = "proj_" + hashlib.md5(project_name.encode("utf-8")).hexdigest()[:8]
         logger.debug(f"项目名含非 ASCII 字符 '{project_name}' → 服务端文件名使用 '{ascii_name}'")
     else:
         ascii_name = project_name
@@ -1216,7 +1214,6 @@ def tts_single_task(self, config_path: str, text: str, voice_config: dict | None
     # 保存到项目目录下，使前端可通过 /api/files 访问
     preview_dir = Path(cfg.project_dir) / "output" / "tts_preview"
     preview_dir.mkdir(parents=True, exist_ok=True)
-    import hashlib
     tag = hashlib.md5(f"{text}{time.time()}".encode()).hexdigest()[:8]
     output = str(preview_dir / f"preview_{tag}.wav")
     try:

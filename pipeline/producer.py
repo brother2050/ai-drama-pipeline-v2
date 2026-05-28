@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -217,10 +219,8 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
                     shot_id = shot.get("shot_id", "000")
                     project_name = os.path.basename(cfg.project_dir) or "project"
                     # ComfyUI LoadImage 节点不接受非 ASCII 文件名
-                    import hashlib as _hashlib
-                    import re as _re
-                    if _re.search(r'[^\x00-\x7f]', project_name):
-                        ascii_name = "proj_" + _hashlib.md5(project_name.encode("utf-8")).hexdigest()[:8]
+                    if re.search(r'[^\x00-\x7f]', project_name):
+                        ascii_name = "proj_" + hashlib.md5(project_name.encode("utf-8")).hexdigest()[:8]
                     else:
                         ascii_name = project_name
                     # 从路径提取集号: .../output/ep01/001/ → ep01
