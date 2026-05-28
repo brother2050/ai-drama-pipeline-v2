@@ -255,6 +255,9 @@ const I18N = {
   'train.failed': { zh: '训练失败', en: 'Training Failed' },
   'train.no_portrait': { zh: '请先生成定妆照', en: 'Generate portrait first' },
   'train.size': { zh: '大小', en: 'Size' },
+  'train.batch': { zh: '🏋 批量训练 LoRA', en: '🏋 Batch Train LoRA' },
+  'train.batch_desc': { zh: '选择要训练的角色（有定妆照的才能训练）', en: 'Select characters to train (needs portrait)' },
+  'train.batch_done': { zh: '批量训练完成: {done}成功 {fail}失败', en: 'Batch done: {done} OK {fail} failed' },
 
   // 批量补充
   'batch.cancel_btn': { zh: '⏹ 取消', en: '⏹ Cancel' },

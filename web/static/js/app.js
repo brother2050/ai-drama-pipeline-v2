@@ -834,7 +834,7 @@ async function runSubtitle() { await _runTool('/tools/subtitle', { episode: ep }
 // ══════════════════════════════════════════════════════════
 
 /** 通用实体列表渲染 */
-function _loadEntityPage(type, { pageId, icon, titleKey, emptyHintKey, emptyDescKey, editFn, newFn, aiFn, card }) {
+function _loadEntityPage(type, { pageId, icon, titleKey, emptyHintKey, emptyDescKey, editFn, newFn, aiFn, card, extraButtons }) {
   const el = document.getElementById(pageId);
   const addLabel = t('btn.add');
   cachedFetch(type, () => api(`/${type}`)).then(d => {
@@ -842,7 +842,8 @@ function _loadEntityPage(type, { pageId, icon, titleKey, emptyHintKey, emptyDesc
     const grid = items.length
       ? `<div class="entity-grid">${items.map(it => card(it)).join('')}</div>`
       : `<div class="empty-state"><div class="empty-state-icon">${icon}</div><h3>${t(emptyHintKey)}</h3><p>${t(emptyDescKey)}</p><button class="btn btn-success" onclick="${newFn}()">+ ${addLabel}</button></div>`;
-    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${icon} ${t(titleKey)}</h2><div style="display:flex;gap:0.5rem"><button class="btn btn-outline btn-ai" onclick="${aiFn}()">🤖 AI 生成</button><button class="btn btn-success" onclick="${newFn}()">+ ${addLabel}</button></div></div>${grid}</div>`;
+    const extraBtns = extraButtons ? extraButtons(items) : '';
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${icon} ${t(titleKey)}</h2><div style="display:flex;gap:0.5rem;flex-wrap:wrap">${extraBtns}<button class="btn btn-outline btn-ai" onclick="${aiFn}()">🤖 AI 生成</button><button class="btn btn-success" onclick="${newFn}()">+ ${addLabel}</button></div></div>${grid}</div>`;
   }).catch(e => { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; });
 }
 
@@ -908,6 +909,7 @@ async function loadCharacters() {
     pageId: 'page-characters', icon: '👤', titleKey: 'char.title',
     emptyHintKey: 'char.empty_hint', emptyDescKey: 'char.empty_desc',
     editFn: 'editChar', newFn: 'newChar', aiFn: 'showAIGenCharacter',
+    extraButtons: (items) => items.length ? `<button class="btn btn-outline btn-sm" onclick="batchTrainLora()" id="batch-train-btn">🏋 批量训练 LoRA</button>` : '',
     card: c => {
       const avatar = c.appearance ? esc(c.appearance.substring(0, 2)) : '👤';
       const thumb = (c.reference_images?.length) ? `<img src="${esc(c.reference_images[0])}" loading="lazy">` : avatar;
@@ -1278,6 +1280,99 @@ async function startLoraTraining(charId) {
     }
   } catch (e) { _html(statusEl, `❌ ${e.message}`); toast(`❌ ${e.message}`, 'error'); }
   reset();
+}
+
+/** 批量训练所有角色 LoRA */
+async function batchTrainLora() {
+  // 弹出确认面板：显示参数选项 + 角色列表
+  let chars = [];
+  try {
+    const d = await api('/characters');
+    chars = d.characters || [];
+  } catch (e) { toast(e.message, 'error'); return; }
+  if (!chars.length) { toast(t('char.empty_hint'), 'error'); return; }
+
+  const charList = chars.map(c => {
+    const hasPortrait = c.reference_images?.length;
+    const dot = hasPortrait ? '🟢' : '🔴';
+    return `<label class="inspire-check" style="display:flex;align-items:center;gap:.4rem;padding:.2rem 0"><input type="checkbox" class="batch-train-char" value="${esc(c.id)}" ${hasPortrait ? 'checked' : 'disabled'}> ${dot} ${esc(c.name || c.id)} <span class="dim" style="font-size:.7rem">${esc(c.id)}</span></label>`;
+  }).join('');
+
+  const body = `
+    <p class="dim" style="font-size:.8rem;margin-bottom:.8rem">选择要训练 LoRA 的角色（🟢 有定妆照可训练，🔴 无定妆照需先生成）</p>
+    <div style="max-height:300px;overflow-y:auto;margin-bottom:1rem">${charList}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-bottom:.5rem">
+      <div class="edit-field"><label>${t('train.steps')}</label><input id="batch-train-steps" type="number" value="1000" min="100" max="10000" step="100"></div>
+      <div class="edit-field"><label>${t('train.lr')}</label><input id="batch-train-lr" type="text" value="0.0001"></div>
+      <div class="edit-field"><label>${t('train.rank')}</label><select id="batch-train-rank"><option value="8">8</option><option value="16" selected>16</option><option value="32">32</option><option value="64">64</option></select></div>
+    </div>
+    <div class="edit-field"><label>${t('train.resolution')}</label><select id="batch-train-resolution"><option value="512x512">512x512</option><option value="512x768" selected>512x768</option><option value="768x768">768x768</option></select></div>
+    <label class="inspire-check" style="margin-top:.5rem"><input type="checkbox" id="batch-train-force"> ${t('train.force')}</label>
+    <div id="batch-train-status" style="margin-top:.8rem"></div>
+    <div id="batch-train-progress" style="margin-top:.5rem"></div>`;
+
+  _showOverlay('batch-train-overlay', '🏋 批量训练 LoRA', body, undefined, undefined, undefined);
+  // 替换保存按钮为开始训练按钮
+  const overlay = document.getElementById('batch-train-overlay');
+  const saveBtn = overlay?.querySelector('.btn-primary');
+  if (saveBtn) {
+    saveBtn.textContent = t('train.start');
+    saveBtn.onclick = _doBatchTrain;
+  }
+}
+
+async function _doBatchTrain() {
+  const checkboxes = document.querySelectorAll('.batch-train-char:checked');
+  const charIds = Array.from(checkboxes).map(cb => cb.value).filter(Boolean);
+  if (!charIds.length) { toast('请至少选择一个角色', 'error'); return; }
+
+  const steps = parseInt($val('batch-train-steps')) || 1000;
+  const lr = parseFloat($val('batch-train-lr')) || 0.0001;
+  const rank = parseInt($val('batch-train-rank')) || 16;
+  const resolution = $val('batch-train-resolution') || '512x768';
+  const force = document.getElementById('batch-train-force')?.checked || false;
+
+  const statusEl = document.getElementById('batch-train-status');
+  const progressEl = document.getElementById('batch-train-progress');
+  const total = charIds.length;
+  let done = 0, failed = 0, skipped = 0;
+
+  _html(statusEl, `⏳ 开始批量训练 ${total} 个角色...`);
+
+  for (let i = 0; i < charIds.length; i++) {
+    const cid = charIds[i];
+    _html(progressEl, `
+      <div style="margin-bottom:.5rem">
+        <div style="display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:.2rem">
+          <span>[${i+1}/${total}] ${esc(cid)}</span><span>${done}✅ ${skipped}⏭ ${failed}❌</span>
+        </div>
+        <div style="background:var(--bg4);border-radius:3px;height:6px;overflow:hidden">
+          <div style="background:var(--primary);height:100%;width:${(i/total)*100}%;transition:width .3s"></div>
+        </div>
+      </div>`);
+
+    try {
+      const { task_id } = await api('/training/lora', {
+        method: 'POST',
+        body: { char_id: cid, steps, learning_rate: lr, rank, resolution, force }
+      });
+      const result = await pollTask(task_id, info => {
+        const statusLine = document.querySelector('#batch-train-status');
+        if (statusLine) _html(statusLine, `⏳ [${i+1}/${total}] ${esc(cid)}: ${info.message || '训练中...'} ${info.progress || 0}%`);
+      });
+      if (result.status === 'success') {
+        const r = result.result;
+        if (r?.status === 'done') { done++; toast(`✅ ${cid} 训练完成`); }
+        else if (r?.status === 'skipped') { skipped++; }
+        else { failed++; toast(`⚠ ${cid}: ${r?.reason || '未知'}`, 'error'); }
+      } else { failed++; toast(`❌ ${cid}: ${result.error || '失败'}`, 'error'); }
+    } catch (e) { failed++; toast(`❌ ${cid}: ${e.message}`, 'error'); }
+  }
+
+  _html(progressEl, '');
+  _html(statusEl, `<div style="padding:.5rem;background:var(--bg2);border-radius:6px;font-size:.9rem">批量训练完成: ${done}✅ ${skipped}⏭跳过 ${failed}❌失败 / 共${total}个</div>`);
+  invalidateCache('characters');
+  toast(`批量训练完成: ${done}成功 ${failed}失败`);
 }
 
 async function editChar(id) {
