@@ -62,15 +62,17 @@ def _strip_dialogue(text: str) -> str:
     if not text:
         return text
 
-    # 1. 先处理 "说/喊/道/问/答：后面的内容"（中文模式，只删引号内对话，保留后续动作）
-    text = re.sub(r'[说喊道问答呼嘟囔嘀咕吼叫骂叹]\s*[：:]\s*[""「].*?[""」]', '', text)
+    # 1. 先处理 "说/喊/道/问/答/嘟囔/嘀咕：后面的内容"（中文模式，只删引号内对话，保留后续动作）
+    #    注意：多字词（嘟囔、嘀咕）必须用 | 分支，不能放在 [...] 字符类中
+    text = re.sub(r'(?:嘟囔|嘀咕|[说喊道问答呼吼叫骂叹])\s*[：:]\s*[""「].*?[""」]', '', text)
     # 兜底：说：后面无引号的短对话（最多30字符到逗号/句号）
-    text = re.sub(r'[说喊道问答呼嘟囔嘀咕吼叫骂叹]\s*[：:]\s*[^，。,.]{0,30}[，。,.]?\s*', '', text)
+    text = re.sub(r'(?:嘟囔|嘀咕|[说喊道问答呼吼叫骂叹])\s*[：:]\s*[^，。,.]{0,30}[，。,.]?\s*', '', text)
     # 2. 先处理英文 says: 后的引号对话内容（保留后续动作）
-    text = re.sub(r'\b(?:says?|said|asks?|answers?|replies?|shouts?|yells?|whispers?|mutters?|screams?|cries?)\s*:\s*"[^"]*"', '', text, flags=re.IGNORECASE)
-    text = re.sub(r"\b(?:says?|said|asks?|answers?|replies?|shouts?|yells?|whispers?|mutters?|screams?|cries?)\s*:\s*'[^']*'", '', text, flags=re.IGNORECASE)
+    _SPEECH = r'(?:says?|said|asks?|answers?|replies?|shouts?|yells?|whispers?|mutters?|screams?|cries?|exclaims?|mutters?|responds?|states?|remarks?|calls?|begs?|pleads?|demands?|insists?|suggests?)'
+    text = re.sub(rf'\b{_SPEECH}\s*:\s*"[^"]*"', '', text, flags=re.IGNORECASE)
+    text = re.sub(rf"\b{_SPEECH}\s*:\s*'[^']*'", '', text, flags=re.IGNORECASE)
     # 3. 移除 says: 后面无引号的短内容（对话）
-    text = re.sub(r'\b(?:says?|said|asks?|answers?|replies?|shouts?|yells?|whispers?|mutters?|screams?|cries?)\s*:\s*[^,.]{0,30}[,.]?\s*', ' ', text, flags=re.IGNORECASE)
+    text = re.sub(rf'\b{_SPEECH}\s*:\s*[^,.]{{0,30}}[,.]?\s*', ' ', text, flags=re.IGNORECASE)
     # 4. 最后才移除残留的引号内容（中文引号）
     text = re.sub(r'[""「『].*?[""」』]', '', text)
     # 5. 移除残留的英文引号内容

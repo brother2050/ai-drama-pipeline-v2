@@ -1332,10 +1332,11 @@ def add_to_shared_library(entity_type: str, entity_id: str):
 
     shutil.copy2(str(src), str(dst))
 
-    # 复制图片
-    src_img = proj_dir / entity_id
+    # 复制图片（从 assets 目录，非 config 目录）
+    src_img = _proj() / "assets" / entity_type / entity_id
     if src_img.is_dir():
         dst_img = shared_dir / entity_id
+        dst_img.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(str(src_img), str(dst_img), dirs_exist_ok=True)
 
     return {"ok": True, "message": f"已添加 {entity_id} 到主体库"}

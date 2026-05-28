@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS scenes (
     name TEXT,
     description TEXT,
     lighting TEXT,
-    reference_image TEXT,
+    reference_images TEXT,
     depth_map TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
