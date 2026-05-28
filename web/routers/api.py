@@ -777,11 +777,22 @@ def _yaml_list(yaml_dir: str, entity_key: str) -> list[dict]:
 
 def _yaml_save(yaml_dir: str, entity_key: str, entity_id: str, data: dict,
                db_upsert=None) -> None:
-    """通用 YAML 实体保存（YAML + DB 双写）"""
+    """通用 YAML 实体保存（YAML + DB 双写，与已有数据合并）"""
     d = _proj() / "config" / yaml_dir
     d.mkdir(parents=True, exist_ok=True)
-    with open(d / f"{entity_id}.yaml", "w", encoding="utf-8") as f:
-        yaml.dump({entity_key: {**data, "id": entity_id}}, f,
+    path = d / f"{entity_id}.yaml"
+    # 读取已有数据，合并后写入（避免丢失 reference_images 等字段）
+    existing: dict = {}
+    if path.exists():
+        try:
+            with open(path, encoding="utf-8") as fh:
+                loaded = yaml.safe_load(fh) or {}
+            existing = loaded.get(entity_key, {})
+        except Exception:
+            existing = {}
+    merged = {**existing, **data, "id": entity_id}
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.dump({entity_key: merged}, f,
                   allow_unicode=True, default_flow_style=False)
     if db_upsert:
         try:

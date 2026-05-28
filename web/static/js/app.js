@@ -871,6 +871,21 @@ function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, 
     window[`_${p}ImgRemoved`] = false;
     const data = buildExtra ? { ...buildExtra(), ...extra } : { ...extra };
     fields.forEach(f => { if (!f.getValue) data[f.key] = $val(`${p}-${f.key}`); });
+    // 保留已有 reference_images（如果本次没有显式清除或覆盖）
+    if (!(imgKey in data)) {
+      // 优先使用 AI 生成的图片 URL
+      const genUrl = window[`_${p}GeneratedPortraitUrl`];
+      if (genUrl) {
+        data[imgKey] = [genUrl];
+        window[`_${p}GeneratedPortraitUrl`] = null;
+      } else {
+        try {
+          const items = _cache.get(type)?.data?.[type] || [];
+          const existing = items.find(x => x.id === eid);
+          if (existing && existing[imgKey]?.length) data[imgKey] = existing[imgKey];
+        } catch {}
+      }
+    }
     _crudSave(type, eid, () => data, `edit-${type.slice(0,-1)}-overlay`, reload);
   };
   if (deleteFn) {
@@ -996,6 +1011,8 @@ async function generatePortrait(charId) {
           wrap.innerHTML = `<div class="upload-preview"><img src="${r.url}?t=${Date.now()}" id="ec-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="ecRemoveImg('${charId}')">✕</button></div>`;
         }
       }
+      // 保存生成的 URL，确保后续保存时不会丢失
+      window._ecGeneratedPortraitUrl = r.url;
       invalidateCache('characters');
     } else {
       const err = result.result?.reason || result.error || '生成失败';
@@ -1030,6 +1047,8 @@ async function generateSceneImage(sceneId) {
           wrap.innerHTML = `<div class="upload-preview"><img src="${r.url}?t=${Date.now()}" id="es-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="esRemoveImg('${sceneId}')">✕</button></div>`;
         }
       }
+      // 保存生成的 URL，确保后续保存时不会丢失
+      window._esGeneratedPortraitUrl = r.url;
       invalidateCache('scenes');
     } else {
       const err = result.result?.reason || result.error || '生成失败';
@@ -1113,6 +1132,11 @@ async function generateOutfit(charId, btnEl) {
     const result = await pollTask(task_id, info => { if (statusEl) _html(statusEl, `⏳ ${key}: ${info.message || '生成中...'} (${info.progress || 0}%)`); });
     if (result.status === 'success' && result.result?.status === 'done') {
       toast(`✅ 服装「${key}」参考图已生成`);
+      // 更新 DOM 中的 data-imgs，确保后续保存不丢失
+      const r = result.result;
+      if (r.url && entry) {
+        try { entry.dataset.imgs = JSON.stringify([r.url]); } catch {}
+      }
       invalidateCache('characters');
     } else {
       const err = result.result?.reason || result.error || '生成失败';
@@ -1136,6 +1160,20 @@ async function generateAllOutfits(charId) {
       const r = result.result;
       _html(status, `✅ 完成 (${r.success || 0}/${r.total || 0})`);
       toast(`✅ 服装批量生成完成: ${r.success || 0}/${r.total || 0}`);
+      // 更新 DOM 中各服装的 data-imgs
+      if (r.generated) {
+        for (const g of r.generated) {
+          if (g.url && g.outfit) {
+            const entries = document.querySelectorAll('#ec-outfit-list .outfit-entry');
+            for (const entry of entries) {
+              if (entry.querySelector('.outfit-key')?.value?.trim() === g.outfit) {
+                try { entry.dataset.imgs = JSON.stringify([g.url]); } catch {}
+                break;
+              }
+            }
+          }
+        }
+      }
       invalidateCache('characters');
     } else {
       const err = result.result?.reason || result.error || '生成失败';

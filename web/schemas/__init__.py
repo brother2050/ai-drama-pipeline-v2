@@ -93,6 +93,7 @@ class SceneData(BaseModel):
     name: str = Field("", max_length=100)
     description: str = Field("", max_length=2000)
     lighting: str = Field("", max_length=200)
+    reference_images: list[str] | None = None
 
     @field_validator("id")
     @classmethod
