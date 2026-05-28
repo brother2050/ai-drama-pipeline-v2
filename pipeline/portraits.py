@@ -110,6 +110,7 @@ def run_portraits(config_path: str, force: bool = False):
                 for img in existing:
                     img.unlink()
                 logger.info(f"    已有 {len(existing)} 张定妆照，已删除（强制模式）")
+                existing = []  # 清空，强制重新生成
             else:
                 logger.info(f"    已有 {len(existing)} 张定妆照，跳过主图")
                 existing = []  # 跳过主图，但仍然检查 outfits

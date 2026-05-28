@@ -90,33 +90,45 @@ def _process_shot(shot: dict, container, cfg, shot_out: Path, preset: dict):
 
     shot_id = shot.get("shot_id", "001")
 
-    # 1) TTS 语音合成
-    tts_result = tts_core(shot_id, shot, cfg, container, shot_out)
-    if tts_result.get("status") == "done":
-        logger.info(f"    ✅ TTS: audio.wav")
-    elif tts_result.get("status") == "error":
-        logger.warning(f"    ⚠ TTS 失败: {tts_result.get('reason', '')}")
+    # 应用 preset 参数：临时覆盖 generation 配置
+    orig_gen = cfg._data.get("generation", {}).copy()
+    cfg._data.setdefault("generation", {}).update({
+        "image_steps": preset.get("steps"),
+        "resolution": preset.get("resolution"),
+        "video_frames": preset.get("video_frames"),
+    })
 
-    # 2) 首帧生成
-    ff_result = first_frame_core(shot_id, shot, cfg, container, shot_out)
-    if ff_result.get("status") == "done":
-        logger.info(f"    ✅ 首帧: frame.png")
-    elif ff_result.get("status") == "error":
-        logger.warning(f"    ⚠ 首帧失败: {ff_result.get('reason', '')}")
+    try:
+        # 1) TTS 语音合成
+        tts_result = tts_core(shot_id, shot, cfg, container, shot_out)
+        if tts_result.get("status") == "done":
+            logger.info(f"    ✅ TTS: audio.wav")
+        elif tts_result.get("status") == "error":
+            logger.warning(f"    ⚠ TTS 失败: {tts_result.get('reason', '')}")
 
-    # 3) 视频生成
-    vid_result = video_core(shot_id, cfg, container, shot_out)
-    if vid_result.get("status") == "done":
-        logger.info(f"    ✅ 视频: video.mp4")
-    elif vid_result.get("status") == "error":
-        logger.warning(f"    ⚠ 视频失败: {vid_result.get('reason', '')}")
+        # 2) 首帧生成
+        ff_result = first_frame_core(shot_id, shot, cfg, container, shot_out)
+        if ff_result.get("status") == "done":
+            logger.info(f"    ✅ 首帧: frame.png")
+        elif ff_result.get("status") == "error":
+            logger.warning(f"    ⚠ 首帧失败: {ff_result.get('reason', '')}")
 
-    # 4) 口型同步
-    ls_result = lipsync_core(shot_id, container, shot_out)
-    if ls_result.get("status") == "done":
-        logger.info(f"    ✅ 口型同步: synced.mp4")
-    elif ls_result.get("status") == "error":
-        logger.warning(f"    ⚠ 口型同步失败: {ls_result.get('reason', '')}")
+        # 3) 视频生成
+        vid_result = video_core(shot_id, cfg, container, shot_out)
+        if vid_result.get("status") == "done":
+            logger.info(f"    ✅ 视频: video.mp4")
+        elif vid_result.get("status") == "error":
+            logger.warning(f"    ⚠ 视频失败: {vid_result.get('reason', '')}")
+
+        # 4) 口型同步
+        ls_result = lipsync_core(shot_id, container, shot_out)
+        if ls_result.get("status") == "done":
+            logger.info(f"    ✅ 口型同步: synced.mp4")
+        elif ls_result.get("status") == "error":
+            logger.warning(f"    ⚠ 口型同步失败: {ls_result.get('reason', '')}")
+    finally:
+        # 恢复原始 generation 配置
+        cfg._data["generation"] = orig_gen
 
 
 def main():
