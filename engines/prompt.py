@@ -86,7 +86,10 @@ def _strip_dialogue(text: str) -> str:
 def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
                  style: str = "cinematic", genre: str = "urban",
                  llm=None) -> str:
-    """从镜头数据构建 ComfyUI Prompt"""
+    """从镜头数据构建 ComfyUI Prompt
+
+    如果 character_desc / scene_desc 已经是英文（预翻译），直接使用，不调用 LLM。
+    """
     parts = []
 
     # 风格前缀
@@ -95,26 +98,27 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
     if genre:
         parts.append(f"{genre} atmosphere")
 
-    # 场景
+    # 场景（已是英文则直接用，否则翻译）
     if scene_desc:
         if any(ord(c) > 127 for c in scene_desc):
             scene_desc = translate_to_english(scene_desc, llm=llm)
         parts.append(scene_desc)
 
-    # 角色
+    # 角色（已是英文则直接用，否则翻译）
     if character_desc:
-        # 中文描述需要翻译为英文才能被 CLIP 正确编码
         if any(ord(c) > 127 for c in character_desc):
             character_desc = translate_to_english(character_desc, llm=llm)
         parts.append(character_desc)
 
-    # 动作（清理对话内容，防止模型将台词渲染成画面文字）
-    action = shot.get("action_en")
+    # 动作：优先读预翻译的 action_en，否则翻译 action
+    action = shot.get("action_en", "").strip()
     if not action:
         action = shot.get("action", "")
         if action:
             action = _strip_dialogue(action)
-            action = translate_to_english(action, llm=llm)
+            # 仅当有中文时才翻译（准备阶段已翻译则不会走到这里）
+            if any(ord(c) > 127 for c in action):
+                action = translate_to_english(action, llm=llm)
     else:
         action = _strip_dialogue(action)
     if action:

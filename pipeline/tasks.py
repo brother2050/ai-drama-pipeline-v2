@@ -310,6 +310,7 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, forc
     sm = ShotManager(str(Path(cfg.project_dir) / "storyboard" / "episodes.csv"),
                      str(Path(cfg.project_dir) / "config"))
 
+    # LLM 仅在预翻译字段缺失时使用（准备阶段已翻译则不需要）
     llm = None
     try:
         if cfg.get("llm", {}).get("enabled"):
@@ -317,10 +318,23 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, forc
     except Exception:
         pass
 
-    char_descs = [translate_to_english(sm.get_character(cid).get("appearance", ""), llm=llm)
-                  for cid in char_ids if sm.get_character(cid)]
+    # 优先读预翻译的 appearance_en，无则回退到翻译
+    char_descs = []
+    for cid in char_ids:
+        char = sm.get_character(cid)
+        if char:
+            desc_en = char.get("appearance_en", "")
+            if desc_en:
+                char_descs.append(desc_en)
+            else:
+                char_descs.append(translate_to_english(char.get("appearance", ""), llm=llm))
+
+    # 优先读预翻译的 description_en，无则回退到翻译
     scene = sm.get_scene(shot.get("scene", ""))
-    scene_desc = translate_to_english(scene.get("description", ""), llm=llm) if scene else ""
+    if scene:
+        scene_desc = scene.get("description_en", "") or translate_to_english(scene.get("description", ""), llm=llm)
+    else:
+        scene_desc = ""
 
     multi_char_prompt = ""
     if len(char_ids) > 1:
@@ -2127,3 +2141,274 @@ def train_lora_task(self, config_path: str, char_id: str, *,
 
     return {"status": "done", "char_id": char_id, "lora_path": result_path,
             "trigger_word": trigger_word, "steps": steps, "images": img_count}
+
+
+# ══════════════════════════════════════════════════════════
+#  准备阶段 — 批量预翻译 + 定妆照 + 场景图（LLM 密集，一次性）
+# ══════════════════════════════════════════════════════════
+
+@app.task(bind=True, name="pipeline.ai.prepare", soft_time_limit=1800)
+def ai_prepare_task(self, config_path: str, episode: int = 1, *,
+                    force: bool = False,
+                    translate: bool = True,
+                    portraits: bool = True,
+                    scene_images: bool = True) -> dict:
+    """准备阶段 — 批量预翻译 + 定妆照 + 场景图
+
+    在生产管线之前运行，将所有 LLM 密集操作集中完成。
+    运行完毕后，生产管线可完全不依赖 LLM 全速运行。
+
+    Args:
+        config_path: 项目配置路径
+        episode: 集数
+        force: True 时覆盖已有翻译/图片
+        translate: 是否批量翻译
+        portraits: 是否生成定妆照 + outfit
+        scene_images: 是否生成场景参考图
+    """
+    _ensure_path()
+
+    self.update_state(state="PROGRESS", meta={
+        "step": "prepare", "progress": 5, "message": "初始化..."})
+
+    cfg, cont = _init_ctx(config_path)
+    project_dir = _cfg_dir(config_path)
+
+    # 获取 LLM 实例
+    llm = None
+    try:
+        if cfg.get("llm", {}).get("enabled"):
+            llm = cont.get("llm")
+    except Exception as e:
+        if translate:
+            logger.warning(f"LLM 不可用，跳过翻译: {e}")
+
+    from engines.prompt import translate_to_english
+    from infra.config import save_yaml
+
+    result = {
+        "translated_chars": 0, "translated_scenes": 0, "translated_shots": 0,
+        "portraits_generated": 0, "scene_images_generated": 0,
+    }
+
+    # ── 1. 批量翻译角色描述 ──
+    if translate and llm:
+        self.update_state(state="PROGRESS", meta={
+            "step": "prepare", "progress": 10, "message": "翻译角色描述..."})
+
+        char_dir = project_dir / "config" / "characters"
+        if char_dir.exists():
+            for f in char_dir.glob("*.yaml"):
+                if f.stem.endswith(".example"):
+                    continue
+                try:
+                    with open(f, encoding="utf-8") as fh:
+                        data = yaml.safe_load(fh) or {}
+                except Exception:
+                    continue
+                char = data.get("character", {})
+                if not char.get("id"):
+                    continue
+
+                # 翻译 appearance
+                appearance = char.get("appearance", "")
+                appearance_en = char.get("appearance_en", "")
+                if appearance and (not appearance_en or force):
+                    if any(ord(c) > 127 for c in appearance):
+                        appearance_en = translate_to_english(appearance, llm=llm)
+                        char["appearance_en"] = appearance_en
+                        result["translated_chars"] += 1
+                        logger.info(f"  翻译角色 {char.get('id')}: appearance → en")
+
+                # 翻译 voice.voice_description
+                voice = char.get("voice", {})
+                if isinstance(voice, dict):
+                    vd = voice.get("voice_description", "")
+                    vd_en = voice.get("voice_description_en", "")
+                    if vd and (not vd_en or force):
+                        if any(ord(c) > 127 for c in vd):
+                            voice["voice_description_en"] = translate_to_english(vd, llm=llm)
+
+                # 翻译 outfit descriptions
+                outfits = char.get("outfits", {})
+                if isinstance(outfits, dict):
+                    for ok, ov in outfits.items():
+                        if isinstance(ov, dict):
+                            od = ov.get("description", "")
+                            od_en = ov.get("description_en", "")
+                            if od and (not od_en or force):
+                                if any(ord(c) > 127 for c in od):
+                                    ov["description_en"] = translate_to_english(od, llm=llm)
+
+                data["character"] = char
+                save_yaml(f, data)
+
+    # ── 2. 批量翻译场景描述 ──
+    if translate and llm:
+        self.update_state(state="PROGRESS", meta={
+            "step": "prepare", "progress": 30, "message": "翻译场景描述..."})
+
+        scene_dir = project_dir / "config" / "scenes"
+        if scene_dir.exists():
+            for f in scene_dir.glob("*.yaml"):
+                if f.stem.endswith(".example"):
+                    continue
+                try:
+                    with open(f, encoding="utf-8") as fh:
+                        data = yaml.safe_load(fh) or {}
+                except Exception:
+                    continue
+                scene = data.get("scene", {})
+                if not scene.get("id"):
+                    continue
+
+                desc = scene.get("description", "")
+                desc_en = scene.get("description_en", "")
+                if desc and (not desc_en or force):
+                    if any(ord(c) > 127 for c in desc):
+                        scene["description_en"] = translate_to_english(desc, llm=llm)
+                        result["translated_scenes"] += 1
+                        logger.info(f"  翻译场景 {scene.get('id')}: description → en")
+
+                lighting = scene.get("lighting", "")
+                lighting_en = scene.get("lighting_en", "")
+                if lighting and (not lighting_en or force):
+                    if any(ord(c) > 127 for c in lighting):
+                        scene["lighting_en"] = translate_to_english(lighting, llm=llm)
+
+                data["scene"] = scene
+                save_yaml(f, data)
+
+    # ── 3. 批量翻译分镜动作/台词 ──
+    if translate and llm:
+        self.update_state(state="PROGRESS", meta={
+            "step": "prepare", "progress": 50, "message": "翻译分镜..."})
+
+        sb_path = project_dir / "storyboard" / "episodes.csv"
+        if sb_path.exists():
+            import csv as _csv
+            shots = []
+            with open(sb_path, encoding="utf-8") as fh:
+                shots = [dict(r) for r in _csv.DictReader(fh)]
+
+            changed = False
+            for shot in shots:
+                ep = int(shot.get("episode", 0) or 0)
+                if ep != episode:
+                    continue
+
+                # 翻译 action
+                action = shot.get("action", "")
+                action_en = shot.get("action_en", "")
+                if action and (not action_en or force):
+                    if any(ord(c) > 127 for c in action):
+                        from engines.prompt import _strip_dialogue
+                        cleaned = _strip_dialogue(action)
+                        shot["action_en"] = translate_to_english(cleaned, llm=llm)
+                        changed = True
+                        result["translated_shots"] += 1
+
+                # 翻译 dialogue
+                dialogue = shot.get("dialogue", "")
+                dialogue_en = shot.get("dialogue_en", "")
+                if dialogue and dialogue != "......" and (not dialogue_en or force):
+                    if any(ord(c) > 127 for c in dialogue):
+                        shot["dialogue_en"] = translate_to_english(dialogue, llm=llm)
+                        changed = True
+
+            if changed:
+                from engines.storyboard import save_storyboard
+                save_storyboard(sb_path, shots, episode, append=True)
+                logger.info(f"  已更新分镜翻译 ({result['translated_shots']} 个镜头)")
+
+    # ── 4. 生成定妆照 + outfit ──
+    if portraits:
+        self.update_state(state="PROGRESS", meta={
+            "step": "prepare", "progress": 70, "message": "生成定妆照..."})
+
+        try:
+            from pipeline.portraits import run_portraits
+            run_portraits(config_path, force=force)
+            # 统计生成数量
+            char_dir = project_dir / "config" / "characters"
+            if char_dir.exists():
+                for f in char_dir.glob("*.yaml"):
+                    if f.stem.endswith(".example"):
+                        continue
+                    asset_dir = project_dir / "assets" / "characters" / f.stem
+                    if asset_dir.exists():
+                        imgs = list(asset_dir.glob("*.png")) + list(asset_dir.glob("*.jpg"))
+                        if imgs:
+                            result["portraits_generated"] += 1
+        except Exception as e:
+            logger.error(f"定妆照生成失败: {e}")
+
+    # ── 5. 生成场景参考图 ──
+    if scene_images:
+        self.update_state(state="PROGRESS", meta={
+            "step": "prepare", "progress": 85, "message": "生成场景图..."})
+
+        try:
+            scene_dir = project_dir / "config" / "scenes"
+            if scene_dir.exists():
+                comfyui = cont.get("image")
+                from engines.workflow_builder import WorkflowBuilder
+                models = cfg.get("models", {})
+                wb = WorkflowBuilder(cfg.data, models, str(project_dir), comfyui=comfyui)
+                wb.load_workflows()
+
+                for f in scene_dir.glob("*.yaml"):
+                    if f.stem.endswith(".example"):
+                        continue
+                    try:
+                        with open(f, encoding="utf-8") as fh:
+                            data = yaml.safe_load(fh) or {}
+                    except Exception:
+                        continue
+                    scene = data.get("scene", {})
+                    sid = scene.get("id", f.stem)
+                    scene_asset_dir = project_dir / "assets" / "scenes" / sid
+
+                    # 跳过已有图
+                    if scene_asset_dir.exists() and not force:
+                        existing = list(scene_asset_dir.glob("*.png")) + list(scene_asset_dir.glob("*.jpg"))
+                        if existing:
+                            continue
+
+                    # 用预翻译的 description_en 或翻译 description
+                    desc_en = scene.get("description_en", "")
+                    if not desc_en:
+                        desc = scene.get("description", "")
+                        if any(ord(c) > 127 for c in desc):
+                            desc_en = translate_to_english(desc, llm=None)
+                        else:
+                            desc_en = desc
+
+                    if not desc_en:
+                        continue
+
+                    scene_asset_dir.mkdir(parents=True, exist_ok=True)
+                    fake_shot = {"characters": "", "emotion": "neutral",
+                                 "shot_type": "全景", "camera": "固定"}
+                    _, wf = wb.build_first_frame(fake_shot, scene_desc=desc_en)
+                    if not wf:
+                        continue
+
+                    try:
+                        files = comfyui.generate(wf, str(scene_asset_dir))
+                        if files:
+                            result["scene_images_generated"] += 1
+                            logger.info(f"  场景 {sid}: 生成完成")
+                    except Exception as e:
+                        logger.warning(f"  场景 {sid}: {e}")
+        except Exception as e:
+            logger.error(f"场景图生成失败: {e}")
+
+    self.update_state(state="PROGRESS", meta={
+        "step": "prepare", "progress": 100, "message": "准备完成"})
+
+    total = (result["translated_chars"] + result["translated_scenes"] +
+             result["translated_shots"] + result["portraits_generated"] +
+             result["scene_images_generated"])
+    logger.info(f"准备阶段完成: {result}")
+    return {"status": "done", **result, "total_operations": total}

@@ -47,6 +47,7 @@ app.conf.update(
         "pipeline.ai.storyboard": {"queue": "drama"},
         "pipeline.ai.characters": {"queue": "drama"},
         "pipeline.ai.scenes": {"queue": "drama"},
+        "pipeline.ai.prepare": {"queue": "drama"},
         "pipeline.seko.import": {"queue": "drama"},
         "ai_chat_edit": {"queue": "drama"},
     },

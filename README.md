@@ -131,6 +131,24 @@ drama serve
 # 浏览器打开 http://localhost:8888
 ```
 
+### 三阶段架构（推荐工作流）
+
+```
+阶段1: drama prepare 1     ← LLM 密集，运行一次
+  ├─ 批量翻译角色/场景/分镜 → 写入 YAML *_en 字段
+  ├─ 生成定妆照 + outfit 参考图
+  └─ 生成场景参考图
+
+阶段2: drama produce 1     ← 纯 GPU/本地，零 LLM 调用，全速
+  ├─ TTS → 首帧 → 视频 → 口型同步
+  └─ 直接读取预翻译字段，不等待 LLM
+
+阶段3: drama post 1        ← 纯本地
+  └─ 拼接 → 字幕 → 配乐 → 横转竖
+```
+
+**收益**: prepare 跑完后，produce 完全不依赖 LLM，10 个镜头从 30-40 次 LLM 调用降为 0 次。
+
 ---
 
 ## 📖 CLI 命令
@@ -156,6 +174,7 @@ drama preview 1 draft                  # 快速预览（draft/standard/high）
 drama produce 1                        # 完整生产
 drama post 1 --vertical                # 后期合成 + 横转竖
 drama all 1                            # 一键全流程（preview → produce → post）
+drama prepare 1                        # 准备阶段（批量翻译+定妆照+场景图）
 drama portraits                        # 生成定妆照
 
 # 项目管理

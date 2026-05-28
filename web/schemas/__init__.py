@@ -12,6 +12,7 @@ __all__ = [
     "SekoProposalRequest", "SekoProposalStatusRequest", "SekoProposalModifyRequest",
     "SekoImportRequest",
     "TrainingRequest",
+    "PrepareRequest",
 ]
 
 
@@ -234,3 +235,14 @@ class TrainingRequest(BaseModel):
         if not re.match(r"^[a-zA-Z0-9_\-\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]+$", v):
             raise ValueError("角色 ID 只允许字母、数字、中文、下划线、连字符")
         return v
+
+
+# ── 准备阶段 ──
+
+class PrepareRequest(BaseModel):
+    """准备阶段请求 — 批量预翻译 + 定妆照 + 场景图"""
+    episode: int = Field(1, ge=1, description="集数")
+    force: bool = Field(False, description="强制覆盖已有翻译/图片")
+    translate: bool = Field(True, description="是否批量翻译")
+    portraits: bool = Field(True, description="是否生成定妆照 + outfit")
+    scene_images: bool = Field(True, description="是否生成场景参考图")

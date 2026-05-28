@@ -123,6 +123,7 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
             from engines.workflow_builder import WorkflowBuilder
             from engines.multi_char import MultiCharacterHandler
 
+            # LLM 仅在预翻译字段缺失时使用
             llm = None
             try:
                 if cfg.get("llm", {}).get("enabled"):
@@ -130,16 +131,24 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
             except Exception:
                 pass
 
+            # 优先读预翻译的 appearance_en
             char_descs = []
             for cid in char_ids:
                 char = sm.get_character(cid)
                 if char:
-                    desc = translate_to_english(char.get("appearance", ""), llm=llm)
-                    char_descs.append(desc)
+                    desc_en = char.get("appearance_en", "")
+                    if desc_en:
+                        char_descs.append(desc_en)
+                    else:
+                        char_descs.append(translate_to_english(char.get("appearance", ""), llm=llm))
 
+            # 优先读预翻译的 description_en
             scene_id = shot.get("scene", "")
             scene = sm.get_scene(scene_id)
-            scene_desc = translate_to_english(scene.get("description", ""), llm=llm) if scene else ""
+            if scene:
+                scene_desc = scene.get("description_en", "") or translate_to_english(scene.get("description", ""), llm=llm)
+            else:
+                scene_desc = ""
 
             multi_char_prompt = ""
             if len(char_ids) > 1:

@@ -109,6 +109,7 @@ from web.schemas import (
     SekoProposalRequest, SekoProposalStatusRequest, SekoProposalModifyRequest,
     SekoImportRequest,
     TrainingRequest,
+    PrepareRequest,
 )
 
 # ── 工具函数 ──
@@ -1142,6 +1143,19 @@ def run_pipeline(req: PipelineRequest):
 def pipeline_status(episode: int):
     from flow.episode import get_episode_status
     return get_episode_status(str(_proj()), episode)
+
+
+@router.post("/prepare")
+def run_prepare(req: PrepareRequest):
+    """准备阶段 — 批量预翻译 + 定妆照 + 场景图（生产前运行一次）
+
+    运行完毕后，produce/preview/all 可完全不依赖 LLM 全速运行。
+    """
+    from pipeline.tasks import ai_prepare_task
+    cfg = _cfg_path()
+    return _submit_task(ai_prepare_task, cfg, req.episode,
+                        force=req.force, translate=req.translate,
+                        portraits=req.portraits, scene_images=req.scene_images)
 
 
 # ══════════════════════════════════════════════════════════
