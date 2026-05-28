@@ -166,7 +166,7 @@ class WorkflowBuilder:
         if multi_char_prompt:
             positive = f"{positive}, {multi_char_prompt}"
 
-        negative = "bad quality, worst quality, ugly, deformed, blurry, watermark, text"
+        negative = "bad quality, worst quality, ugly, deformed, blurry, watermark, text, subtitle, caption, text overlay, burned-in text, word, letter, logo, signature, username, timestamp"
 
         prompt = {"positive": positive, "negative": negative}
 
