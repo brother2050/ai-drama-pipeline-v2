@@ -56,8 +56,8 @@ class WorkflowBuilder:
         if self.comfyui and hasattr(self.comfyui, 'get_available_node_types'):
             try:
                 available_nodes = self.comfyui.get_available_node_types()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"获取 ComfyUI 节点类型失败: {e}")
 
         # 确保 registry 可用（懒加载内置默认）
         if not self.registry:

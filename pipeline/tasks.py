@@ -1740,29 +1740,36 @@ def _parse_seko_storyboard(steps: list[dict], episode: int) -> list[dict]:
     return shots
 
 
-def _download_seko_image(url: str, output_path: str, timeout: int = 60) -> bool:
-    """下载单张 Seko 图片"""
+def _download_seko_image(url: str, output_path: str, timeout: int = 60, retries: int = 3) -> bool:
+    """下载单张 Seko 图片（指数退避重试）"""
     import urllib.request
     import urllib.parse
+    import time as _time
 
-    try:
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; ai-drama-pipeline/2.0)"},
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            with open(output_path, "wb") as f:
-                while True:
-                    chunk = response.read(64 * 1024)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-        logger.info(f"Seko 图片下载成功: {output_path}")
-        return True
-    except Exception as e:
-        logger.warning(f"Seko 图片下载失败 {url}: {e}")
-        return False
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; ai-drama-pipeline/2.0)"},
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                with open(output_path, "wb") as f:
+                    while True:
+                        chunk = response.read(64 * 1024)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+            logger.info(f"Seko 图片下载成功: {output_path}")
+            return True
+        except Exception as e:
+            if attempt < retries - 1:
+                wait = 2 ** attempt
+                logger.warning(f"Seko 图片下载失败 (尝试 {attempt + 1}/{retries}), {wait}s 后重试: {e}")
+                _time.sleep(wait)
+            else:
+                logger.warning(f"Seko 图片下载失败 {url}: {e}")
+    return False
 
 
 @app.task(bind=True, name="pipeline.seko.import", soft_time_limit=900)

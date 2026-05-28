@@ -45,25 +45,30 @@ _rate_limit_store: dict[str, list[float]] = {}
 _rate_limit_lock = _threading.Lock()
 _RATE_LIMIT_WINDOW = 60  # 秒
 _RATE_LIMIT_MAX = 120    # 每窗口最大请求数
+_rate_limit_counter = 0  # 全量清理计数器
 
 
 def _check_rate_limit(client_ip: str) -> None:
-    """简易滑动窗口 rate limiting（线程安全，自动清理过期 IP）"""
+    """简易滑动窗口 rate limiting（线程安全，定期清理过期 IP）"""
+    global _rate_limit_counter
     import time
     now = time.time()
     window_start = now - _RATE_LIMIT_WINDOW
 
     with _rate_limit_lock:
-        # 每次调用时清理过期 IP（防止低流量环境下内存泄漏）
-        expired_ips = [ip for ip, timestamps in _rate_limit_store.items()
-                       if not timestamps or timestamps[-1] < window_start]
-        for ip in expired_ips:
-            del _rate_limit_store[ip]
+        # 每 100 次请求做一次全量清理（避免每次 O(N) 遍历）
+        _rate_limit_counter += 1
+        if _rate_limit_counter >= 100:
+            _rate_limit_counter = 0
+            expired_ips = [ip for ip, timestamps in _rate_limit_store.items()
+                           if not timestamps or timestamps[-1] < window_start]
+            for ip in expired_ips:
+                del _rate_limit_store[ip]
 
         if client_ip not in _rate_limit_store:
             _rate_limit_store[client_ip] = []
 
-        # 清理过期记录
+        # 清理当前 IP 的过期记录
         _rate_limit_store[client_ip] = [
             t for t in _rate_limit_store[client_ip] if t > window_start
         ]
@@ -584,7 +589,8 @@ def list_tasks():
                 tasks.append({"task_id": t.get("id"), "name": t.get("name"),
                               "status": "running", "worker": worker})
         return {"tasks": tasks}
-    except Exception:
+    except Exception as e:
+        logger.debug(f"获取任务列表失败: {e}")
         return {"tasks": []}
 
 
@@ -777,7 +783,8 @@ def _yaml_list(yaml_dir: str, entity_key: str) -> list[dict]:
             entity = data.get(entity_key, {})
             if entity.get("id"):
                 result.append(entity)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"跳过损坏的 YAML {f}: {e}")
             continue
     return result
 

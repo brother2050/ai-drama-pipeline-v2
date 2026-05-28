@@ -15,6 +15,24 @@ from infra.ffmpeg import FFmpeg
 logger = logging.getLogger(__name__)
 
 
+def _cleanup_intermediates(out_dir: Path, episode: int) -> None:
+    """清理上次遗留的中间文件"""
+    patterns = [
+        f"episode_{episode:02d}_concat.mp4",
+        f"episode_{episode:02d}_subtitled.mp4",
+        f"episode_{episode:02d}_with_bgm.mp4",
+        f"episode_{episode:02d}_vertical.mp4",
+    ]
+    for name in patterns:
+        p = out_dir / name
+        if p.exists():
+            try:
+                p.unlink()
+                logger.debug(f"清理遗留中间文件: {p.name}")
+            except OSError:
+                pass
+
+
 def run_post(config_path: str, episode: int, vertical: bool = False):
     """后期合成：拼接所有镜头视频 → 添加字幕/配乐 → 可选横转竖"""
     cfg = Config(config_path)
@@ -24,6 +42,9 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
     if not out_dir.exists():
         logger.warning(f"输出目录不存在: {out_dir}")
         return
+
+    # 清理上次遗留的中间文件
+    _cleanup_intermediates(out_dir, episode)
 
     # 收集所有镜头视频（按 shot_id 排序）
     videos = []
