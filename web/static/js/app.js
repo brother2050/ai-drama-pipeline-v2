@@ -1222,6 +1222,7 @@ async function _uploadImg(entityType, id) {
     if (entityType === 'characters' && typeof loadCharacters === 'function') loadCharacters();
     else if (entityType === 'scenes' && typeof loadScenes === 'function') loadScenes();
   } catch (e) { _html(wrap, `<span style="color:var(--red)">❌ ${e.message}</span>`); toast(e.message, 'error'); }
+  finally { fileInput.value = ''; }
 }
 
 /** 通用拖拽上传 */

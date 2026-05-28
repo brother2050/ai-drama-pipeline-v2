@@ -1541,7 +1541,7 @@ def _parse_seko_characters(steps: list[dict], elements: list[dict] | None = None
         seko_image_url = ""
         if elements:
             char_element = next(
-                (e for e in elements if e.get("elementType") == "CHARACTER" and e.get("elementName") == char_name),
+                (e for e in elements if e.get("elementType") == "CHARACTER" and (e.get("elementName") or "").strip() == char_name),
                 None,
             )
             if char_element and char_element.get("elementUrl"):
@@ -1590,7 +1590,7 @@ def _parse_seko_scenes(steps: list[dict], elements: list[dict] | None = None) ->
         seko_image_url = ""
         if elements:
             scene_element = next(
-                (e for e in elements if e.get("elementType") == "SCENE" and e.get("elementName") == scene_name),
+                (e for e in elements if e.get("elementType") == "SCENE" and (e.get("elementName") or "").strip() == scene_name),
                 None,
             )
             if scene_element and scene_element.get("elementUrl"):
@@ -1836,7 +1836,7 @@ def seko_import_task(
         total = len(elements)
         for idx, elem in enumerate(elements):
             url = elem.get("elementUrl")
-            name = elem.get("elementName")
+            name = (elem.get("elementName") or "").strip()
             elem_type = elem.get("elementType", "")
             if not url or not name:
                 continue
