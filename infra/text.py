@@ -17,4 +17,9 @@ def sanitize_filename(name: str) -> str:
     import re
     if not name:
         return ""
-    return re.sub(r'[<>:"/\\|?*]', '_', str(name)).strip()
+    result = re.sub(r'[<>:"/\\|?*]', '_', str(name)).strip()
+    # 限制长度为 200 字节（留余量给扩展名，文件系统限制 255 字节）
+    if len(result.encode("utf-8")) > 200:
+        while len(result.encode("utf-8")) > 200 and result:
+            result = result[:-1]
+    return result

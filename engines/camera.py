@@ -28,7 +28,11 @@ def normalize_camera(raw: str) -> str:
     if not raw or raw == "无":
         return "固定"
     first = raw.split(",")[0].strip()
-    return CAMERA_ALIASES.get(first, first)
+    result = CAMERA_ALIASES.get(first, first)
+    # 校验返回值是否在合法集合中，不在则回退到默认
+    if result not in VALID_CAMERAS:
+        return "固定"
+    return result
 
 
 def normalize_shot_type(raw: str) -> str:
