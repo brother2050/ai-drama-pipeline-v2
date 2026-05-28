@@ -11,6 +11,7 @@ import copy
 import json
 import logging
 import os
+import random
 from pathlib import Path
 
 from engines.workflow import (
@@ -129,6 +130,16 @@ class WorkflowBuilder:
                 if video_frames:
                     inp["context_length"] = video_frames
 
+    # ── Seed 随机化 ────────────────────────────────────────
+
+    @staticmethod
+    def _randomize_seed(wf: dict) -> None:
+        """随机化工作流中所有 KSampler / KSamplerAdvanced 的 seed，避免重复生成相同图片"""
+        for nid, node in wf.items():
+            ct = node.get("class_type", "")
+            if ct in ("KSampler", "KSamplerAdvanced"):
+                node["inputs"]["seed"] = random.randint(0, 2**63 - 1)
+
     # ── 构建首帧工作流 ──────────────────────────────────────
 
     def build_first_frame(self, shot: dict, character_desc: str = "",
@@ -201,6 +212,9 @@ class WorkflowBuilder:
                 style_strength = self.models.get("style_lora_strength", 0.6)
                 wf = self._inject_lora(wf, style_lora, strength=style_strength)
                 logger.info(f"使用风格 LoRA: {genre} → {style_lora}")
+
+        # 随机化 seed，避免每次生成相同图片
+        self._randomize_seed(wf)
 
         return prompt, wf
 
@@ -420,6 +434,9 @@ class WorkflowBuilder:
             if style_lora:
                 style_strength = self.models.get("style_lora_strength", 0.6)
                 wf = self._inject_lora(wf, style_lora, strength=style_strength)
+
+        # 随机化 seed
+        self._randomize_seed(wf)
 
         return wf
 
