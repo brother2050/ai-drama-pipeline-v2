@@ -189,8 +189,8 @@ def run_portraits(config_path: str, force: bool = False):
 
             # ── 3. 写回 YAML ──
             data["character"] = char
-            with open(f, "w", encoding="utf-8") as fh:
-                yaml.dump(data, fh, allow_unicode=True, default_flow_style=False)
+            from infra.config import save_yaml
+            save_yaml(f, data)
             logger.info(f"    📝 已更新 YAML")
 
         except Exception as e:

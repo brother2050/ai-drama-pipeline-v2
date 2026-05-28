@@ -54,11 +54,27 @@ def load_config(path: str, *, force: bool = False) -> dict[str, Any]:
     return copy.deepcopy(data)
 
 
+def save_yaml(path: str | Path, data: Any, *, sort_keys: bool = False) -> None:
+    """原子写入 YAML 文件（temp file + rename，防崩溃损坏）"""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    import tempfile
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=sort_keys)
+        os.replace(str(tmp), str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def save_config(path: str, data: dict[str, Any]) -> None:
-    """保存 YAML 配置"""
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+    """保存 YAML 配置（原子写入）"""
+    save_yaml(path, data, sort_keys=False)
     abspath = str(Path(path).resolve())
     with _lock:
         _cache[abspath] = (copy.deepcopy(data), os.path.getmtime(abspath))

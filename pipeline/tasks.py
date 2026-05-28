@@ -788,8 +788,8 @@ def scene_images_task(self, config_path: str, force: bool = False) -> dict:
                     scene["reference_images"] = [u for u in scene["reference_images"] if not u.startswith(prefix)]
                     scene["reference_images"].append(img_url)
                     data["scene"] = scene
-                    with open(f, "w", encoding="utf-8") as fh:
-                        yaml.dump(data, fh, allow_unicode=True, default_flow_style=False)
+                    from infra.config import save_yaml
+                    save_yaml(f, data)
                     generated += 1
                     logger.info(f"  ✅ 场景 {sname}: 生成完成")
             except Exception as e:
@@ -923,8 +923,8 @@ def portrait_single_task(self, config_path: str, char_id: str) -> dict:
 
     # ── 3. 写回 YAML ──
     data["character"] = char
-    with open(char_yaml_path, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+    from infra.config import save_yaml
+    save_yaml(char_yaml_path, data)
 
     try:
         from infra.database.characters import upsert as db_up
@@ -1017,8 +1017,8 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
             outfit_val["reference_images"].append(img_url)
         char["outfits"] = outfits_data
         data["character"] = char
-        with open(char_yaml_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+        from infra.config import save_yaml
+        save_yaml(char_yaml_path, data)
     except Exception as e:
         logger.debug(f"更新 outfit reference_images 跳过: {e}")
 
@@ -1133,8 +1133,8 @@ def scene_image_single_task(self, config_path: str, scene_id: str) -> dict:
     scene["reference_images"] = [u for u in scene["reference_images"] if not u.startswith(prefix)]
     scene["reference_images"].append(img_url)
     data["scene"] = scene
-    with open(scene_yaml_path, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+    from infra.config import save_yaml
+    save_yaml(scene_yaml_path, data)
 
     try:
         from infra.database.scenes import upsert as db_up
@@ -1305,8 +1305,8 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                 id_remap[old_id] = new_id
 
                 path = char_dir / f"{new_id}.yaml"
-                with open(path, "w", encoding="utf-8") as f:
-                    _yaml.dump({"character": char}, f, allow_unicode=True, default_flow_style=False)
+                from infra.config import save_yaml
+                save_yaml(path, {"character": char})
                 try:
                     from infra.database.characters import upsert as db_up
                     from infra.database.pool import get_pool
@@ -1350,8 +1350,8 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                 id_remap[old_id] = new_id
 
                 path = scene_dir / f"{new_id}.yaml"
-                with open(path, "w", encoding="utf-8") as f:
-                    _yaml.dump({"scene": scene}, f, allow_unicode=True, default_flow_style=False)
+                from infra.config import save_yaml
+                save_yaml(path, {"scene": scene})
                 try:
                     from infra.database.scenes import upsert as db_up
                     from infra.database.pool import get_pool
@@ -1451,8 +1451,8 @@ def ai_characters_task(self, config_path: str, descriptions: list[str]) -> dict:
             continue
         cid = char.get("id", "unknown")
         path = char_dir / f"{cid}.yaml"
-        with open(path, "w", encoding="utf-8") as f:
-            yaml.dump({"character": char}, f, allow_unicode=True, default_flow_style=False)
+        from infra.config import save_yaml
+        save_yaml(path, {"character": char})
         try:
             from infra.database.characters import upsert as db_up
             from infra.database.pool import get_pool
@@ -1494,8 +1494,8 @@ def ai_scenes_task(self, config_path: str, descriptions: list[str]) -> dict:
             continue
         sid = scene.get("id", "unknown")
         path = scene_dir / f"{sid}.yaml"
-        with open(path, "w", encoding="utf-8") as f:
-            yaml.dump({"scene": scene}, f, allow_unicode=True, default_flow_style=False)
+        from infra.config import save_yaml
+        save_yaml(path, {"scene": scene})
         try:
             from infra.database.scenes import upsert as db_up
             from infra.database.pool import get_pool
@@ -1812,8 +1812,8 @@ def seko_import_task(
                 char_yaml["seko_image_url"] = char["seko_image_url"]
 
             path = char_dir / f"{cid}.yaml"
-            with open(path, "w", encoding="utf-8") as f:
-                yaml.dump({"character": char_yaml}, f, allow_unicode=True, default_flow_style=False)
+            from infra.config import save_yaml
+            save_yaml(path, {"character": char_yaml})
 
             # 同步数据库
             try:
@@ -1847,8 +1847,8 @@ def seko_import_task(
                 scene_yaml["seko_image_url"] = scene["seko_image_url"]
 
             path = scene_dir / f"{sid}.yaml"
-            with open(path, "w", encoding="utf-8") as f:
-                yaml.dump({"scene": scene_yaml}, f, allow_unicode=True, default_flow_style=False)
+            from infra.config import save_yaml
+            save_yaml(path, {"scene": scene_yaml})
 
             try:
                 from infra.database.scenes import upsert as db_up
@@ -1945,8 +1945,8 @@ def seko_import_task(
                         entity = data.get(entity_key, {})
                         entity["reference_images"] = [f"/api/assets/{asset_type}/{entity_id}/cover.png"]
                         data[entity_key] = entity
-                        with open(yaml_path, "w", encoding="utf-8") as f:
-                            yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+                        from infra.config import save_yaml
+                        save_yaml(yaml_path, data)
                     except Exception as e:
                         logger.debug(f"更新 YAML reference_images 失败: {e}")
             else:

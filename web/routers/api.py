@@ -798,9 +798,8 @@ def _yaml_save(yaml_dir: str, entity_key: str, entity_id: str, data: dict,
         except Exception:
             existing = {}
     merged = {**existing, **data, "id": entity_id}
-    with open(path, "w", encoding="utf-8") as f:
-        yaml.dump({entity_key: merged}, f,
-                  allow_unicode=True, default_flow_style=False)
+    from infra.config import save_yaml
+    save_yaml(path, {entity_key: merged})
     if db_upsert:
         try:
             from infra.database.pool import get_pool
@@ -929,8 +928,8 @@ async def upload_entity_image(entity_type: str, entity_id: str, file: UploadFile
         imgs.append(img_url)
         entity["reference_images"] = imgs
         data[entity_key] = entity
-        with open(yaml_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+        from infra.config import save_yaml
+        save_yaml(yaml_path, data)
 
     return {"status": "ok", "url": f"/api/assets/{entity_type}/{entity_id}/{filename}"}
 

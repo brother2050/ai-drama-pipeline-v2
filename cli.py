@@ -540,12 +540,11 @@ def gen_characters(desc, config_path):
     char_dir = project_dir / "config" / "characters"
     char_dir.mkdir(parents=True, exist_ok=True)
 
-    import yaml
+    from infra.config import save_yaml
     for char in chars:
         cid = char.get("id", "unknown")
         path = char_dir / f"{cid}.yaml"
-        with open(path, "w", encoding="utf-8") as f:
-            yaml.dump({"character": char}, f, allow_unicode=True, default_flow_style=False)
+        save_yaml(path, {"character": char})
         console.print(f"  ✅ {char.get('name', '?')} ({cid}) → {path.name}")
 
     console.print(f"\n[bold green]✅ 生成 {len(chars)} 个角色[/bold green]")
@@ -571,12 +570,11 @@ def gen_scenes(desc, config_path):
     scene_dir = project_dir / "config" / "scenes"
     scene_dir.mkdir(parents=True, exist_ok=True)
 
-    import yaml
+    from infra.config import save_yaml
     for scene in scene_list:
         sid = scene.get("id", "unknown")
         path = scene_dir / f"{sid}.yaml"
-        with open(path, "w", encoding="utf-8") as f:
-            yaml.dump({"scene": scene}, f, allow_unicode=True, default_flow_style=False)
+        save_yaml(path, {"scene": scene})
         console.print(f"  ✅ {scene.get('name', '?')} ({sid}) → {path.name}")
 
     console.print(f"\n[bold green]✅ 生成 {len(scene_list)} 个场景[/bold green]")

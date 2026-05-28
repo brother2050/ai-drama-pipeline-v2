@@ -114,8 +114,8 @@ def _scaffold_default_config(project_dir: Path, name: str) -> None:
         with open(cfg_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         data.setdefault("project", {})["name"] = name
-        with open(cfg_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+        from infra.config import save_yaml
+        save_yaml(cfg_path, data)
     else:
         # 无配置：从模板生成
         cfg_path.write_text(

@@ -68,8 +68,8 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None) -> str
                     char["reference_images"] = [u for u in char["reference_images"] if not u.startswith(prefix)]
                     char["reference_images"].append(img_url)
                     data["character"] = char
-                    with open(char_file, "w", encoding="utf-8") as fh:
-                        _yaml.dump(data, fh, allow_unicode=True, default_flow_style=False)
+                    from infra.config import save_yaml
+                    save_yaml(char_file, data)
                     logger.info(f"已更新角色 YAML: {img_url}")
                     return files[0]
         except Exception as e:
