@@ -240,7 +240,7 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
                     need_upload = True
                     if already_tracked:
                         try:
-                            if video_comfyui.check_image_exists(server_filename):
+                            if video_comfyui.check_image_exists(server_filename, type="input"):
                                 need_upload = False
                             else:
                                 tracker.untrack_image(video_server_url, server_filename)

@@ -462,7 +462,7 @@ def video_core(shot_id: str, cfg, cont, out_dir: Path, *, force: bool = False) -
         need_upload = True
         if already_tracked:
             try:
-                if video_comfyui.check_image_exists(server_filename):
+                if video_comfyui.check_image_exists(server_filename, type="input"):
                     logger.debug(f"首帧图 {server_filename} 已在视频服务器 {video_server_url}，跳过上传")
                     need_upload = False
                 else:

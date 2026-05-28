@@ -810,7 +810,7 @@ def _yaml_save(yaml_dir: str, entity_key: str, entity_id: str, data: dict,
     if db_upsert:
         try:
             from infra.database.pool import get_pool
-            db_upsert(get_pool(), entity_id, data)
+            db_upsert(get_pool(), entity_id, merged)
         except Exception as e:
             logger.debug(f"数据库同步跳过: {e}")
 
@@ -1291,10 +1291,11 @@ def copy_asset_to_project(entity_type: str, entity_id: str):
 
     shutil.copy2(str(src), str(dst))
 
-    # 复制图片
+    # 复制图片到 assets 目录（非 config 目录）
     src_img = shared_dir / entity_id
     if src_img.is_dir():
-        dst_img = proj_dir / entity_id
+        dst_img = _proj() / "assets" / entity_type / entity_id
+        dst_img.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(str(src_img), str(dst_img), dirs_exist_ok=True)
 
     # 同步数据库
