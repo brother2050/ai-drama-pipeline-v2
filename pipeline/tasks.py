@@ -805,12 +805,13 @@ def scene_images_task(self, config_path: str, force: bool = False) -> dict:
 #  单资产生成任务（异步，复用已有工具函数）
 # ══════════════════════════════════════════════════════════
 
-@app.task(bind=True, name="pipeline.portrait_single", soft_time_limit=300)
+@app.task(bind=True, name="pipeline.portrait_single", soft_time_limit=600)
 def portrait_single_task(self, config_path: str, char_id: str) -> dict:
-    """为单个角色 AI 生成定妆照（异步）"""
+    """为单个角色 AI 生成定妆照 + 各服装参考图（异步）"""
     _ensure_path()
     import yaml
     from engines.workflow_builder import WorkflowBuilder
+    from engines.prompt import translate_to_english
 
     self.update_state(state="PROGRESS", meta={"step": "portrait", "progress": 10, "message": f"生成 {char_id} 定妆照..."})
 
@@ -831,23 +832,33 @@ def portrait_single_task(self, config_path: str, char_id: str) -> dict:
     except Exception as e:
         return {"status": "error", "reason": f"ComfyUI 不可用: {e}"}
 
+    llm = None
+    try:
+        if cfg.get("llm", {}).get("enabled"):
+            llm = cont.get("llm")
+    except Exception:
+        pass
+
     portrait_dir = project_dir / "assets" / "characters" / char_id
     portrait_dir.mkdir(parents=True, exist_ok=True)
+    # 只删主图，不动 outfit 子目录
     for old in portrait_dir.glob("*.png"):
         old.unlink()
     for old in portrait_dir.glob("*.jpg"):
         old.unlink()
 
     models = cfg.get("models", {})
-    wb = WorkflowBuilder(cfg.data, models, str(project_dir), comfyui=comfyui)
+    wb = WorkflowBuilder(cfg.data, models, str(project_dir), comfyui=comfyui, llm=llm)
     wb.load_workflows()
+
+    # ── 1. 生成主定妆照 ──
     fake_shot = {"characters": char_id, "emotion": "neutral",
                  "shot_type": "特写", "camera": "固定"}
     _, wf = wb.build_first_frame(fake_shot, character_desc=appearance)
     if not wf:
         return {"status": "error", "reason": "首帧工作流为空（缺少模板）"}
 
-    self.update_state(state="PROGRESS", meta={"step": "portrait", "progress": 50, "message": f"ComfyUI 生成中..."})
+    self.update_state(state="PROGRESS", meta={"step": "portrait", "progress": 30, "message": "ComfyUI 生成主图..."})
     try:
         files = comfyui.generate(wf, str(portrait_dir))
     except Exception as e:
@@ -860,6 +871,57 @@ def portrait_single_task(self, config_path: str, char_id: str) -> dict:
     prefix = f"/api/assets/characters/{char_id}/cover"
     char["reference_images"] = [u for u in char["reference_images"] if not u.startswith(prefix)]
     char["reference_images"].append(img_url)
+
+    # ── 2. 遍历服装，生成各 outfit 参考图 ──
+    outfits = char.get("outfits", {})
+    outfit_results = {}
+    if isinstance(outfits, dict) and outfits:
+        total = len(outfits)
+        for i, (outfit_key, outfit_val) in enumerate(outfits.items()):
+            if not isinstance(outfit_val, dict):
+                continue
+            outfit_desc = outfit_val.get("description", "")
+            if not outfit_desc:
+                continue
+
+            self.update_state(state="PROGRESS", meta={
+                "step": "portrait", "progress": int(30 + i / total * 60),
+                "message": f"生成服装 {outfit_key} ({i+1}/{total})..."})
+
+            outfit_dir = portrait_dir / outfit_key
+            outfit_dir.mkdir(parents=True, exist_ok=True)
+            # 清理旧图
+            for old in outfit_dir.glob("*.png"):
+                old.unlink()
+            for old in outfit_dir.glob("*.jpg"):
+                old.unlink()
+
+            full_desc = f"{appearance}, wearing {outfit_desc}"
+            if any(ord(c) > 127 for c in full_desc):
+                full_desc = translate_to_english(full_desc, llm=llm)
+
+            fake_shot = {"characters": char_id, "emotion": "neutral",
+                         "shot_type": "全身", "camera": "固定"}
+            _, wf = wb.build_first_frame(fake_shot, character_desc=full_desc)
+            if not wf:
+                outfit_results[outfit_key] = "工作流为空"
+                continue
+
+            try:
+                files = comfyui.generate(wf, str(outfit_dir))
+                if files:
+                    outfit_url = f"/api/assets/characters/{char_id}/{outfit_key}/{Path(files[0]).name}"
+                    outfit_val.setdefault("reference_images", [])
+                    op = f"/api/assets/characters/{char_id}/{outfit_key}/cover"
+                    outfit_val["reference_images"] = [u for u in outfit_val["reference_images"] if not u.startswith(op)]
+                    outfit_val["reference_images"].append(outfit_url)
+                    outfit_results[outfit_key] = "done"
+                else:
+                    outfit_results[outfit_key] = "未生成"
+            except Exception as e:
+                outfit_results[outfit_key] = f"失败: {e}"
+
+    # ── 3. 写回 YAML ──
     data["character"] = char
     with open(char_yaml_path, "w", encoding="utf-8") as f:
         yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
