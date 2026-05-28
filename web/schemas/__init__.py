@@ -133,14 +133,23 @@ class ProjectSwitch(BaseModel):
 # ── 配置 ──
 
 class ConfigUpdate(BaseModel):
-    """配置更新（接受 {"data": {...}} 格式，由路由层做额外校验）"""
+    """配置更新（接受 {"data": {...}} 或直接 {"key": "value"} 格式）"""
     model_config = {"extra": "allow"}
 
     data: dict | None = None
 
     def get_config_data(self) -> dict:
-        """提取配置数据"""
-        return self.data or {}
+        """提取配置数据（兼容两种格式）
+
+        - {"data": {"project": {...}}} → 返回 data 的内容
+        - {"project": {...}} → 返回 extra 字段（排除 data 键）
+        """
+        if self.data is not None:
+            return self.data
+        # 从 extra 字段中提取（Pydantic v2 存储在 model_extra 中）
+        extra = getattr(self, "model_extra", None) or {}
+        # 排除 data 键本身，返回其余字段作为配置数据
+        return {k: v for k, v in extra.items() if k != "data"}
 
 
 # ── LLM 生成 ──
