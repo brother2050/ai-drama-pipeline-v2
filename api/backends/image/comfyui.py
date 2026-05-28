@@ -26,15 +26,15 @@ class ComfyUI:
     def _headers(self) -> dict:
         return auth_headers(self._api_key)
 
-    def check_image_exists(self, filename: str, subfolder: str = "", type: str = "output") -> bool:
+    def check_image_exists(self, filename: str, subfolder: str = "", asset_type: str = "output") -> bool:
         """检查图片是否已存在于 ComfyUI 服务器
 
         通过 HEAD 请求 /view 端点验证，HTTP 200 表示文件存在。
         Args:
-            type: "output"（生成结果）或 "input"（上传的图片），默认 "output"
+            asset_type: "output"（生成结果）或 "input"（上传的图片），默认 "output"
         """
         try:
-            params = {"filename": filename, "type": type}
+            params = {"filename": filename, "type": asset_type}
             if subfolder:
                 params["subfolder"] = subfolder
             r = self._client.head(f"{self._url}/view", params=params,
