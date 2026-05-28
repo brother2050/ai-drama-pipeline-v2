@@ -120,8 +120,8 @@ class WorkflowBuilder:
                     inp["width"] = resolution[0]
                     inp["height"] = resolution[1]
 
-            # 步数 → KSampler（仅首帧）
-            if ct == "KSampler" and stage == "first_frame":
+            # 步数 → KSampler / KSamplerAdvanced（仅首帧）
+            if ct in ("KSampler", "KSamplerAdvanced") and stage == "first_frame":
                 if image_steps:
                     inp["steps"] = image_steps
 
@@ -393,8 +393,8 @@ class WorkflowBuilder:
                             clip_source = nid
                             break
 
-        # 创建 LoraLoader 节点
-        lora_node_id = f"lora_{Path(lora_path).stem}"
+        # 创建 LoraLoader 节点（加随机后缀防冲突，如同一角色多次注入）
+        lora_node_id = f"lora_{Path(lora_path).stem}_{random.randint(1000, 9999)}"
         lora_name = os.path.basename(lora_path)
 
         wf[lora_node_id] = {

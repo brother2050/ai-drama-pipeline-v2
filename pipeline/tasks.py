@@ -146,9 +146,12 @@ def _try_mark_running_atomic(config_path: str, episode: int, shot_id: str, step:
             pool.release(conn)
     except Exception:
         # 数据库不可用时回退到非原子版本
-        if _check_step_running(config_path, episode, shot_id, step):
-            return False
-        _db_mark_running(config_path, episode, shot_id, step)
+        # 注意: _check_step_running 不检查 updated_at，崩溃的任务可能永久阻塞
+        # 这里直接放行，依赖 _prepare 后续的工具检查和任务逻辑兜底
+        try:
+            _db_mark_running(config_path, episode, shot_id, step)
+        except Exception:
+            pass  # 数据库完全不可用时忽略
         return True
 
 

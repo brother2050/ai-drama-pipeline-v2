@@ -150,7 +150,7 @@ def list_projects(console):
             continue
         cfg = d / "config" / "project.yaml"
         if cfg.exists():
-            with open(cfg) as f:
+            with open(cfg, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
             name = data.get("project", {}).get("name", d.name)
         else:
@@ -196,7 +196,7 @@ def create_project(name: str, root: Path, console):
     _scaffold_default_config(project_dir, name)
 
     # 3. 设置为活动项目
-    (projects_dir / ".active").write_text(str(project_dir))
+    (projects_dir / ".active").write_text(str(project_dir), encoding="utf-8")
 
     console.print(f"[green]✅ 项目 '{name}' 已创建并设为当前[/green]")
     console.print(f"[dim]  路径: {project_dir}[/dim]")
@@ -217,13 +217,13 @@ def switch_project(name: str, root: Path, console):
     _ensure_project_dirs(d)
     _scaffold_default_config(d, name)
 
-    (projects_dir / ".active").write_text(str(d))
+    (projects_dir / ".active").write_text(str(d), encoding="utf-8")
     console.print(f"[green]✅ 已切换到: {name}[/green]")
 
     # 显示项目概要
     cfg = d / "config" / "project.yaml"
     if cfg.exists():
-        with open(cfg) as f:
+        with open(cfg, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         proj = data.get("project", {})
         console.print(f"[dim]  集数: {proj.get('episodes', 1)}, 分辨率: {proj.get('resolution', [1280, 720])}[/dim]")
@@ -239,7 +239,7 @@ def show_current(root: Path, console):
     active = _active(root)
     cfg = active / "config" / "project.yaml"
     if cfg.exists():
-        with open(cfg) as f:
+        with open(cfg, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         name = data.get("project", {}).get("name", active.name)
     else:
@@ -276,6 +276,6 @@ def delete_project(name: str, root: Path, console):
         return
     active = _active(root)
     if active.resolve() == d.resolve():
-        (projects_dir / ".active").write_text(str(projects_dir / DEFAULT_PROJECT))
+        (projects_dir / ".active").write_text(str(projects_dir / DEFAULT_PROJECT), encoding="utf-8")
     shutil.rmtree(d)
     console.print(f"[green]✅ 项目 '{name}' 已删除[/green]")

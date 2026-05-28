@@ -65,7 +65,19 @@ class ComfyUI:
         # 提交
         r = self._client.post(f"{self._url}/prompt", json={"prompt": workflow, "client_id": client_id},
                       headers=self._headers())
-        r.raise_for_status()
+        if r.status_code != 200:
+            # ComfyUI 400 响应体通常包含详细验证错误，提取后抛出
+            try:
+                err_body = r.json()
+                detail = err_body.get("error", {}).get("message", "") if isinstance(err_body.get("error"), dict) else str(err_body.get("error", ""))
+                node_errors = err_body.get("node_errors", {})
+                if node_errors:
+                    detail += f" | node_errors: {node_errors}"
+                if not detail:
+                    detail = r.text[:500]
+            except Exception:
+                detail = r.text[:500]
+            raise RuntimeError(f"ComfyUI /prompt 提交失败 (HTTP {r.status_code}): {detail}")
         # ComfyUI 可能返回空 body 或非 JSON 响应
         try:
             resp = r.json()
