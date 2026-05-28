@@ -15,7 +15,7 @@ from infra.config import Config
 logger = logging.getLogger(__name__)
 
 
-def run_produce(config_path: str, episode: int):
+def run_produce(config_path: str, episode: int, force: bool = False):
     """完整生产"""
     cfg = Config(config_path)
     logger.info(f"完整生产 第{episode}集")
@@ -69,7 +69,7 @@ def run_produce(config_path: str, episode: int):
         shot_out.mkdir(parents=True, exist_ok=True)
 
         try:
-            _produce_shot(shot, sm, cont, cfg, shot_out)
+            _produce_shot(shot, sm, cont, cfg, shot_out, force=force)
         except Exception as e:
             logger.error(f"  ❌ 镜头 {sid} 失败: {e}")
             import traceback
@@ -87,7 +87,7 @@ def run_produce(config_path: str, episode: int):
     logger.info("生产完成")
 
 
-def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path):
+def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool = False):
     """生产单个镜头"""
     from engines.prompt import translate_to_english
 
@@ -97,104 +97,108 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path):
     dialogue = shot.get("dialogue", "").strip()
     audio_path = shot_out / "audio.wav"
     if dialogue and dialogue != "......":
-        try:
-            tts = container.get("tts")
-            char = sm.get_character(char_ids[0]) if char_ids else {}
-            voice_config = char.get("voice", {})
-            emotion = shot.get("emotion", "neutral")
-            language = shot.get("language", "zh")
-            tts.synthesize(dialogue, str(audio_path), voice_config=voice_config,
-                           emotion=emotion, language=language)
-            logger.info(f"  ✅ TTS 完成")
-        except Exception as e:
-            logger.warning(f"  ⚠ TTS 失败: {e}")
+        if not force and audio_path.exists():
+            logger.info(f"  ⏭ TTS 跳过（音频已存在）")
+        else:
+            try:
+                tts = container.get("tts")
+                char = sm.get_character(char_ids[0]) if char_ids else {}
+                voice_config = char.get("voice", {})
+                emotion = shot.get("emotion", "neutral")
+                language = shot.get("language", "zh")
+                tts.synthesize(dialogue, str(audio_path), voice_config=voice_config,
+                               emotion=emotion, language=language)
+                logger.info(f"  ✅ TTS 完成")
+            except Exception as e:
+                logger.warning(f"  ⚠ TTS 失败: {e}")
 
     # ── 2. 首帧生成（使用 WorkflowBuilder 含 IP-Adapter）──
     frame_path = shot_out / "frame.png"
-    try:
-        from engines.workflow_builder import WorkflowBuilder
-        from engines.multi_char import MultiCharacterHandler
-
-        # 获取 LLM 后端用于翻译（可选）
-        llm = None
+    if not force and frame_path.exists():
+        logger.info(f"  ⏭ 首帧跳过（frame.png 已存在）")
+    else:
         try:
-            if cfg.get("llm", {}).get("enabled"):
-                llm = container.get("llm")
-        except Exception:
-            pass
+            from engines.workflow_builder import WorkflowBuilder
+            from engines.multi_char import MultiCharacterHandler
 
-        char_descs = []
-        for cid in char_ids:
-            char = sm.get_character(cid)
-            if char:
-                desc = translate_to_english(char.get("appearance", ""), llm=llm)
-                char_descs.append(desc)
+            llm = None
+            try:
+                if cfg.get("llm", {}).get("enabled"):
+                    llm = container.get("llm")
+            except Exception:
+                pass
 
-        scene_id = shot.get("scene", "")
-        scene = sm.get_scene(scene_id)
-        scene_desc = translate_to_english(scene.get("description", ""), llm=llm) if scene else ""
+            char_descs = []
+            for cid in char_ids:
+                char = sm.get_character(cid)
+                if char:
+                    desc = translate_to_english(char.get("appearance", ""), llm=llm)
+                    char_descs.append(desc)
 
-        # 多角色 prompt
-        multi_char_prompt = ""
-        if len(char_ids) > 1:
-            mch = MultiCharacterHandler()
-            chars_data = [sm.get_character(cid) for cid in char_ids]
-            multi_char_prompt = mch.generate_multi_char_prompt([c for c in chars_data if c])
+            scene_id = shot.get("scene", "")
+            scene = sm.get_scene(scene_id)
+            scene_desc = translate_to_english(scene.get("description", ""), llm=llm) if scene else ""
 
-        models = cfg.get("models", {})
-        wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=container.get("image"))
-        wb.load_workflows()
-        prompt, wf = wb.build_first_frame(
-            shot, character_desc=", ".join(char_descs),
-            scene_desc=scene_desc, multi_char_prompt=multi_char_prompt)
+            multi_char_prompt = ""
+            if len(char_ids) > 1:
+                mch = MultiCharacterHandler()
+                chars_data = [sm.get_character(cid) for cid in char_ids]
+                multi_char_prompt = mch.generate_multi_char_prompt([c for c in chars_data if c])
 
-        if wf:
-            comfyui = container.get("image")
+            models = cfg.get("models", {})
+            wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=container.get("image"))
+            wb.load_workflows()
+            prompt, wf = wb.build_first_frame(
+                shot, character_desc=", ".join(char_descs),
+                scene_desc=scene_desc, multi_char_prompt=multi_char_prompt)
 
-            # ── LoRA 资源检查 ──
-            from engines.workflow import find_lora_nodes
-            from infra.asset_tracker import AssetTracker
-            from urllib.parse import urlparse
+            if wf:
+                comfyui = container.get("image")
 
-            tracker = AssetTracker(cfg.project_dir)
-            image_server_url = comfyui.url
-            lora_nodes = find_lora_nodes(wf)
-            for node_id, lora_name in lora_nodes:
-                if tracker.is_lora_tracked(image_server_url, lora_name):
-                    continue
-                parsed = urlparse(image_server_url)
-                is_local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
-                found = False
-                if is_local:
-                    for d in [Path.home() / "ComfyUI" / "models" / "loras",
-                              Path("/opt/ComfyUI/models/loras")]:
-                        if (d / lora_name).exists():
-                            tracker.mark_lora_tracked(image_server_url, lora_name)
-                            found = True
-                            break
-                if not found:
-                    logger.warning(
-                        f"  ⚠ LoRA '{lora_name}' 未确认存在于服务器 {image_server_url}")
+                from engines.workflow import find_lora_nodes
+                from infra.asset_tracker import AssetTracker
+                from urllib.parse import urlparse
 
-            # 上传参考图到 ComfyUI（IP-Adapter 需要）
-            for node_id, file_path in wb.build_upload_map(shot, wf).items():
-                if Path(file_path).exists():
-                    try:
-                        comfyui.upload_image(file_path)
-                        if node_id in wf and wf[node_id].get("class_type") in ("LoadImage", "LoadImageFromPath", "ImageLoad"):
-                            wf[node_id]["inputs"]["image"] = Path(file_path).name
-                    except Exception as e:
-                        logger.warning(f"  ⚠ 参考图上传失败 [{node_id}]: {e}")
-            files = comfyui.generate(wf, str(shot_out))
-            if files:
-                os.replace(files[0], frame_path)
-                logger.info(f"  ✅ 首帧完成")
-    except Exception as e:
-        logger.warning(f"  ⚠ 首帧失败: {e}")
+                tracker = AssetTracker(cfg.project_dir)
+                image_server_url = comfyui.url
+                lora_nodes = find_lora_nodes(wf)
+                for node_id, lora_name in lora_nodes:
+                    if tracker.is_lora_tracked(image_server_url, lora_name):
+                        continue
+                    parsed = urlparse(image_server_url)
+                    is_local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
+                    found = False
+                    if is_local:
+                        for d in [Path.home() / "ComfyUI" / "models" / "loras",
+                                  Path("/opt/ComfyUI/models/loras")]:
+                            if (d / lora_name).exists():
+                                tracker.mark_lora_tracked(image_server_url, lora_name)
+                                found = True
+                                break
+                    if not found:
+                        logger.warning(
+                            f"  ⚠ LoRA '{lora_name}' 未确认存在于服务器 {image_server_url}")
+
+                for node_id, file_path in wb.build_upload_map(shot, wf).items():
+                    if Path(file_path).exists():
+                        try:
+                            comfyui.upload_image(file_path)
+                            if node_id in wf and wf[node_id].get("class_type") in ("LoadImage", "LoadImageFromPath", "ImageLoad"):
+                                wf[node_id]["inputs"]["image"] = Path(file_path).name
+                        except Exception as e:
+                            logger.warning(f"  ⚠ 参考图上传失败 [{node_id}]: {e}")
+                files = comfyui.generate(wf, str(shot_out))
+                if files:
+                    os.replace(files[0], frame_path)
+                    logger.info(f"  ✅ 首帧完成")
+        except Exception as e:
+            logger.warning(f"  ⚠ 首帧失败: {e}")
 
     # ── 3. 视频生成 ──
     video_path = shot_out / "video.mp4"
-    if frame_path.exists():
+    if not force and video_path.exists():
+        logger.info(f"  ⏭ 视频跳过（video.mp4 已存在）")
+    elif frame_path.exists():
         try:
             from engines.workflow_builder import WorkflowBuilder
             from engines.workflow import find_load_image_nodes
@@ -260,10 +264,12 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path):
             logger.warning(f"  ⚠ 视频失败: {e}")
 
     # ── 4. 口型同步 ──
-    if video_path.exists() and audio_path.exists():
+    synced_path = shot_out / "synced.mp4"
+    if not force and synced_path.exists():
+        logger.info(f"  ⏭ 口型同步跳过（synced.mp4 已存在）")
+    elif video_path.exists() and audio_path.exists():
         try:
             lipsync = container.get("lipsync")
-            synced_path = shot_out / "synced.mp4"
             lipsync.sync(str(video_path), str(audio_path), str(synced_path))
             logger.info(f"  ✅ 口型同步完成")
         except Exception as e:

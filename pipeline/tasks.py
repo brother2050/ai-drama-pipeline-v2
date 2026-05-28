@@ -236,7 +236,7 @@ def _unique_hash_id(prefix: str, name: str, existing: dict) -> str:
 #  核心逻辑函数（可被 preview.py 等模块复用）
 # ══════════════════════════════════════════════════════════
 
-def tts_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path) -> dict:
+def tts_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, force: bool = False) -> dict:
     """TTS 核心逻辑 — 合成台词为音频
 
     Args:
@@ -245,6 +245,7 @@ def tts_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path) -> dict:
         cfg: Config 对象
         cont: DI 容器
         out_dir: 输出目录
+        force: True 时覆盖已有文件，False 时跳过
 
     Returns:
         {"status": "done"/"skipped"/"error", ...}
@@ -255,6 +256,10 @@ def tts_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path) -> dict:
 
     out_dir.mkdir(parents=True, exist_ok=True)
     audio_path = str(out_dir / "audio.wav")
+
+    # 已有文件且非强制模式 → 跳过
+    if not force and Path(audio_path).exists():
+        return _skip(shot_id, "tts", "音频已存在")
 
     char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
     from engines.shot_manager import ShotManager
@@ -275,7 +280,7 @@ def tts_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path) -> dict:
     return _done(shot_id, "tts", audio_path)
 
 
-def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path) -> dict:
+def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, force: bool = False) -> dict:
     """首帧生成核心逻辑 — ComfyUI 工作流构建 + 执行
 
     Args:
@@ -284,11 +289,17 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path) -> dict
         cfg: Config 对象
         cont: DI 容器
         out_dir: 输出目录
+        force: True 时覆盖已有文件，False 时跳过
 
     Returns:
         {"status": "done"/"error", ...}
     """
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # 已有文件且非强制模式 → 跳过
+    frame_path = out_dir / "frame.png"
+    if not force and frame_path.exists():
+        return _skip(shot_id, "first_frame", "首帧已存在")
 
     from engines.shot_manager import ShotManager
     from engines.workflow_builder import WorkflowBuilder
@@ -386,7 +397,7 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path) -> dict
     return _done(shot_id, "first_frame", frame_path, prompt=prompt.get("positive", ""))
 
 
-def video_core(shot_id: str, cfg, cont, out_dir: Path) -> dict:
+def video_core(shot_id: str, cfg, cont, out_dir: Path, *, force: bool = False) -> dict:
     """视频生成核心逻辑 — 从首帧生成视频
 
     Args:
@@ -394,6 +405,7 @@ def video_core(shot_id: str, cfg, cont, out_dir: Path) -> dict:
         cfg: Config 对象
         cont: DI 容器
         out_dir: 输出目录
+        force: True 时覆盖已有文件，False 时跳过
 
     Returns:
         {"status": "done"/"skipped"/"error", ...}
@@ -401,6 +413,11 @@ def video_core(shot_id: str, cfg, cont, out_dir: Path) -> dict:
     frame_path = out_dir / "frame.png"
     if not frame_path.exists():
         return _skip(shot_id, "video", "首帧不存在，请先执行 Step 2")
+
+    # 已有文件且非强制模式 → 跳过
+    video_path = out_dir / "video.mp4"
+    if not force and video_path.exists():
+        return _skip(shot_id, "video", "视频已存在")
 
     from engines.workflow_builder import WorkflowBuilder
     from engines.workflow import find_load_image_nodes
@@ -482,13 +499,14 @@ def video_core(shot_id: str, cfg, cont, out_dir: Path) -> dict:
     return _done(shot_id, "video", video_path)
 
 
-def lipsync_core(shot_id: str, cont, out_dir: Path) -> dict:
+def lipsync_core(shot_id: str, cont, out_dir: Path, *, force: bool = False) -> dict:
     """口型同步核心逻辑 — 视频 + 音频 → 口型同步视频
 
     Args:
         shot_id: 镜头 ID
         cont: DI 容器
         out_dir: 输出目录
+        force: True 时覆盖已有文件，False 时跳过
 
     Returns:
         {"status": "done"/"skipped"/"error", ...}
@@ -498,6 +516,11 @@ def lipsync_core(shot_id: str, cont, out_dir: Path) -> dict:
         return _skip(shot_id, "lipsync", "视频不存在，请先执行 Step 3")
     if not audio_path.exists():
         return _skip(shot_id, "lipsync", "音频不存在，请先执行 Step 1")
+
+    # 已有文件且非强制模式 → 跳过
+    synced_path = out_dir / "synced.mp4"
+    if not force and synced_path.exists():
+        return _skip(shot_id, "lipsync", "口型同步视频已存在")
 
     synced_path = str(out_dir / "synced.mp4")
     try:
@@ -509,43 +532,43 @@ def lipsync_core(shot_id: str, cont, out_dir: Path) -> dict:
 
 # ── Celery 任务包装（_prepare 防重复 + 核心逻辑）──
 
-def _run_tts(config_path: str, episode: int, shot_id: str) -> dict:
+def _run_tts(config_path: str, episode: int, shot_id: str, *, force: bool = False) -> dict:
     cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "tts", "tts")
     if err:
         return err
-    return tts_core(shot_id, shot, cfg, cont, _shot_dir(config_path, episode, shot_id))
+    return tts_core(shot_id, shot, cfg, cont, _shot_dir(config_path, episode, shot_id), force=force)
 
 
-def _run_first_frame(config_path: str, episode: int, shot_id: str) -> dict:
+def _run_first_frame(config_path: str, episode: int, shot_id: str, *, force: bool = False) -> dict:
     cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "first_frame", "comfyui")
     if err:
         return err
-    return first_frame_core(shot_id, shot, cfg, cont, _shot_dir(config_path, episode, shot_id))
+    return first_frame_core(shot_id, shot, cfg, cont, _shot_dir(config_path, episode, shot_id), force=force)
 
 
-def _run_video(config_path: str, episode: int, shot_id: str) -> dict:
+def _run_video(config_path: str, episode: int, shot_id: str, *, force: bool = False) -> dict:
     cfg, cont, _, err = _prepare(config_path, episode, shot_id, "video", "comfyui", need_shot=False)
     if err:
         return err
-    return video_core(shot_id, cfg, cont, _shot_dir(config_path, episode, shot_id))
+    return video_core(shot_id, cfg, cont, _shot_dir(config_path, episode, shot_id), force=force)
 
 
-def _run_lipsync(config_path: str, episode: int, shot_id: str) -> dict:
+def _run_lipsync(config_path: str, episode: int, shot_id: str, *, force: bool = False) -> dict:
     cfg, cont, _, err = _prepare(config_path, episode, shot_id, "lipsync", "lipsync", need_shot=False)
     if err:
         return err
-    return lipsync_core(shot_id, cont, _shot_dir(config_path, episode, shot_id))
+    return lipsync_core(shot_id, cont, _shot_dir(config_path, episode, shot_id), force=force)
 
 
 # ══════════════════════════════════════════════════════════
 #  Celery 任务包装
 # ══════════════════════════════════════════════════════════
 
-def _step_task(self, step: str, fn, config_path: str, episode: int, shot_id: str):
+def _step_task(self, step: str, fn, config_path: str, episode: int, shot_id: str, *, force: bool = False):
     """通用 Celery 步骤任务包装"""
     self.update_state(state="PROGRESS", meta={"step": step, "shot_id": shot_id, "progress": 10, "message": f"[{shot_id}] {step} 开始..."})
     try:
-        result = fn(config_path, episode, shot_id)
+        result = fn(config_path, episode, shot_id, force=force)
     except Exception as e:
         logger.error(f"[{shot_id}] {step} 异常: {e}")
         return {"shot_id": shot_id, "step": step, "status": "error", "reason": str(e)}
@@ -557,16 +580,16 @@ def _step_task(self, step: str, fn, config_path: str, episode: int, shot_id: str
 
 
 @app.task(bind=True, name="pipeline.step.tts", soft_time_limit=120)
-def step_tts(self, config_path, episode, shot_id): return _step_task(self, "tts", _run_tts, config_path, episode, shot_id)
+def step_tts(self, config_path, episode, shot_id, force=False): return _step_task(self, "tts", _run_tts, config_path, episode, shot_id, force=force)
 
 @app.task(bind=True, name="pipeline.step.first_frame", soft_time_limit=300)
-def step_first_frame(self, config_path, episode, shot_id): return _step_task(self, "first_frame", _run_first_frame, config_path, episode, shot_id)
+def step_first_frame(self, config_path, episode, shot_id, force=False): return _step_task(self, "first_frame", _run_first_frame, config_path, episode, shot_id, force=force)
 
 @app.task(bind=True, name="pipeline.step.video", soft_time_limit=600)
-def step_video(self, config_path, episode, shot_id): return _step_task(self, "video", _run_video, config_path, episode, shot_id)
+def step_video(self, config_path, episode, shot_id, force=False): return _step_task(self, "video", _run_video, config_path, episode, shot_id, force=force)
 
 @app.task(bind=True, name="pipeline.step.lipsync", soft_time_limit=300)
-def step_lipsync(self, config_path, episode, shot_id): return _step_task(self, "lipsync", _run_lipsync, config_path, episode, shot_id)
+def step_lipsync(self, config_path, episode, shot_id, force=False): return _step_task(self, "lipsync", _run_lipsync, config_path, episode, shot_id, force=force)
 
 
 # ══════════════════════════════════════════════════════════
@@ -574,7 +597,7 @@ def step_lipsync(self, config_path, episode, shot_id): return _step_task(self, "
 # ══════════════════════════════════════════════════════════
 
 @app.task(bind=True, name="pipeline.shot", soft_time_limit=1800)
-def shot_task(self, config_path: str, episode: int, shot_data: dict) -> dict:
+def shot_task(self, config_path: str, episode: int, shot_data: dict, force: bool = False) -> dict:
     shot_id = shot_data.get("shot_id", "")
     if not shot_id:
         return {"shot_id": "", "status": "error", "reason": "镜头数据缺少 shot_id"}
@@ -584,7 +607,7 @@ def shot_task(self, config_path: str, episode: int, shot_data: dict) -> dict:
         self.update_state(state="PROGRESS", meta={"step": name, "shot_id": shot_id, "progress": int((i + 1) / len(steps) * 100), "message": f"[{shot_id}] {name} ({i+1}/{len(steps)})"})
         try:
             t0 = time.time()
-            result = fn(config_path, episode, shot_id)
+            result = fn(config_path, episode, shot_id, force=force)
             result["elapsed"] = round(time.time() - t0, 2)
             results[name] = result
             _db_record_step(config_path, episode, shot_id, name, result)
@@ -606,7 +629,7 @@ def shot_task(self, config_path: str, episode: int, shot_data: dict) -> dict:
 #  集级任务
 # ══════════════════════════════════════════════════════════
 
-def _iterate_shots(self, config_path: str, episode: int, shots: list[dict], progress_base: int = 0, progress_range: int = 100):
+def _iterate_shots(self, config_path: str, episode: int, shots: list[dict], progress_base: int = 0, progress_range: int = 100, *, force: bool = False):
     """逐镜头执行 shot_task，返回结果列表"""
     total = len(shots)
     results = []
@@ -616,14 +639,14 @@ def _iterate_shots(self, config_path: str, episode: int, shots: list[dict], prog
             "progress": int(progress_base + i / total * progress_range), "current": i + 1, "total": total,
             "message": f"[{i+1}/{total}] 镜头 {shot_id}"})
         try:
-            results.append(shot_task.apply(args=[config_path, episode, shot]).get(timeout=1800))
+            results.append(shot_task.apply(args=[config_path, episode, shot], kwargs={"force": force}).get(timeout=1800))
         except Exception as e:
             results.append({"shot_id": shot_id, "error": str(e)})
     return results
 
 
 @app.task(bind=True, name="pipeline.preview", soft_time_limit=1800)
-def preview_task(self, config_path: str, episode: int, preset: str = "draft") -> dict:
+def preview_task(self, config_path: str, episode: int, preset: str = "draft", force: bool = False) -> dict:
     shots = _load_episode_shots(config_path, episode)
     if not shots:
         return {"status": "empty", "message": f"第{episode}集没有镜头"}
@@ -631,7 +654,7 @@ def preview_task(self, config_path: str, episode: int, preset: str = "draft") ->
     effective_cfg = _apply_preset(config_path, preset)
     try:
         return {"status": "done", "episode": episode, "preset": preset,
-                "shots": _iterate_shots(self, effective_cfg, episode, shots)}
+                "shots": _iterate_shots(self, effective_cfg, episode, shots, force=force)}
     finally:
         # 清理临时配置文件
         if effective_cfg != config_path:
@@ -670,7 +693,7 @@ def _apply_preset(config_path: str, preset: str) -> str:
 
 
 @app.task(bind=True, name="pipeline.produce", soft_time_limit=7200)
-def produce_task(self, config_path: str, episode: int, vertical: bool = False) -> dict:
+def produce_task(self, config_path: str, episode: int, vertical: bool = False, force: bool = False) -> dict:
     shots = _load_episode_shots(config_path, episode)
     if not shots:
         return {"status": "empty", "message": f"第{episode}集没有镜头"}
@@ -679,7 +702,7 @@ def produce_task(self, config_path: str, episode: int, vertical: bool = False) -
         _run_subtitle(config_path, episode)
     except Exception as e:
         logger.warning(f"字幕失败: {e}")
-    results = _iterate_shots(self, config_path, episode, shots, progress_base=5, progress_range=80)
+    results = _iterate_shots(self, config_path, episode, shots, progress_base=5, progress_range=80, force=force)
     self.update_state(state="PROGRESS", meta={"step": "post", "progress": 90, "message": "后期合成..."})
     try:
         _run_post(config_path, episode, vertical)

@@ -19,6 +19,7 @@ __all__ = [
 class StepRequest(BaseModel):
     episode: int = Field(..., ge=1, description="集数")
     shot_id: str = Field(..., min_length=1, max_length=20, description="镜头 ID")
+    force: bool = Field(False, description="强制覆盖已有文件")
 
     @field_validator("shot_id")
     @classmethod
@@ -64,6 +65,7 @@ class PipelineRequest(BaseModel):
     command: str = Field("produce", pattern=r"^(preview|produce|post)$")
     level: str = Field("draft", pattern=r"^(draft|standard|high)$")
     vertical: bool = False
+    force: bool = Field(False, description="强制覆盖已有文件")
 
 
 # ── 角色 ──

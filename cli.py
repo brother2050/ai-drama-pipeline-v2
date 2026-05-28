@@ -237,24 +237,26 @@ def status():
 @click.argument("episode", type=int, default=1)
 @click.argument("level", type=click.Choice(["draft", "standard", "high"]), default="draft")
 @click.option("-c", "--config", "config_path", default=None)
-def preview(episode, level, config_path):
+@click.option("--force", is_flag=True, help="强制覆盖已有文件")
+def preview(episode, level, config_path, force):
     """快速预览（通过 Celery 异步执行）"""
     _ensure_deps()
     cfg = _resolve_config(config_path)
     console.print(f"\n[bold cyan]🎬 预览 第{episode}集 ({level})[/bold cyan]\n")
-    if not _run_via_celery("pipeline.preview", cfg, episode, level):
+    if not _run_via_celery("pipeline.preview", cfg, episode, level, force=force):
         sys.exit(1)
 
 
 @cli.command()
 @click.argument("episode", type=int)
 @click.option("-c", "--config", "config_path", default=None)
-def produce(episode, config_path):
+@click.option("--force", is_flag=True, help="强制覆盖已有文件")
+def produce(episode, config_path, force):
     """完整生产（通过 Celery 异步执行）"""
     _ensure_deps()
     cfg = _resolve_config(config_path)
     console.print(f"\n[bold cyan]🎬 生产 第{episode}集[/bold cyan]\n")
-    if not _run_via_celery("pipeline.produce", cfg, episode):
+    if not _run_via_celery("pipeline.produce", cfg, episode, force=force):
         sys.exit(1)
 
 
@@ -275,7 +277,8 @@ def post(episode, vertical, config_path):
 @click.argument("episode", type=int, default=1)
 @click.option("--vertical", is_flag=True, help="横转竖")
 @click.option("-c", "--config", "config_path", default=None)
-def run_all(episode, vertical, config_path):
+@click.option("--force", is_flag=True, help="强制覆盖已有文件")
+def run_all(episode, vertical, config_path, force):
     """一键全流程（preview → produce → post）"""
     _ensure_deps()
     cfg = _resolve_config(config_path)
@@ -289,9 +292,9 @@ def run_all(episode, vertical, config_path):
         if task_name == "pipeline.post":
             ok = _run_via_celery(task_name, cfg, episode, vertical=vertical)
         elif task_name == "pipeline.produce":
-            ok = _run_via_celery(task_name, cfg, episode)
+            ok = _run_via_celery(task_name, cfg, episode, force=force)
         else:
-            ok = _run_via_celery(task_name, cfg, episode)
+            ok = _run_via_celery(task_name, cfg, episode, force=force)
         if not ok:
             console.print(f"\n[red]❌ 流程在「{label}」步骤失败，已终止[/red]")
             sys.exit(1)

@@ -18,7 +18,7 @@ from infra.config import Config
 logger = logging.getLogger(__name__)
 
 
-def run_preview(config_path: str, episode: int, level: str = "draft"):
+def run_preview(config_path: str, episode: int, level: str = "draft", force: bool = False):
     """快速预览"""
     cfg = Config(config_path)
     logger.info(f"预览 第{episode}集 ({level})")
@@ -76,7 +76,7 @@ def run_preview(config_path: str, episode: int, level: str = "draft"):
         shot_out.mkdir(parents=True, exist_ok=True)
 
         try:
-            _process_shot(shot, cont, cfg, shot_out, preset)
+            _process_shot(shot, cont, cfg, shot_out, preset, force=force)
         except Exception as e:
             logger.error(f"  ❌ 镜头 {sid} 失败: {e}")
             continue
@@ -84,7 +84,7 @@ def run_preview(config_path: str, episode: int, level: str = "draft"):
     logger.info("预览完成")
 
 
-def _process_shot(shot: dict, container, cfg, shot_out: Path, preset: dict):
+def _process_shot(shot: dict, container, cfg, shot_out: Path, preset: dict, *, force: bool = False):
     """处理单个镜头（复用 pipeline.tasks 核心逻辑）"""
     from pipeline.tasks import tts_core, first_frame_core, video_core, lipsync_core
 
@@ -100,28 +100,28 @@ def _process_shot(shot: dict, container, cfg, shot_out: Path, preset: dict):
 
     try:
         # 1) TTS 语音合成
-        tts_result = tts_core(shot_id, shot, cfg, container, shot_out)
+        tts_result = tts_core(shot_id, shot, cfg, container, shot_out, force=force)
         if tts_result.get("status") == "done":
             logger.info(f"    ✅ TTS: audio.wav")
         elif tts_result.get("status") == "error":
             logger.warning(f"    ⚠ TTS 失败: {tts_result.get('reason', '')}")
 
         # 2) 首帧生成
-        ff_result = first_frame_core(shot_id, shot, cfg, container, shot_out)
+        ff_result = first_frame_core(shot_id, shot, cfg, container, shot_out, force=force)
         if ff_result.get("status") == "done":
             logger.info(f"    ✅ 首帧: frame.png")
         elif ff_result.get("status") == "error":
             logger.warning(f"    ⚠ 首帧失败: {ff_result.get('reason', '')}")
 
         # 3) 视频生成
-        vid_result = video_core(shot_id, cfg, container, shot_out)
+        vid_result = video_core(shot_id, cfg, container, shot_out, force=force)
         if vid_result.get("status") == "done":
             logger.info(f"    ✅ 视频: video.mp4")
         elif vid_result.get("status") == "error":
             logger.warning(f"    ⚠ 视频失败: {vid_result.get('reason', '')}")
 
         # 4) 口型同步
-        ls_result = lipsync_core(shot_id, container, shot_out)
+        ls_result = lipsync_core(shot_id, container, shot_out, force=force)
         if ls_result.get("status") == "done":
             logger.info(f"    ✅ 口型同步: synced.mp4")
         elif ls_result.get("status") == "error":

@@ -421,28 +421,28 @@ def _test_llm(cfg: dict, result: dict) -> dict:
 def run_step_tts(req: StepRequest):
     """Step 1: TTS"""
     from pipeline.tasks import step_tts
-    return _submit_task(step_tts, _cfg_path(), req.episode, req.shot_id)
+    return _submit_task(step_tts, _cfg_path(), req.episode, req.shot_id, req.force)
 
 
 @router.post("/steps/first-frame")
 def run_step_first_frame(req: StepRequest):
     """Step 2: 首帧"""
     from pipeline.tasks import step_first_frame
-    return _submit_task(step_first_frame, _cfg_path(), req.episode, req.shot_id)
+    return _submit_task(step_first_frame, _cfg_path(), req.episode, req.shot_id, req.force)
 
 
 @router.post("/steps/video")
 def run_step_video(req: StepRequest):
     """Step 3: 视频"""
     from pipeline.tasks import step_video
-    return _submit_task(step_video, _cfg_path(), req.episode, req.shot_id)
+    return _submit_task(step_video, _cfg_path(), req.episode, req.shot_id, req.force)
 
 
 @router.post("/steps/lipsync")
 def run_step_lipsync(req: StepRequest):
     """Step 4: 口型同步"""
     from pipeline.tasks import step_lipsync
-    return _submit_task(step_lipsync, _cfg_path(), req.episode, req.shot_id)
+    return _submit_task(step_lipsync, _cfg_path(), req.episode, req.shot_id, req.force)
 
 
 @router.post("/steps/shot")
@@ -452,7 +452,7 @@ def run_step_shot(req: StepRequest):
     shot = _find_shot_for_api(req.episode, req.shot_id)
     if not shot:
         raise HTTPException(404, f"镜头 {req.shot_id} 不存在")
-    return _submit_task(shot_task, _cfg_path(), req.episode, shot)
+    return _submit_task(shot_task, _cfg_path(), req.episode, shot, req.force)
 
 
 def _find_shot_for_api(episode: int, shot_id: str) -> dict | None:
@@ -1123,8 +1123,8 @@ def run_pipeline(req: PipelineRequest):
     from pipeline.tasks import preview_task, produce_task, post_task
     cfg = _cfg_path()
     dispatch = {
-        "preview": lambda: _submit_task(preview_task, cfg, req.episode, req.level),
-        "produce": lambda: _submit_task(produce_task, cfg, req.episode, vertical=req.vertical),
+        "preview": lambda: _submit_task(preview_task, cfg, req.episode, req.level, req.force),
+        "produce": lambda: _submit_task(produce_task, cfg, req.episode, vertical=req.vertical, force=req.force),
         "post":    lambda: _submit_task(post_task, cfg, req.episode, req.vertical),
     }
     handler = dispatch.get(req.command)
