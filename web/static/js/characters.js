@@ -1,0 +1,596 @@
+// MODULE: characters — 角色管理
+// ══════════════════════════════════════════════════════════
+
+/** 通用实体列表渲染 */
+function _loadEntityPage(type, { pageId, icon, titleKey, emptyHintKey, emptyDescKey, editFn, newFn, aiFn, card, extraButtons }) {
+  const el = document.getElementById(pageId);
+  const addLabel = t('btn.add');
+  cachedFetch(type, () => api(`/${type}`)).then(d => {
+    const items = d[type] || [];
+    const grid = items.length
+      ? `<div class="entity-grid">${items.map(it => card(it)).join('')}</div>`
+      : `<div class="empty-state"><div class="empty-state-icon">${icon}</div><h3>${t(emptyHintKey)}</h3><p>${t(emptyDescKey)}</p><button class="btn btn-success" onclick="${newFn}()">+ ${addLabel}</button></div>`;
+    const extraBtns = extraButtons ? extraButtons(items) : '';
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${icon} ${t(titleKey)}</h2><div style="display:flex;gap:0.5rem;flex-wrap:wrap">${extraBtns}<button class="btn btn-outline btn-ai" onclick="${aiFn}()">🤖 AI 生成</button><button class="btn btn-success" onclick="${newFn}()">+ ${addLabel}</button></div></div>${grid}</div>`;
+  }).catch(e => { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; });
+}
+
+/** 通用编辑面板 */
+function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, imgLabel, confirmMsg, imgKey = 'reference_images', buildExtra, reload, extraHtml, deleteFn }) {
+  const p = imgPrefix;
+  api(`/${type}`).then(d => {
+    const item = (d[type] || []).find(x => x.id === id);
+    if (!item) { toast(t(notFoundKey), 'error'); return; }
+    const existingImg = (item[imgKey]?.length)
+      ? `<div class="upload-preview"><img src="${esc(item[imgKey][0])}" id="${p}-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="${p}RemoveImg('${id}')">✕</button></div>`
+      : `<div class="upload-area" id="${p}-upload-area" onclick="document.getElementById('${p}-file').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="${p}HandleDrop(event,'${id}')"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`;
+    const body = `<div class="edit-field"><label>${imgLabel}</label><div id="${p}-img-wrap">${existingImg}</div><input type="file" id="${p}-file" accept="image/*" style="display:none" onchange="${p}UploadImg('${id}')"></div>` +
+      fields.map(f => {
+        const v = f.getValue ? f.getValue(item) : (item[f.key] || '');
+        if (f.type === 'select') return `<div class="edit-field"><label>${f.label}</label><select id="${p}-${f.key}">${f.options.map(o => `<option value="${o.value}" ${v===o.value?'selected':''}>${o.label}</option>`).join('')}</select></div>`;
+        if (f.type === 'textarea') return `<div class="edit-field"><label>${f.label}</label><textarea id="${p}-${f.key}" rows="3">${esc(v)}</textarea></div>`;
+        return `<div class="edit-field"><label>${f.label}</label><input id="${p}-${f.key}" value="${esc(v)}"></div>`;
+      }).join('') + (typeof extraHtml === 'function' ? extraHtml(item) : (extraHtml || ''));
+    window[`_${p}ImgRemoved`] = false;
+    const delFn = deleteFn ? `delete_${p}Edit('${id}')` : undefined;
+    _showOverlay(`edit-${type.slice(0,-1)}-overlay`, `${t(titleKey)} ${id}`, body, `save_${p}Edit('${id}')`, undefined, delFn);
+  }).catch(e => toast(e.message, 'error'));
+  window[`save_${p}Edit`] = function(eid) {
+    const extra = window[`_${p}ImgRemoved`] ? { [imgKey]: [] } : {};
+    window[`_${p}ImgRemoved`] = false;
+    const data = buildExtra ? { ...buildExtra(), ...extra } : { ...extra };
+    fields.forEach(f => { if (!f.getValue) data[f.key] = $val(`${p}-${f.key}`); });
+    // 保留已有 reference_images（如果本次没有显式清除或覆盖）
+    if (!(imgKey in data)) {
+      // 优先使用 AI 生成的图片 URL
+      const genUrl = window[`_${p}GeneratedPortraitUrl`];
+      if (genUrl) {
+        data[imgKey] = [genUrl];
+        window[`_${p}GeneratedPortraitUrl`] = null;
+      } else {
+        try {
+          const items = _cache.get(type)?.data?.[type] || [];
+          const existing = items.find(x => x.id === eid);
+          if (existing && existing[imgKey]?.length) data[imgKey] = existing[imgKey];
+        } catch {}
+      }
+    }
+    _crudSave(type, eid, () => data, `edit-${type.slice(0,-1)}-overlay`, reload);
+  };
+  if (deleteFn) {
+    window[`delete_${p}Edit`] = async function(eid) {
+      document.getElementById(`edit-${type.slice(0,-1)}-overlay`)?.remove();
+      await deleteFn(eid);
+    };
+  }
+  window[`${p}UploadImg`] = async function(eid) { await _uploadImg(type, eid); };
+  window[`${p}HandleDrop`] = function(e, eid) { _handleImgDrop(e, type, eid); };
+  window[`${p}RemoveImg`] = async function(eid) {
+    if (!await modalConfirm(confirmMsg)) return;
+    window[`_${p}ImgRemoved`] = true;
+    _html(document.getElementById(`${p}-img-wrap`), `<div class="upload-area" onclick="document.getElementById('${p}-file').click()"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`);
+  };
+}
+
+async function loadCharacters() {
+  _loadEntityPage('characters', {
+    pageId: 'page-characters', icon: '👤', titleKey: 'char.title',
+    emptyHintKey: 'char.empty_hint', emptyDescKey: 'char.empty_desc',
+    editFn: 'editChar', newFn: 'newChar', aiFn: 'showAIGenCharacter',
+    extraButtons: (items) => items.length ? `<button class="btn btn-outline btn-sm" onclick="batchTrainLora()" id="batch-train-btn">🏋 批量训练 LoRA</button>` : '',
+    card: c => {
+      const avatar = c.appearance ? esc(c.appearance.substring(0, 2)) : '👤';
+      const thumb = (c.reference_images?.length) ? `<img src="${esc(c.reference_images[0])}" loading="lazy">` : avatar;
+      return `<div class="entity-card" onclick="editChar('${esc(c.id)}')"><div class="entity-card-thumb">${thumb}</div><div class="entity-card-body"><h3>${esc(c.name || c.id)}</h3><p>${esc(c.appearance || '')}</p></div><div class="entity-card-footer"><span class="entity-card-id">${esc(c.id)}</span><span>${c.gender === 'male' ? '♂' : c.gender === 'female' ? '♀' : ''} <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteChar('${esc(c.id)}')" title="${t('btn.delete')}">🗑</button></span></div></div>`;
+    }
+  });
+}
+/** 通用新建面板 */
+function _newEntityPanel(type, { titleKey, fields, buildExtra, reload, extraHtml }) {
+  const p = `n${type[0]}`; // nc / ns
+  const body = `<div class="edit-field"><label>ID</label><input id="${p}-id" placeholder="a-z, 0-9, _-"></div>` +
+    fields.map(f => {
+      if (f.type === 'select') return `<div class="edit-field"><label>${f.label}</label><select id="${p}-${f.key}">${f.options.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}</select></div>`;
+      if (f.type === 'textarea') return `<div class="edit-field"><label>${f.label}</label><textarea id="${p}-${f.key}" rows="3"></textarea></div>`;
+      return `<div class="edit-field"><label>${f.label}</label><input id="${p}-${f.key}"${f.placeholder ? ` placeholder="${f.placeholder}"` : ''}></div>`;
+    }).join('') + (extraHtml || '');
+  _showOverlay(`new-${type.slice(0,-1)}-overlay`, `+ ${t(titleKey)}`, body, `save_${p}New()`);
+  window[`save_${p}New`] = async function() {
+    const id = $val(`${p}-id`);
+    if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) { toast(t('common.id_invalid'), 'error'); return; }
+    const data = buildExtra ? { id, ...buildExtra() } : { id };
+    fields.forEach(f => { if (!f.getValue) data[f.key] = $val(`${p}-${f.key}`); });
+    try {
+      await api(`/${type}`, { method: 'POST', body: data });
+      invalidateCache(type); document.getElementById(`new-${type.slice(0,-1)}-overlay`)?.remove(); toast(t('toast.created')); reload();
+    } catch (e) { toast(e.message, 'error'); }
+  };
+}
+
+/** 获取当前 TTS 后端名称（缓存） */
+async function _getTtsBackend() {
+  try {
+    const cfg = await cachedFetch('sysconfig', () => api('/system/config'));
+    return cfg.models?.tts_backend || 'mimo-voicedesign';
+  } catch { return 'mimo-voicedesign'; }
+}
+
+/** 构建 TTS 语音参数 HTML 字段 */
+function _ttsVoiceFieldsHtml(prefix, voiceData = {}) {
+  const backend = _cache.get('sysconfig')?.data?.models?.tts_backend || 'mimo-voicedesign';
+  const fields = TTS_VOICE_FIELDS[backend] || TTS_VOICE_FIELDS['mimo-voicedesign'];
+  return `<div class="edit-field" style="margin-top:.5rem"><label>⚙ ${t('char.voice_params')} <span class="dim" style="font-size:.75rem">(${backend})</span></label></div>` +
+    fields.map(f => {
+      const v = voiceData[f.key] || '';
+      const lbl = typeof f.label === 'function' ? f.label() : f.label;
+      const ph = f.placeholder ? ` placeholder="${esc(f.placeholder)}"` : '';
+      if (f.type === 'textarea') return `<div class="edit-field"><label>${lbl}</label><textarea id="${prefix}-${f.key}" rows="2"${ph}>${esc(v)}</textarea></div>`;
+      return `<div class="edit-field"><label>${lbl}</label><input id="${prefix}-${f.key}" value="${esc(v)}"${ph}></div>`;
+    }).join('');
+}
+
+/** 从表单收集 TTS voice 参数 */
+function _collectVoiceConfig(prefix) {
+  const backend = _cache.get('sysconfig')?.data?.models?.tts_backend || 'mimo-voicedesign';
+  const fields = TTS_VOICE_FIELDS[backend] || TTS_VOICE_FIELDS['mimo-voicedesign'];
+  const voice = {};
+  for (const f of fields) {
+    const val = $val(`${prefix}-${f.key}`);
+    if (val) voice[f.key] = val;
+  }
+  return Object.keys(voice).length ? voice : null;
+}
+
+function newChar() {
+  _getTtsBackend().then(() => {
+    _newEntityPanel('characters', {
+      titleKey: 'char.title', reload: loadCharacters,
+      buildExtra() { return { voice: _collectVoiceConfig('nc'), outfits: $val('nc-outfits') ? { default: { description: $val('nc-outfits'), reference_images: [] } } : null }; },
+      extraHtml: _ttsVoiceFieldsHtml('nc'),
+      fields: [
+        { key: 'name', label: t('char.name') },
+        { key: 'gender', label: t('char.gender'), type: 'select', options: [{ value: '', label: '-' }, { value: 'male', label: t('char.gender.male') }, { value: 'female', label: t('char.gender.female') }] },
+        { key: 'appearance', label: t('char.appearance'), type: 'textarea' },
+        { key: 'personality', label: t('char.personality') || '性格', type: 'textarea' },
+        { key: 'outfits', label: t('char.outfit_desc'), type: 'textarea', getValue: true },
+      ],
+    });
+  });
+}
+async function saveNewChar() { /* handled by _newEntityPanel */ }
+function deleteChar(id) { deleteCharWithRef(id); }
+
+async function generatePortrait(charId) {
+  const btn = document.getElementById('gen-portrait-btn');
+  const status = document.getElementById('gen-portrait-status');
+  const reset = _btnLoad(btn, '⏳ 生成中...');
+  _html(status, '⏳ AI 正在生成定妆照...');
+  try {
+    const { task_id } = await api(`/characters/${charId}/generate-portrait`, { method: 'POST' });
+    const result = await pollTask(task_id, info => _html(status, `⏳ ${info.message || '生成中...'} (${info.progress || 0}%)`));
+    if (result.status === 'success' && result.result?.status === 'done') {
+      const r = result.result;
+      _html(status, '✅ 生成完成');
+      toast('✅ 定妆照已生成');
+      const preview = document.getElementById('ec-img-preview');
+      if (preview && r.url) {
+        preview.src = r.url + '?t=' + Date.now();
+      } else if (r.url) {
+        const wrap = document.getElementById('ec-img-wrap');
+        if (wrap) {
+          wrap.innerHTML = `<div class="upload-preview"><img src="${r.url}?t=${Date.now()}" id="ec-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="ecRemoveImg('${charId}')">✕</button></div>`;
+        }
+      }
+      // 保存生成的 URL，确保后续保存时不会丢失
+      window._ecGeneratedPortraitUrl = r.url;
+      invalidateCache('characters');
+    } else {
+      const err = result.result?.reason || result.error || '生成失败';
+      _html(status, `❌ ${err}`);
+      toast(`❌ ${err}`, 'error');
+    }
+  } catch (e) {
+    _html(status, `❌ ${e.message}`);
+    toast(`❌ ${e.message}`, 'error');
+  }
+  reset();
+}
+
+async function generateSceneImage(sceneId) {
+  const btn = document.getElementById('gen-scene-img-btn');
+  const status = document.getElementById('gen-scene-img-status');
+  const reset = _btnLoad(btn, '⏳ 生成中...');
+  _html(status, '⏳ AI 正在生成场景图...');
+  try {
+    const { task_id } = await api(`/scenes/${sceneId}/generate-image`, { method: 'POST' });
+    const result = await pollTask(task_id, info => _html(status, `⏳ ${info.message || '生成中...'} (${info.progress || 0}%)`));
+    if (result.status === 'success' && result.result?.status === 'done') {
+      const r = result.result;
+      _html(status, '✅ 生成完成');
+      toast('✅ 场景图已生成');
+      const preview = document.getElementById('es-img-preview');
+      if (preview && r.url) {
+        preview.src = r.url + '?t=' + Date.now();
+      } else if (r.url) {
+        const wrap = document.getElementById('es-img-wrap');
+        if (wrap) {
+          wrap.innerHTML = `<div class="upload-preview"><img src="${r.url}?t=${Date.now()}" id="es-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="esRemoveImg('${sceneId}')">✕</button></div>`;
+        }
+      }
+      // 保存生成的 URL，确保后续保存时不会丢失
+      window._esGeneratedPortraitUrl = r.url;
+      invalidateCache('scenes');
+    } else {
+      const err = result.result?.reason || result.error || '生成失败';
+      _html(status, `❌ ${err}`);
+      toast(`❌ ${err}`, 'error');
+    }
+  } catch (e) {
+    _html(status, `❌ ${e.message}`);
+    toast(`❌ ${e.message}`, 'error');
+  }
+  reset();
+}
+
+/** 构建服装列表 HTML（支持多套服装 + 单独/批量生成） */
+function _outfitFieldsHtml(charId, outfits = {}) {
+  const entries = Object.entries(outfits);
+  let html = `<div class="edit-field"><label>👗 服装列表 <button class="btn btn-xs btn-ai" onclick="addOutfitField()">+ 添加</button> <button class="btn btn-xs btn-ai" onclick="generateAllOutfits('${esc(charId)}')" id="gen-all-outfits-btn">🎨 批量生成全部</button><span id="gen-all-outfits-status" class="dim" style="font-size:.8rem;margin-left:.5rem"></span></label></div>`;
+  html += `<div id="ec-outfit-list">`;
+  if (entries.length === 0) {
+    html += _outfitEntryHtml('', '', charId);
+  } else {
+    for (const [key, val] of entries) {
+      const desc = val?.description || '';
+      const imgs = val?.reference_images || [];
+      html += _outfitEntryHtml(key, desc, charId, imgs);
+    }
+  }
+  html += `</div>`;
+  return html;
+}
+
+function _outfitEntryHtml(key, desc, charId, imgs = []) {
+  const k = esc(key);
+  const d = esc(desc);
+  const imgsJson = esc(JSON.stringify(imgs));
+  const thumb = imgs.length ? `<img src="${esc(imgs[0])}" style="width:36px;height:36px;border-radius:4px;object-fit:cover;flex-shrink:0">` : '';
+  return `<div class="outfit-entry" data-imgs='${imgsJson}' style="display:flex;gap:.4rem;align-items:flex-start;margin-bottom:.5rem">` +
+    thumb +
+    `<input class="outfit-key" value="${k}" placeholder="服装名 (如 default)" style="width:120px;flex-shrink:0">` +
+    `<textarea class="outfit-desc" rows="1" placeholder="服装描述" style="flex:1;min-height:1.8rem">${d}</textarea>` +
+    `<button class="btn btn-xs btn-ai" onclick="generateOutfit('${esc(charId)}', this)" title="生成此服装参考图">🎨</button>` +
+    `<button class="btn btn-xs btn-danger" onclick="removeOutfitField(this)" title="删除">✕</button>` +
+    `</div>`;
+}
+
+function addOutfitField() {
+  const list = document.getElementById('ec-outfit-list');
+  if (!list) return;
+  list.insertAdjacentHTML('beforeend', _outfitEntryHtml('', '', _currentEditCharId || ''));
+}
+
+function removeOutfitField(btn) {
+  const entry = btn.closest('.outfit-entry');
+  if (entry) entry.remove();
+}
+
+/** 从表单收集所有服装配置（保留 reference_images） */
+function _collectOutfits() {
+  const entries = document.querySelectorAll('#ec-outfit-list .outfit-entry');
+  const outfits = {};
+  for (const entry of entries) {
+    const key = entry.querySelector('.outfit-key')?.value?.trim();
+    const desc = entry.querySelector('.outfit-desc')?.value?.trim();
+    if (!key || !desc) continue;
+    let imgs = [];
+    try { imgs = JSON.parse(entry.dataset.imgs || '[]'); } catch {}
+    outfits[key] = { description: desc, reference_images: imgs };
+  }
+  return Object.keys(outfits).length ? outfits : null;
+}
+
+/** 单个服装参考图生成（异步） */
+async function generateOutfit(charId, btnEl) {
+  const entry = btnEl.closest('.outfit-entry');
+  const key = entry?.querySelector('.outfit-key')?.value?.trim();
+  if (!key) { toast('请先填写服装名称', 'error'); return; }
+  const statusEl = document.getElementById('gen-all-outfits-status');
+  const reset = _btnLoad(btnEl, '⏳');
+  try {
+    const { task_id } = await api(`/characters/${charId}/generate-outfit?outfit_key=${encodeURIComponent(key)}`, { method: 'POST' });
+    const result = await pollTask(task_id, info => { if (statusEl) _html(statusEl, `⏳ ${key}: ${info.message || '生成中...'} (${info.progress || 0}%)`); });
+    if (result.status === 'success' && result.result?.status === 'done') {
+      toast(`✅ 服装「${key}」参考图已生成`);
+      // 更新 DOM 中的 data-imgs，确保后续保存不丢失
+      const r = result.result;
+      if (r.url && entry) {
+        try { entry.dataset.imgs = JSON.stringify([r.url]); } catch {}
+      }
+      invalidateCache('characters');
+    } else {
+      const err = result.result?.reason || result.error || '生成失败';
+      toast(`❌ ${key}: ${err}`, 'error');
+    }
+  } catch (e) { toast(`❌ ${e.message}`, 'error'); }
+  reset();
+  if (statusEl) _html(statusEl, '');
+}
+
+/** 批量生成所有服装参考图（异步） */
+async function generateAllOutfits(charId) {
+  const btn = document.getElementById('gen-all-outfits-btn');
+  const status = document.getElementById('gen-all-outfits-status');
+  const reset = _btnLoad(btn, '⏳ 批量生成中...');
+  _html(status, '⏳ 提交批量任务...');
+  try {
+    const { task_id } = await api(`/characters/${charId}/generate-outfits`, { method: 'POST' });
+    const result = await pollTask(task_id, info => _html(status, `⏳ ${info.message || '生成中...'} (${info.progress || 0}%)`));
+    if (result.status === 'success' && result.result?.status === 'done') {
+      const r = result.result;
+      _html(status, `✅ 完成 (${r.success || 0}/${r.total || 0})`);
+      toast(`✅ 服装批量生成完成: ${r.success || 0}/${r.total || 0}`);
+      // 更新 DOM 中各服装的 data-imgs
+      if (r.generated) {
+        for (const g of r.generated) {
+          if (g.url && g.outfit) {
+            const entries = document.querySelectorAll('#ec-outfit-list .outfit-entry');
+            for (const entry of entries) {
+              if (entry.querySelector('.outfit-key')?.value?.trim() === g.outfit) {
+                try { entry.dataset.imgs = JSON.stringify([g.url]); } catch {}
+                break;
+              }
+            }
+          }
+        }
+      }
+      invalidateCache('characters');
+    } else {
+      const err = result.result?.reason || result.error || '生成失败';
+      _html(status, `❌ ${err}`);
+      toast(`❌ ${err}`, 'error');
+    }
+  } catch (e) { _html(status, `❌ ${e.message}`); toast(`❌ ${e.message}`, 'error'); }
+  reset();
+}
+
+var _currentEditCharId = '';
+
+// ── LoRA 训练 ──
+
+function _loraTrainHtml(charId, item) {
+  const loraPath = item.lora_path || '';
+  const hasLora = !!loraPath;
+  const statusDot = hasLora ? '<span class="status-dot ok"></span>' : '<span class="status-dot err"></span>';
+  const statusText = hasLora ? t('train.trained') : t('train.not_trained');
+  return `
+    <div class="config-section" style="margin-top:1rem;border-top:1px solid var(--bg3);padding-top:1rem">
+      <h3>${t('train.title')}</h3>
+      <p class="dim" style="font-size:.8rem;margin-bottom:.8rem">${t('train.desc')}</p>
+      <div id="lora-status-row" style="display:flex;align-items:center;gap:.5rem;margin-bottom:.8rem">
+        ${statusDot}<span id="lora-status-text">${statusText}</span>
+        <span id="lora-status-detail" class="dim" style="font-size:.75rem">${loraPath ? loraPath.split('/').pop() : ''}</span>
+      </div>
+      <div class="edit-field"><label>${t('train.trigger')}</label><input id="train-trigger" value="${esc(item.lora_trigger || '')}" placeholder="ohwx ${esc(item.name || charId)}"><span class="dim" style="font-size:.7rem">${t('train.trigger_hint')}</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem">
+        <div class="edit-field"><label>${t('train.steps')}</label><input id="train-steps" type="number" value="1000" min="100" max="10000" step="100"></div>
+        <div class="edit-field"><label>${t('train.lr')}</label><input id="train-lr" type="text" value="0.0001"></div>
+        <div class="edit-field"><label>${t('train.rank')}</label><select id="train-rank"><option value="4">4</option><option value="8">8</option><option value="16" selected>16</option><option value="32">32</option><option value="64">64</option><option value="128">128</option></select></div>
+      </div>
+      <div class="edit-field"><label>${t('train.resolution')}</label><select id="train-resolution"><option value="512x512">512x512</option><option value="512x768" selected>512x768</option><option value="768x768">768x768</option><option value="768x1024">768x1024</option></select></div>
+      <div style="display:flex;align-items:center;gap:.8rem;margin-top:.5rem">
+        <button class="btn btn-primary btn-sm" onclick="startLoraTraining('${esc(charId)}')" id="train-lora-btn">${t('train.start')}</button>
+        <label class="inspire-check" style="font-size:.8rem"><input type="checkbox" id="train-force"> ${t('train.force')}</label>
+        <span id="train-lora-status" class="dim" style="font-size:.8rem"></span>
+      </div>
+      <div id="train-lora-progress" style="margin-top:.5rem"></div>
+    </div>`;
+}
+
+async function _loadLoraStatus(charId) {
+  try {
+    const d = await api(`/training/status/${charId}`);
+    const dot = document.querySelector('#lora-status-row .status-dot');
+    const text = document.getElementById('lora-status-text');
+    const detail = document.getElementById('lora-status-detail');
+    if (!dot || !text) return;
+    if (d.has_lora) {
+      dot.className = 'status-dot ok';
+      text.textContent = t('train.trained');
+      const sizeMB = d.lora_size ? (d.lora_size / 1024 / 1024).toFixed(1) : '?';
+      detail.textContent = `${t('train.size')}: ${sizeMB}MB`;
+    } else {
+      dot.className = 'status-dot err';
+      text.textContent = t('train.not_trained');
+      detail.textContent = '';
+    }
+  } catch {}
+}
+
+async function startLoraTraining(charId) {
+  const btn = document.getElementById('train-lora-btn');
+  const statusEl = document.getElementById('train-lora-status');
+  const progressEl = document.getElementById('train-lora-progress');
+  const reset = _btnLoad(btn, '⏳');
+  _html(statusEl, t('train.progress'));
+  _html(progressEl, '');
+  try {
+    const body = {
+      char_id: charId,
+      trigger_word: $val('train-trigger') || '',
+      steps: parseInt($val('train-steps')) || 1000,
+      learning_rate: parseFloat($val('train-lr')) || 0.0001,
+      rank: parseInt($val('train-rank')) || 16,
+      resolution: $val('train-resolution') || '512x768',
+      force: document.getElementById('train-force')?.checked || false,
+    };
+    const { task_id } = await api('/training/lora', { method: 'POST', body });
+    const result = await pollTask(task_id, info => {
+      _html(progressEl, `<div style="background:var(--bg2);border-radius:6px;padding:.4rem .6rem;font-size:.8rem">
+        <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><span>${esc(info.message || '训练中...')}</span><span>${info.progress || 0}%</span></div>
+        <div style="background:var(--bg4);border-radius:3px;height:6px;overflow:hidden"><div style="background:var(--primary);height:100%;width:${info.progress || 0}%;transition:width .3s"></div></div>
+      </div>`);
+    });
+    if (result.status === 'success' && result.result?.status === 'done') {
+      const r = result.result;
+      _html(statusEl, `✅ ${t('train.done')} (${r.images} imgs, ${r.steps} steps)`);
+      _html(progressEl, '');
+      toast(`✅ LoRA 训练完成: ${charId}`);
+      _loadLoraStatus(charId);
+      invalidateCache('characters');
+    } else {
+      const err = result.result?.reason || result.error || t('train.failed');
+      _html(statusEl, `❌ ${err}`);
+      _html(progressEl, '');
+      toast(`❌ ${err}`, 'error');
+    }
+  } catch (e) { _html(statusEl, `❌ ${e.message}`); toast(`❌ ${e.message}`, 'error'); }
+  reset();
+}
+
+/** 批量训练所有角色 LoRA */
+async function batchTrainLora() {
+  // 弹出确认面板：显示参数选项 + 角色列表
+  let chars = [];
+  try {
+    const d = await api('/characters');
+    chars = d.characters || [];
+  } catch (e) { toast(e.message, 'error'); return; }
+  if (!chars.length) { toast(t('char.empty_hint'), 'error'); return; }
+
+  const charList = chars.map(c => {
+    const hasPortrait = c.reference_images?.length;
+    const dot = hasPortrait ? '🟢' : '🔴';
+    return `<label class="inspire-check" style="display:flex;align-items:center;gap:.4rem;padding:.2rem 0"><input type="checkbox" class="batch-train-char" value="${esc(c.id)}" ${hasPortrait ? 'checked' : 'disabled'}> ${dot} ${esc(c.name || c.id)} <span class="dim" style="font-size:.7rem">${esc(c.id)}</span></label>`;
+  }).join('');
+
+  const body = `
+    <p class="dim" style="font-size:.8rem;margin-bottom:.8rem">选择要训练 LoRA 的角色（🟢 有定妆照可训练，🔴 无定妆照需先生成）</p>
+    <div style="max-height:300px;overflow-y:auto;margin-bottom:1rem">${charList}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-bottom:.5rem">
+      <div class="edit-field"><label>${t('train.steps')}</label><input id="batch-train-steps" type="number" value="1000" min="100" max="10000" step="100"></div>
+      <div class="edit-field"><label>${t('train.lr')}</label><input id="batch-train-lr" type="text" value="0.0001"></div>
+      <div class="edit-field"><label>${t('train.rank')}</label><select id="batch-train-rank"><option value="8">8</option><option value="16" selected>16</option><option value="32">32</option><option value="64">64</option></select></div>
+    </div>
+    <div class="edit-field"><label>${t('train.resolution')}</label><select id="batch-train-resolution"><option value="512x512">512x512</option><option value="512x768" selected>512x768</option><option value="768x768">768x768</option></select></div>
+    <label class="inspire-check" style="margin-top:.5rem"><input type="checkbox" id="batch-train-force"> ${t('train.force')}</label>
+    <div id="batch-train-status" style="margin-top:.8rem"></div>
+    <div id="batch-train-progress" style="margin-top:.5rem"></div>`;
+
+  _showOverlay('batch-train-overlay', '🏋 批量训练 LoRA', body, undefined, undefined, undefined);
+  // 替换保存按钮为开始训练按钮
+  const overlay = document.getElementById('batch-train-overlay');
+  const saveBtn = overlay?.querySelector('.btn-primary');
+  if (saveBtn) {
+    saveBtn.textContent = t('train.start');
+    saveBtn.onclick = _doBatchTrain;
+  }
+}
+
+async function _doBatchTrain() {
+  const checkboxes = document.querySelectorAll('.batch-train-char:checked');
+  const charIds = Array.from(checkboxes).map(cb => cb.value).filter(Boolean);
+  if (!charIds.length) { toast('请至少选择一个角色', 'error'); return; }
+
+  const steps = parseInt($val('batch-train-steps')) || 1000;
+  const lr = parseFloat($val('batch-train-lr')) || 0.0001;
+  const rank = parseInt($val('batch-train-rank')) || 16;
+  const resolution = $val('batch-train-resolution') || '512x768';
+  const force = document.getElementById('batch-train-force')?.checked || false;
+
+  const statusEl = document.getElementById('batch-train-status');
+  const progressEl = document.getElementById('batch-train-progress');
+  const total = charIds.length;
+  let done = 0, failed = 0, skipped = 0;
+
+  _html(statusEl, `⏳ 开始批量训练 ${total} 个角色...`);
+
+  for (let i = 0; i < charIds.length; i++) {
+    const cid = charIds[i];
+    _html(progressEl, `
+      <div style="margin-bottom:.5rem">
+        <div style="display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:.2rem">
+          <span>[${i+1}/${total}] ${esc(cid)}</span><span>${done}✅ ${skipped}⏭ ${failed}❌</span>
+        </div>
+        <div style="background:var(--bg4);border-radius:3px;height:6px;overflow:hidden">
+          <div style="background:var(--primary);height:100%;width:${(i/total)*100}%;transition:width .3s"></div>
+        </div>
+      </div>`);
+
+    try {
+      const { task_id } = await api('/training/lora', {
+        method: 'POST',
+        body: { char_id: cid, steps, learning_rate: lr, rank, resolution, force }
+      });
+      const result = await pollTask(task_id, info => {
+        const statusLine = document.querySelector('#batch-train-status');
+        if (statusLine) _html(statusLine, `⏳ [${i+1}/${total}] ${esc(cid)}: ${info.message || '训练中...'} ${info.progress || 0}%`);
+      });
+      if (result.status === 'success') {
+        const r = result.result;
+        if (r?.status === 'done') { done++; toast(`✅ ${cid} 训练完成`); }
+        else if (r?.status === 'skipped') { skipped++; }
+        else { failed++; toast(`⚠ ${cid}: ${r?.reason || '未知'}`, 'error'); }
+      } else { failed++; toast(`❌ ${cid}: ${result.error || '失败'}`, 'error'); }
+    } catch (e) { failed++; toast(`❌ ${cid}: ${e.message}`, 'error'); }
+  }
+
+  _html(progressEl, '');
+  _html(statusEl, `<div style="padding:.5rem;background:var(--bg2);border-radius:6px;font-size:.9rem">批量训练完成: ${done}✅ ${skipped}⏭跳过 ${failed}❌失败 / 共${total}个</div>`);
+  invalidateCache('characters');
+  toast(`批量训练完成: ${done}成功 ${failed}失败`);
+}
+
+async function editChar(id) {
+  _currentEditCharId = id;
+  await _getTtsBackend();
+  _editEntityPanel('characters', id, {
+    titleKey: 'char.edit_title', notFoundKey: 'char.not_found', imgPrefix: 'ec', imgLabel: t('char.upload_img'), confirmMsg: '删除定妆照？',
+    reload: loadCharacters,
+    deleteFn: deleteCharWithRef,
+    buildExtra() { return { voice: _collectVoiceConfig('ec'), outfits: _collectOutfits() }; },
+    extraHtml: (item) => `<div class="edit-field"><button class="btn btn-ai btn-sm" onclick="generatePortrait('${esc(id)}')" id="gen-portrait-btn">🎨 AI 生成定妆照</button><span id="gen-portrait-status" class="dim" style="font-size:.8rem;margin-left:.5rem"></span></div>` + _outfitFieldsHtml(id, item.outfits || {}) + _ttsVoiceFieldsHtml('ec', item.voice || {}) + _loraTrainHtml(id, item),
+    fields: [
+      { key: 'name', label: t('char.name') },
+      { key: 'gender', label: t('char.gender'), type: 'select', options: [{ value: '', label: '-' }, { value: 'male', label: t('char.gender.male') }, { value: 'female', label: t('char.gender.female') }] },
+      { key: 'appearance', label: t('char.appearance'), type: 'textarea' },
+      { key: 'personality', label: t('char.personality') || '性格', type: 'textarea', getValue: c => c.personality || '' },
+    ],
+  });
+  // 异步加载 LoRA 状态
+  _loadLoraStatus(id);
+}
+
+/** 通用图片上传 */
+async function _uploadImg(entityType, id) {
+  const prefix = entityType === 'characters' ? 'ec' : 'es';
+  const fileInput = document.getElementById(`${prefix}-file`);
+  if (!fileInput?.files?.[0]) return;
+  const wrap = document.getElementById(`${prefix}-img-wrap`);
+  _html(wrap, `<span class="dim">${t('common.uploading')}</span>`);
+  const form = new FormData(); form.append('file', fileInput.files[0]);
+  try {
+    const r = await fetch(`${API}/assets/${entityType}/${id}/upload`, { method: 'POST', body: form });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || '上传失败');
+    _html(wrap, `<div class="upload-preview"><img src="${d.url}"><button class="btn btn-xs btn-danger upload-remove" onclick="${prefix}RemoveImg('${id}')">✕</button></div>`);
+    invalidateCache(entityType); toast('✅ 图片已上传');
+    // 重新加载列表以刷新卡片缩略图
+    if (entityType === 'characters' && typeof loadCharacters === 'function') loadCharacters();
+    else if (entityType === 'scenes' && typeof loadScenes === 'function') loadScenes();
+  } catch (e) { _html(wrap, `<span style="color:var(--red)">❌ ${e.message}</span>`); toast(e.message, 'error'); }
+  finally { fileInput.value = ''; }
+}
+
+/** 通用拖拽上传 */
+function _handleImgDrop(e, entityType, id) {
+  e.preventDefault(); e.currentTarget.classList.remove('dragover');
+  const file = e.dataTransfer?.files?.[0]; if (!file) return;
+  const prefix = entityType === 'characters' ? 'ec' : 'es';
+  const inp = document.getElementById(`${prefix}-file`);
+  if (inp) { const dt = new DataTransfer(); dt.items.add(file); inp.files = dt.files; _uploadImg(entityType, id); }
+}
+
+
+
+// ══════════════════════════════════════════════════════════

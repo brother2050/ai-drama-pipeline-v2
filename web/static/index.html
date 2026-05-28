@@ -38,7 +38,10 @@
 </div>
 <script>
   const _v = Date.now().toString(36);
-  ['i18n.js', 'app.js'].forEach(f => {
+  const _modules = ['i18n.js', 'core.js', 'dashboard.js', 'pipeline.js', 'characters.js',
+    'scenes.js', 'storyboard.js', 'ai-gen.js', 'seko.js', 'projects.js',
+    'settings.js', 'extras.js'];
+  _modules.forEach(f => {
     const s = document.createElement('script');
     s.src = '/js/' + f + '?v=' + _v;
     document.body.appendChild(s);
