@@ -1303,6 +1303,25 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
 
         try:
             new_chars = generate_characters(llm, char_descriptions, expected_ids=sorted_ids)
+
+            # ── 合并同名角色（LLM 可能为同一角色使用不同 ID，如 insurance_agent 和 linxia）──
+            name_to_first: dict[str, str] = {}  # char_name → first old_id
+            for i, char in enumerate(new_chars):
+                if char is None:
+                    continue
+                old_id = sorted_ids[i]
+                char_name = char.get("name", "").strip()
+                if not char_name:
+                    char_name = old_id
+                if char_name in name_to_first:
+                    # 同名角色已存在，合并：将当前 old_id 指向第一个角色的 new_id
+                    first_old_id = name_to_first[char_name]
+                    logger.warning(f"  ⚠ 角色名重复: '{char_name}'（{old_id} 与 {first_old_id}），合并为同一角色")
+                    # id_remap 会在后续步骤中将 old_id 映射到 first 的 new_id
+                    # 这里先标记，等第一个角色生成 new_id 后再设置
+                    continue
+                name_to_first[char_name] = old_id
+
             for i, char in enumerate(new_chars):
                 if char is None:
                     logger.warning(f"  ⚠ 角色 {sorted_ids[i]} 生成失败，跳过")
@@ -1311,6 +1330,16 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                 char_name = char.get("name", "").strip()
                 if not char_name:
                     char_name = old_id
+
+                # 如果这个 old_id 不是 name_to_first 中记录的第一个，跳过（已被合并）
+                if name_to_first.get(char_name) != old_id:
+                    # 将合并的 old_id 指向第一个角色的 new_id（第一个角色此时已处理）
+                    first_old_id = name_to_first[char_name]
+                    if first_old_id in id_remap:
+                        id_remap[old_id] = id_remap[first_old_id]
+                        logger.info(f"  🔗 合并: {old_id} → {id_remap[first_old_id]}（同名 '{char_name}'）")
+                    continue
+
                 new_id = _unique_hash_id("ch", char_name, id_remap)
                 char["id"] = new_id
                 char["name"] = char_name
@@ -1348,6 +1377,22 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
         try:
             new_scenes_list = generate_scenes(llm, scene_descriptions)
             sorted_ids = sorted(scene_ids)
+
+            # ── 合并同名场景 ──
+            scene_name_to_first: dict[str, str] = {}
+            for i, scene in enumerate(new_scenes_list):
+                if scene is None:
+                    continue
+                old_id = sorted_ids[i]
+                scene_name = scene.get("name", "").strip()
+                if not scene_name:
+                    scene_name = old_id
+                if scene_name in scene_name_to_first:
+                    first_old_id = scene_name_to_first[scene_name]
+                    logger.warning(f"  ⚠ 场景名重复: '{scene_name}'（{old_id} 与 {first_old_id}），合并")
+                    continue
+                scene_name_to_first[scene_name] = old_id
+
             for i, scene in enumerate(new_scenes_list):
                 if scene is None:
                     logger.warning(f"  ⚠ 场景 {sorted_ids[i]} 生成失败，跳过")
@@ -1356,6 +1401,14 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                 scene_name = scene.get("name", "").strip()
                 if not scene_name:
                     scene_name = old_id
+
+                if scene_name_to_first.get(scene_name) != old_id:
+                    first_old_id = scene_name_to_first[scene_name]
+                    if first_old_id in id_remap:
+                        id_remap[old_id] = id_remap[first_old_id]
+                        logger.info(f"  🔗 合并: {old_id} → {id_remap[first_old_id]}（同名 '{scene_name}'）")
+                    continue
+
                 new_id = _unique_hash_id("sc", scene_name, id_remap)
                 scene["id"] = new_id
                 scene["name"] = scene_name
