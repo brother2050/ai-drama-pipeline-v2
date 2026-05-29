@@ -1750,6 +1750,16 @@ def seko_import_task(
             if elem_type == "CHARACTER":
                 entity_id = _char_id_map.get(name)
                 if not entity_id:
+                    # 回退：在已导入的 YAML 中按 name 字段查找
+                    for yf in (project_dir / "config" / "characters").glob("*.yaml"):
+                        try:
+                            yd = yaml.safe_load(yf) or {}
+                            if yd.get("character", {}).get("name") == name:
+                                entity_id = yd["character"]["id"]
+                                break
+                        except Exception:
+                            pass
+                if not entity_id:
                     entity_id = "".join(c for c in name if c.isalnum() or c in ("-", "_")).strip() or f"char_{idx + 1:02d}"
                 img_dir = project_dir / "assets" / "characters" / entity_id
                 yaml_path = project_dir / "config" / "characters" / f"{entity_id}.yaml"
@@ -1757,6 +1767,15 @@ def seko_import_task(
                 entity_key = "character"
             elif elem_type == "SCENE":
                 entity_id = _scene_id_map.get(name)
+                if not entity_id:
+                    for yf in (project_dir / "config" / "scenes").glob("*.yaml"):
+                        try:
+                            yd = yaml.safe_load(yf) or {}
+                            if yd.get("scene", {}).get("name") == name:
+                                entity_id = yd["scene"]["id"]
+                                break
+                        except Exception:
+                            pass
                 if not entity_id:
                     entity_id = "".join(c for c in name if c.isalnum() or c in ("-", "_")).strip() or f"scene_{idx + 1:02d}"
                 img_dir = project_dir / "assets" / "scenes" / entity_id
