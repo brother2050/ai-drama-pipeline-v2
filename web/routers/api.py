@@ -80,13 +80,7 @@ def _check_rate_limit(client_ip: str) -> None:
 
 
 def _get_client_ip(request: Request) -> str:
-    """获取客户端 IP（仅在有反向代理时信任 X-Forwarded-For）"""
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        # 取第一个 IP（最接近真实客户端，后续为代理链）
-        ip = forwarded.split(",")[0].strip()
-        if ip:
-            return ip
+    """获取客户端 IP"""
     return request.client.host if request.client else "unknown"
 
 
@@ -175,12 +169,13 @@ def _check_episode(ep: int) -> None:
 
 def _safe_path(base: Path, *parts: str) -> Path:
     """防止路径遍历的安全路径拼接"""
-    # 过滤空字符串
-    parts = [p for p in parts if p]
+    from urllib.parse import unquote
+    # 过滤空字符串 + URL 解码
+    parts = [unquote(p) for p in parts if p]
     joined = "/".join(parts)
     if not joined:
         return base.resolve()
-    # 阻断 .. 遍历
+    # 阻断 .. 遍历（解码后）
     if ".." in joined.split("/"):
         raise HTTPException(400, "非法路径")
     resolved = (base / joined).resolve()
@@ -229,10 +224,18 @@ def system_status():
 
 
 def _collect_tools(cfg: dict) -> dict:
-    """收集所有工具状态"""
+    """收集所有工具状态（并行检测，避免串行超时累积）"""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    names = ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg", "seko", "training"]
     tools = {}
-    for name in ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg", "seko", "training"]:
-        tools[name] = _check_tool(name, cfg)
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        futures = {ex.submit(_check_tool, name, cfg): name for name in names}
+        for fut in as_completed(futures):
+            name = futures[fut]
+            try:
+                tools[name] = fut.result()
+            except Exception as e:
+                tools[name] = {"available": False, "backend": "unknown", "type": "unknown", "reason": str(e)}
     return tools
 
 
@@ -612,50 +615,36 @@ def _sys_cfg_path() -> str:
     return str(ROOT / "config" / "system.yaml")
 
 
-_SENSITIVE_KEYS = {"api_key", "apikey", "api_secret", "token", "password", "secret"}
-
-def _mask_sensitive(obj, _parent_key=""):
-    """递归遮蔽敏感字段值"""
-    if isinstance(obj, dict):
-        masked = {}
-        for k, v in obj.items():
-            if isinstance(v, (dict, list)):
-                masked[k] = _mask_sensitive(v, k)
-            elif any(s in k.lower() for s in _SENSITIVE_KEYS) and v:
-                masked[k] = "***"
-            else:
-                masked[k] = v
-        return masked
-    if isinstance(obj, list):
-        return [_mask_sensitive(item, _parent_key) for item in obj]
-    return obj
-
-
 @router.get("/system/config")
 def get_system_config():
-    """读取系统全局配置（敏感字段已遮蔽）"""
+    """读取系统全局配置"""
     path = _sys_cfg_path()
     if not os.path.isfile(path):
         return {}
     try:
         with open(path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        return _mask_sensitive(data)
+            return yaml.safe_load(f) or {}
     except yaml.YAMLError as e:
         logger.warning(f"系统配置 YAML 格式错误: {e}")
         return {}
 
 
+_ALLOWED_SYS_KEYS = {"models", "comfyui", "llm", "seko", "training", "server", "post_production", "timeouts", "generation"}
+
 @router.post("/system/config")
 def update_system_config(data: dict = Body(...)):
-    """更新系统全局配置"""
+    """更新系统全局配置（仅允许白名单字段）"""
     from infra.config import save_config, load_config
+    # 过滤：只保留允许的顶层 key
+    filtered = {k: v for k, v in data.items() if k in _ALLOWED_SYS_KEYS}
+    if not filtered:
+        raise HTTPException(400, "无有效的配置字段")
     path = _sys_cfg_path()
     try:
         existing = load_config(path)
     except Exception:
         existing = {}
-    merged = _deep_merge(existing, data)
+    merged = _deep_merge(existing, filtered)
     save_config(path, merged)
     return {"status": "ok"}
 

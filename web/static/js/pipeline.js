@@ -259,6 +259,8 @@ function _collectShotFields(idx) {
   const _defaults = { duration: 4, emotion: 'neutral', language: 'zh' };
   for (const [k, id] of _SHOT_FIELDS)
     s[k] = document.getElementById(id)?.value || _defaults[k] || '';
+  // duration 必须是有效正整数
+  s.duration = Math.max(1, Math.min(30, parseInt(s.duration) || 4));
   return s;
 }
 

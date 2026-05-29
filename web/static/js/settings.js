@@ -36,8 +36,10 @@ async function loadSettings() {
   const el = document.getElementById('page-settings');
   try {
     const [sysCfg, env, td, backends] = await Promise.all([
-      api('/system/config'), api('/system/env'), api('/tools'),
-      api('/backends').catch(() => ({ tts: {}, lipsync: {}, llm: {}, music: {}, image: {}, video: {} })),
+      cachedFetch('sysconfig', () => api('/system/config'), 30000),
+      cachedFetch('sysenv', () => api('/system/env'), 60000),
+      cachedFetch('tools', () => api('/tools'), 15000),
+      cachedFetch('backends', () => api('/backends').catch(() => ({ tts: {}, lipsync: {}, llm: {}, music: {}, image: {}, video: {} })), 60000),
     ]);
     _cache.set('sysconfig', { data: sysCfg, ts: Date.now() });
     const tools = td.tools || {}, lang = localStorage.getItem('drama_lang') || 'zh';

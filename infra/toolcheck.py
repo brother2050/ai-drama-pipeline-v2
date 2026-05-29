@@ -7,10 +7,15 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import time
 
 from infra.network import port_ok as _port_ok
 
 logger = logging.getLogger(__name__)
+
+# 工具状态缓存（避免短时间内重复检测外部服务）
+_tool_cache: dict[str, tuple[float, dict]] = {}
+_TOOL_CACHE_TTL = 10  # 秒
 
 
 def _url_ok(url: str, path: str = "/", headers: dict | None = None) -> bool:
@@ -40,7 +45,7 @@ def _url_ok(url: str, path: str = "/", headers: dict | None = None) -> bool:
 
 
 def check_tool(name: str, cfg: dict) -> dict:
-    """检测单个工具的可用性
+    """检测单个工具的可用性（带 TTL 缓存）
 
     Args:
         name: 工具名 (tts / comfyui / lipsync / llm / music / ffmpeg / redis / celery)
@@ -49,6 +54,17 @@ def check_tool(name: str, cfg: dict) -> dict:
     Returns:
         {"available": bool, "backend": str, "type": str, "reason": str, ...}
     """
+    now = time.time()
+    if name in _tool_cache:
+        ts, result = _tool_cache[name]
+        if now - ts < _TOOL_CACHE_TTL:
+            return result
+    result = _check_tool_inner(name, cfg)
+    _tool_cache[name] = (now, result)
+    return result
+
+
+def _check_tool_inner(name: str, cfg: dict) -> dict:
     if name == "tts":
         backend = cfg.get("models", {}).get("tts_backend", "mimo-voicedesign")
         if "mimo" in backend:
