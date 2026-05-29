@@ -39,15 +39,15 @@ class FluxGymTrainer:
             logger.warning("FluxGymTrainer: project_dir 为空，下载结果可能失败")
         self._client = None
 
-        # 训练参数默认值
+        # 训练参数默认值（YAML 配置可能读成 str，强制转类型）
         defaults = config.get("defaults", {})
-        self._base_model = defaults.get("base_model", "flux-dev")
-        self._default_resolution = defaults.get("resolution", 512)
+        self._base_model = str(defaults.get("base_model", "flux-dev"))
+        self._default_resolution = int(defaults.get("resolution", 512))
         self._default_learning_rate = str(defaults.get("learning_rate", "8e-4"))
-        self._default_network_dim = defaults.get("network_dim", 4)
-        self._default_max_train_epochs = defaults.get("max_train_epochs", 16)
-        self._default_num_repeats = defaults.get("num_repeats", 10)
-        self._default_vram = defaults.get("vram", "20G")
+        self._default_network_dim = int(defaults.get("network_dim", 4))
+        self._default_max_train_epochs = int(defaults.get("max_train_epochs", 16))
+        self._default_num_repeats = int(defaults.get("num_repeats", 10))
+        self._default_vram = str(defaults.get("vram", "20G"))
 
     @property
     def name(self) -> str:
@@ -177,7 +177,8 @@ class FluxGymTrainer:
             caption_args.append(captions[i] if i < len(captions) else trigger)
 
         # /create_dataset 参数: size, files, cap1, cap2, ..., cap150
-        args = [resolution, files] + caption_args
+        # size 必须是 int/float，YAML 配置可能读成 str
+        args = [int(resolution), files] + caption_args
 
         logger.info(f"  创建数据集: {len(img_paths)} 张图, {resolution}px")
         client.predict(*args, api_name="/create_dataset")
@@ -208,23 +209,24 @@ class FluxGymTrainer:
         max_epochs = self._default_max_train_epochs
         save_epochs = max(1, max_epochs // 4)
 
-        # ── 15 个命名参数（按文档顺序，用关键字传递） ──
+        # ── 15 个命名参数（按文档顺序） ──
+        # Number 组件必须传 int/float，不能传 str
         args = [
-            self._base_model,           # base_model
-            lora_name,                  # lora_name (必须非空！影响脚本路径)
-            resolution,                 # resolution
-            42,                         # seed
-            2,                          # workers
-            trigger_word,               # class_tokens
-            learning_rate,              # learning_rate
-            rank,                       # network_dim
-            max_epochs,                 # max_train_epochs
-            save_epochs,                # save_every_n_epochs
-            "shift",                    # timestep_sampling
-            1,                          # guidance_scale
-            self._default_vram,         # vram
-            self._default_num_repeats,  # num_repeats
-            "",                         # sample_prompts
+            self._base_model,           # base_model (str)
+            lora_name,                  # lora_name (str)
+            int(resolution),            # resolution (Number → int)
+            42,                         # seed (Number → int)
+            2,                          # workers (Number → int)
+            trigger_word,               # class_tokens (str)
+            str(learning_rate),         # learning_rate (str)
+            int(rank),                  # network_dim (Number → int)
+            int(max_epochs),            # max_train_epochs (Number → int)
+            int(save_epochs),           # save_every_n_epochs (Number → int)
+            "shift",                    # timestep_sampling (str)
+            1,                          # guidance_scale (Number → int)
+            self._default_vram,         # vram (str)
+            int(self._default_num_repeats),  # num_repeats (Number → int)
+            "",                         # sample_prompts (str)
         ]
 
         # ── 164 个高级参数 (param_16 ~ param_178) ──
@@ -477,7 +479,7 @@ class FluxGymTrainer:
         try:
             return int(str(resolution).split("x")[0])
         except (ValueError, AttributeError):
-            return self._default_resolution
+            return int(self._default_resolution)
 
     # ────────────────────────────────────────────────
     # 主入口
