@@ -21,10 +21,23 @@ function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, 
   api(`/${type}`).then(d => {
     const item = (d[type] || []).find(x => x.id === id);
     if (!item) { toast(t(notFoundKey), 'error'); return; }
-    const existingImg = (item[imgKey]?.length)
-      ? `<div class="upload-preview"><img src="${esc(item[imgKey][0])}" id="${p}-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="${p}RemoveImg('${id}')">✕</button></div>`
-      : `<div class="upload-area" id="${p}-upload-area" onclick="document.getElementById('${p}-file').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="${p}HandleDrop(event,'${id}')"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`;
-    const body = `<div class="edit-field"><label>${imgLabel}</label><div id="${p}-img-wrap">${existingImg}</div><input type="file" id="${p}-file" accept="image/*" style="display:none" onchange="${p}UploadImg('${id}')"></div>` +
+    const imgs = item[imgKey] || [];
+    // 多图 gallery（三视图）或单图回退
+    let existingImg;
+    if (imgs.length > 1) {
+      const gallery = imgs.map((url, i) =>
+        `<div class="upload-preview" style="display:inline-block;margin-right:.4rem;position:relative">
+          <img src="${esc(url)}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;cursor:pointer" onclick="previewImage('${esc(url)}')">
+          <button class="btn btn-xs btn-danger upload-remove" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;padding:0;font-size:.65rem;line-height:1" onclick="${p}RemoveImgAt('${id}',${i})">✕</button>
+        </div>`
+      ).join('') + `<div class="upload-area" style="display:inline-flex;width:80px;height:80px;cursor:pointer" onclick="document.getElementById('${p}-file').click()"><span class="upload-icon" style="font-size:1.2rem">📷</span></div>`;
+      existingImg = `<div id="${p}-img-wrap" style="display:flex;flex-wrap:wrap;align-items:center;gap:.3rem">${gallery}</div>`;
+    } else if (imgs.length === 1) {
+      existingImg = `<div id="${p}-img-wrap"><div class="upload-preview"><img src="${esc(imgs[0])}" id="${p}-img-preview"><button class="btn btn-xs btn-danger upload-remove" onclick="${p}RemoveImg('${id}')">✕</button></div></div>`;
+    } else {
+      existingImg = `<div id="${p}-img-wrap"><div class="upload-area" id="${p}-upload-area" onclick="document.getElementById('${p}-file').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="${p}HandleDrop(event,'${id}')"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div></div>`;
+    }
+    const body = `<div class="edit-field"><label>${imgLabel}</label>${existingImg}<input type="file" id="${p}-file" accept="image/*" style="display:none" onchange="${p}UploadImg('${id}')"></div>` +
       fields.map(f => {
         const v = f.getValue ? f.getValue(item) : (item[f.key] || '');
         if (f.type === 'select') return `<div class="edit-field"><label>${f.label}</label><select id="${p}-${f.key}">${f.options.map(o => `<option value="${o.value}" ${v===o.value?'selected':''}>${o.label}</option>`).join('')}</select></div>`;
@@ -36,17 +49,37 @@ function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, 
     _showOverlay(`edit-${type.slice(0,-1)}-overlay`, `${t(titleKey)} ${id}`, body, `save_${p}Edit('${id}')`, undefined, delFn);
   }).catch(e => toast(e.message, 'error'));
   window[`save_${p}Edit`] = function(eid) {
-    const extra = window[`_${p}ImgRemoved`] ? { [imgKey]: [] } : {};
+    const removed = window[`_${p}ImgRemoved`];
+    const removedIndices = window[`_${p}RemovedIndices`] || [];
     window[`_${p}ImgRemoved`] = false;
-    const data = buildExtra ? { ...buildExtra(), ...extra } : { ...extra };
+    window[`_${p}RemovedIndices`] = [];
+    const data = buildExtra ? { ...buildExtra() } : {};
     fields.forEach(f => { if (!f.getValue) data[f.key] = $val(`${p}-${f.key}`); });
     // 保留已有 reference_images（如果本次没有显式清除或覆盖）
     if (!(imgKey in data)) {
-      // 优先使用 AI 生成的图片 URL
       const genUrl = window[`_${p}GeneratedPortraitUrl`];
       if (genUrl) {
-        data[imgKey] = [genUrl];
+        // 新上传的图片：追加到已有列表
+        try {
+          const items = _cache.get(type)?.data?.[type] || [];
+          const existing = items.find(x => x.id === eid);
+          const existingImgs = existing?.[imgKey]?.length ? [...existing[imgKey]] : [];
+          existingImgs.push(genUrl);
+          data[imgKey] = existingImgs;
+        } catch {
+          data[imgKey] = [genUrl];
+        }
         window[`_${p}GeneratedPortraitUrl`] = null;
+      } else if (removed) {
+        data[imgKey] = [];
+      } else if (removedIndices.length > 0) {
+        // 删除了指定索引的图片
+        try {
+          const items = _cache.get(type)?.data?.[type] || [];
+          const existing = items.find(x => x.id === eid);
+          const existingImgs = existing?.[imgKey]?.length ? [...existing[imgKey]] : [];
+          data[imgKey] = existingImgs.filter((_, i) => !removedIndices.includes(i));
+        } catch {}
       } else {
         try {
           const items = _cache.get(type)?.data?.[type] || [];
@@ -70,6 +103,32 @@ function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, 
     window[`_${p}ImgRemoved`] = true;
     _html(document.getElementById(`${p}-img-wrap`), `<div class="upload-area" onclick="document.getElementById('${p}-file').click()"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`);
   };
+  // 删除指定索引的图片（三视图场景）
+  window[`${p}RemoveImgAt`] = async function(eid, idx) {
+    if (!await modalConfirm('删除此图片？')) return;
+    if (!window[`_${p}RemovedIndices`]) window[`_${p}RemovedIndices`] = [];
+    window[`_${p}RemovedIndices`].push(idx);
+    // 从 DOM 中移除
+    const wrap = document.getElementById(`${p}-img-wrap`);
+    if (wrap) {
+      const previews = wrap.querySelectorAll('.upload-preview');
+      if (previews[idx]) previews[idx].remove();
+      // 如果删完了，显示上传区域
+      if (wrap.querySelectorAll('.upload-preview').length === 0) {
+        window[`_${p}ImgRemoved`] = true;
+        _html(wrap, `<div class="upload-area" onclick="document.getElementById('${p}-file').click()"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`);
+      }
+    }
+  };
+}
+
+/** 图片预览（点击放大） */
+function previewImage(url) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:pointer';
+  overlay.innerHTML = `<img src="${esc(url)}" style="max-width:90vw;max-height:90vh;border-radius:8px"><div style="position:absolute;top:1rem;right:1rem;color:#fff;font-size:1.5rem;cursor:pointer">✕</div>`;
+  overlay.onclick = () => overlay.remove();
+  document.body.appendChild(overlay);
 }
 
 async function loadCharacters() {
@@ -573,11 +632,12 @@ async function _uploadImg(entityType, id) {
     const r = await fetch(`${API}/assets/${entityType}/${id}/upload`, { method: 'POST', body: form });
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || '上传失败');
-    _html(wrap, `<div class="upload-preview"><img src="${d.url}"><button class="btn btn-xs btn-danger upload-remove" onclick="${prefix}RemoveImg('${id}')">✕</button></div>`);
+    // 标记新上传的 URL，save 时会追加到已有列表
+    window[`_${prefix}GeneratedPortraitUrl`] = d.url;
     invalidateCache(entityType); toast('✅ 图片已上传');
-    // 重新加载列表以刷新卡片缩略图
-    if (entityType === 'characters' && typeof loadCharacters === 'function') loadCharacters();
-    else if (entityType === 'scenes' && typeof loadScenes === 'function') loadScenes();
+    // 刷新编辑面板以显示新图
+    if (entityType === 'characters') editChar(id);
+    else if (entityType === 'scenes') editScene(id);
   } catch (e) { _html(wrap, `<span style="color:var(--red)">❌ ${e.message}</span>`); toast(e.message, 'error'); }
   finally { fileInput.value = ''; }
 }
