@@ -11,8 +11,13 @@ import sys
 import time
 from pathlib import Path
 
-from celery.exceptions import SoftTimeLimitException
 from pipeline.celery_app import app
+
+try:
+    from celery.exceptions import SoftTimeLimitException
+except ImportError:
+    # 兼容部分 Celery 版本
+    SoftTimeLimitException = type("SoftTimeLimitException", (BaseException,), {})
 
 logger = logging.getLogger(__name__)
 
