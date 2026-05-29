@@ -137,10 +137,19 @@ class WorkflowBuilder:
             if ct in ("KSampler", "KSamplerAdvanced"):
                 node["inputs"]["seed"] = random.randint(0, 2**63 - 1)
 
+    @staticmethod
+    def _set_seed(wf: dict, seed: int) -> None:
+        """设置指定 seed（用于定妆照三视图/服装图保持一致性）"""
+        for nid, node in wf.items():
+            ct = node.get("class_type", "")
+            if ct in ("KSampler", "KSamplerAdvanced"):
+                node["inputs"]["seed"] = seed
+
     # ── 构建首帧工作流 ──────────────────────────────────────
 
     def build_first_frame(self, shot: dict, character_desc: str = "",
-                          scene_desc: str = "", multi_char_prompt: str = "") -> tuple[dict, dict]:
+                          scene_desc: str = "", multi_char_prompt: str = "",
+                          seed: int | None = None) -> tuple[dict, dict]:
         """构建首帧工作流
 
         Args:
@@ -148,6 +157,7 @@ class WorkflowBuilder:
             character_desc: 角色英文描述
             scene_desc: 场景英文描述
             multi_char_prompt: 多角色合并 prompt
+            seed: 指定 seed（None 则随机，用于定妆照一致性控制）
 
         Returns:
             (prompt_dict, workflow_dict) 元组
@@ -216,8 +226,11 @@ class WorkflowBuilder:
                 wf = self._inject_lora(wf, style_lora, strength=style_strength)
                 logger.info(f"使用风格 LoRA: {genre} → {style_lora}")
 
-        # 随机化 seed，避免每次生成相同图片
-        self._randomize_seed(wf)
+        # Seed 控制：指定则用固定 seed（定妆照一致性），否则随机
+        if seed is not None:
+            self._set_seed(wf, seed)
+        else:
+            self._randomize_seed(wf)
 
         return prompt, wf
 

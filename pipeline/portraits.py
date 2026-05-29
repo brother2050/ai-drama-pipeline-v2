@@ -28,14 +28,40 @@ _THREE_VIEWS = [
 ]
 
 
+def _char_seed(char_id: str) -> int:
+    """为角色生成确定性 seed"""
+    import hashlib
+    h = hashlib.md5(char_id.encode("utf-8")).hexdigest()
+    return int(h[:16], 16)
+
+
 def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
-                   comfyui, wb, filename: str, shot_type: str) -> bool:
-    """生成单张视图，成功返回 True"""
+                   comfyui, wb, filename: str, shot_type: str,
+                   seed: int | None = None,
+                   ref_image: str | None = None) -> bool:
+    """生成单张视图，成功返回 True
+
+    Args:
+        seed: 指定 seed 保持一致性
+        ref_image: IP-Adapter 参考图路径（side/back 用 cover 做参考）
+    """
     fake_shot = {"characters": char_id, "emotion": "neutral",
                  "shot_type": shot_type, "camera": "固定"}
-    _, wf = wb.build_first_frame(fake_shot, character_desc=appearance)
+    _, wf = wb.build_first_frame(fake_shot, character_desc=appearance, seed=seed)
     if not wf:
         return False
+
+    # 注入参考图到 IP-Adapter
+    if ref_image and os.path.exists(ref_image):
+        from engines.workflow import find_character_load_image_nodes
+        char_nodes = find_character_load_image_nodes(wf)
+        if char_nodes:
+            wf[char_nodes[0]]["inputs"]["image"] = os.path.basename(ref_image)
+            try:
+                comfyui.upload_image(ref_image)
+            except Exception as e:
+                logger.warning(f"参考图上传失败: {e}")
+
     files = comfyui.generate(wf, str(portrait_dir))
     if not files:
         return False
@@ -45,8 +71,15 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
 
 
 def _generate_outfit(char_id: str, appearance: str, outfit_key: str,
-                     outfit_desc: str, base_dir: Path, comfyui, wb, llm) -> bool:
-    """为指定服装生成参考图，成功返回 True"""
+                     outfit_desc: str, base_dir: Path, comfyui, wb, llm,
+                     seed: int | None = None,
+                     ref_image: str | None = None) -> bool:
+    """为指定服装生成参考图，成功返回 True
+
+    Args:
+        seed: 指定 seed 保持一致性
+        ref_image: IP-Adapter 参考图路径（用 cover 保持面部一致）
+    """
     from engines.prompt import translate_to_english
 
     outfit_dir = base_dir / outfit_key
@@ -58,9 +91,21 @@ def _generate_outfit(char_id: str, appearance: str, outfit_key: str,
 
     fake_shot = {"characters": char_id, "emotion": "neutral",
                  "shot_type": "全身", "camera": "固定"}
-    _, wf = wb.build_first_frame(fake_shot, character_desc=full_desc)
+    _, wf = wb.build_first_frame(fake_shot, character_desc=full_desc, seed=seed)
     if not wf:
         return False
+
+    # 注入 cover 参考图
+    if ref_image and os.path.exists(ref_image):
+        from engines.workflow import find_character_load_image_nodes
+        char_nodes = find_character_load_image_nodes(wf)
+        if char_nodes:
+            wf[char_nodes[0]]["inputs"]["image"] = os.path.basename(ref_image)
+            try:
+                comfyui.upload_image(ref_image)
+            except Exception as e:
+                logger.warning(f"参考图上传失败: {e}")
+
     files = comfyui.generate(wf, str(outfit_dir))
     if not files:
         return False
@@ -151,8 +196,10 @@ def run_portraits(
             wb.load_workflows()
 
             # ── 1. 生成三视图 ──
+            base_seed = _char_seed(char_id)
+            cover_path = portrait_dir / "cover.png"
             char_generated = 0
-            for filename, shot_type, label in _THREE_VIEWS:
+            for i, (filename, shot_type, label) in enumerate(_THREE_VIEWS):
                 view_path = portrait_dir / filename
                 if view_path.exists() and not force:
                     logger.info(f"    ⏭ {label}视图已存在: {filename}")
@@ -160,12 +207,19 @@ def run_portraits(
 
                 old_file = view_path if view_path.exists() else None
                 logger.info(f"    🎨 生成{label}视图 ({filename})...")
+
+                # cover 用基础 seed，side/back 用 seed+偏移
+                view_seed = base_seed + i
+                # side/back 用 cover 做 IP-Adapter 参考
+                ref = str(cover_path) if i > 0 and cover_path.exists() else None
+
                 try:
-                    ok = _generate_view(char_id, appearance, portrait_dir, comfyui, wb, filename, shot_type)
+                    ok = _generate_view(char_id, appearance, portrait_dir, comfyui, wb,
+                                        filename, shot_type, seed=view_seed, ref_image=ref)
                     if ok:
                         if old_file and force:
                             pass  # os.replace 已覆盖
-                        logger.info(f"    ✅ {label}视图完成")
+                        logger.info(f"    ✅ {label}视图完成 (seed={view_seed})")
                         char_generated += 1
                     else:
                         logger.warning(f"    ⚠ {label}视图未生成")
@@ -198,7 +252,7 @@ def run_portraits(
             outfits = char.get("outfits", {})
             if isinstance(outfits, dict) and outfits:
                 logger.info(f"    👗 服装: {', '.join(outfits.keys())}")
-                for outfit_key, outfit_val in outfits.items():
+                for outfit_idx, (outfit_key, outfit_val) in enumerate(outfits.items()):
                     if not isinstance(outfit_val, dict):
                         continue
                     outfit_desc = outfit_val.get("description", "")
@@ -211,18 +265,24 @@ def run_portraits(
                         logger.info(f"      ⏭ {outfit_key}: 已有图，跳过")
                         continue
 
+                    # 服装 seed = base_seed + 100 + index（与三视图错开）
+                    outfit_seed = base_seed + 100 + outfit_idx
+                    # 用 cover 做参考保持面部一致
+                    ref = str(cover_path) if cover_path.exists() else None
+
                     logger.info(f"      🎨 生成 {outfit_key}...")
                     try:
                         ok = _generate_outfit(
                             char_id, appearance, outfit_key, outfit_desc,
-                            portrait_dir, comfyui, wb, llm)
+                            portrait_dir, comfyui, wb, llm,
+                            seed=outfit_seed, ref_image=ref)
                         if ok:
                             outfit_url = f"/api/assets/characters/{char_id}/{outfit_key}/cover.png"
                             outfit_val.setdefault("reference_images", [])
                             prefix = f"/api/assets/characters/{char_id}/{outfit_key}/cover"
                             outfit_val["reference_images"] = [u for u in outfit_val["reference_images"] if not u.startswith(prefix)]
                             outfit_val["reference_images"].append(outfit_url)
-                            logger.info(f"      ✅ {outfit_key} 完成")
+                            logger.info(f"      ✅ {outfit_key} 完成 (seed={outfit_seed})")
                         else:
                             logger.warning(f"      ⚠ {outfit_key} 未生成")
                     except Exception as e:

@@ -855,11 +855,32 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
     models = cfg.get("models", {})
     wb = WorkflowBuilder(cfg.data, models, str(project_dir), comfyui=comfyui)
     wb.load_workflows()
+
+    # 确定性 seed + cover 参考图（保持角色面部一致性）
+    import hashlib
+    h = hashlib.md5(char_id.encode("utf-8")).hexdigest()
+    base_seed = int(h[:16], 16)
+    outfit_keys = list(outfits.keys())
+    outfit_idx = outfit_keys.index(outfit_key) if outfit_key in outfit_keys else 0
+    outfit_seed = base_seed + 100 + outfit_idx
+
     fake_shot = {"characters": char_id, "emotion": "neutral",
                  "shot_type": "全身", "camera": "固定"}
-    _, wf = wb.build_first_frame(fake_shot, character_desc=full_desc)
+    _, wf = wb.build_first_frame(fake_shot, character_desc=full_desc, seed=outfit_seed)
     if not wf:
         return {"status": "error", "reason": "首帧工作流为空（缺少模板）"}
+
+    # 注入 cover 做 IP-Adapter 参考
+    cover_ref = project_dir / "assets" / "characters" / char_id / "cover.png"
+    if cover_ref.exists():
+        from engines.workflow import find_character_load_image_nodes
+        char_nodes = find_character_load_image_nodes(wf)
+        if char_nodes:
+            wf[char_nodes[0]]["inputs"]["image"] = os.path.basename(str(cover_ref))
+            try:
+                comfyui.upload_image(str(cover_ref))
+            except Exception as e:
+                logger.warning(f"参考图上传失败: {e}")
 
     self.update_state(state="PROGRESS", meta={"step": "outfit", "progress": 50, "message": "ComfyUI 生成中..."})
     try:
