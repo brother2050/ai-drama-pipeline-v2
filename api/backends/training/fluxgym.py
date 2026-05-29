@@ -209,27 +209,30 @@ class FluxGymTrainer:
         max_epochs = self._default_max_train_epochs
         save_epochs = max(1, max_epochs // 4)
 
-        # ── 15 个命名参数（按文档顺序） ──
-        # Number 组件必须传 int/float，不能传 str
-        # 只传这 15 个，高级参数省略让 gradio_client 使用 UI 默认值
-        # （高级参数的类型文档与实际 UI 可能不一致，传了反而报错）
+        # ── 16 个命名参数（按 view_api 实际顺序） ──
+        # 关键: sample_every_n_steps 是第 16 个命名参数，不是高级参数！
         args = [
-            self._base_model,           # base_model (str)
-            lora_name,                  # lora_name (str)
-            int(resolution),            # resolution (Number → int)
-            42,                         # seed (Number → int)
-            2,                          # workers (Number → int)
-            trigger_word,               # class_tokens (str)
-            str(learning_rate),         # learning_rate (str)
-            int(rank),                  # network_dim (Number → int)
-            int(max_epochs),            # max_train_epochs (Number → int)
-            int(save_epochs),           # save_every_n_epochs (Number → int)
-            "shift",                    # timestep_sampling (str)
-            1,                          # guidance_scale (Number → int)
-            self._default_vram,         # vram (str)
-            int(self._default_num_repeats),  # num_repeats (Number → int)
-            "",                         # sample_prompts (str)
+            self._base_model,           # 1  base_model (Dropdown)
+            lora_name,                  # 2  lora_name (Textbox)
+            int(resolution),            # 3  resolution (Number)
+            42,                         # 4  seed (Number)
+            2,                          # 5  workers (Number)
+            trigger_word,               # 6  class_tokens (Textbox)
+            str(learning_rate),         # 7  learning_rate (Textbox)
+            int(rank),                  # 8  network_dim (Number)
+            int(max_epochs),            # 9  max_train_epochs (Number)
+            int(save_epochs),           # 10 save_every_n_epochs (Number)
+            "shift",                    # 11 timestep_sampling (Textbox)
+            1,                          # 12 guidance_scale (Number)
+            self._default_vram,         # 13 vram (Radio)
+            int(self._default_num_repeats),  # 14 num_repeats (Number)
+            "",                         # 15 sample_prompts (Textbox)
+            0,                          # 16 sample_every_n_steps (Number)
         ]
+
+        # ── 163 个高级参数 (param_16 ~ param_178) ──
+        # 只传 Checkbox(bool) 类型，Textbox 用默认空字符串
+        args.extend(self._advanced_defaults())
 
         logger.info(f"  生成训练配置: epochs={max_epochs}, lr={learning_rate}, "
                     f"dim={rank}, vram={self._default_vram}")
