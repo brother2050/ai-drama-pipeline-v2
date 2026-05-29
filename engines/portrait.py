@@ -219,7 +219,8 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
 
     # 使用 cover.png 作为所有服装图的 IP-Adapter 参考（保持角色面部一致性）
     cover_path = portrait_dir / "cover.png"
-    base_seed = _char_seed(char_id)
+    generation = char.get("portrait_generation", 0)
+    base_seed = _char_seed(char_id, generation)
 
     for outfit_idx, (outfit_key, outfit_val) in enumerate(outfits.items()):
         if not isinstance(outfit_val, dict):
