@@ -1359,8 +1359,117 @@ def ai_scenes_task(self, config_path: str, descriptions: list[str]) -> dict:
 # 4.1 对话式编辑 — LLM Chat Edit
 # ══════════════════════════════════════════════════════════
 
+def _repair_truncated_json(text: str) -> str | None:
+    """尝试修复被截断的 JSON（LLM 输出常因 token 限制被截断）
+
+    策略：逐字符跟踪 JSON 结构深度，遇到截断时补全缺失的闭合括号。
+    """
+    if not text:
+        return None
+
+    text = text.rstrip()
+    if not text:
+        return None
+
+    # 去掉末尾可能的不完整内容（如截断在逗号、冒号、值中间）
+    # 先去掉末尾的逗号和空白
+    cleaned = text.rstrip(", \t\n\r")
+
+    # 尝试直接解析清理后的文本
+    try:
+        json.loads(cleaned)
+        return cleaned
+    except json.JSONDecodeError:
+        pass
+
+    # 逐字符跟踪结构，找到最后一个合法位置
+    stack = []  # 记录未闭合的括号: '[' 或 '{'
+    in_string = False
+    escape = False
+    last_safe = -1  # 最后一个合法的字符位置（闭合括号或数组/对象元素之后）
+
+    for i, ch in enumerate(cleaned):
+        if escape:
+            escape = False
+            continue
+        if ch == '\\' and in_string:
+            escape = True
+            continue
+        if ch == '"' and not escape:
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+
+        if ch == '[':
+            stack.append(']')
+        elif ch == '{':
+            stack.append('}')
+        elif ch in (']', '}'):
+            if stack and stack[-1] == ch:
+                stack.pop()
+                last_safe = i
+            # 如果栈顶不匹配，说明结构已损坏，但继续尝试
+        elif ch == ',':
+            if not stack:
+                # 顶层逗号，记录为安全位置
+                last_safe = i
+
+    # 情况1：完整 JSON，只是末尾有垃圾
+    if not stack and last_safe >= 0:
+        # 尝试截取到最后一个合法闭合位置
+        candidate = cleaned[:last_safe + 1]
+        try:
+            json.loads(candidate)
+            return candidate
+        except json.JSONDecodeError:
+            pass
+
+    # 情况2：JSON 被截断，需要补全闭合括号
+    if stack:
+        # 找到栈中最后一个完整元素的位置
+        # 从末尾去掉不完整的键值对（如 "key": "incomplete_value"）
+        candidate = cleaned
+
+        # 如果末尾在字符串中间，截断到上一个完整 token
+        if in_string:
+            # 找最后一个未闭合引号之前的位置
+            # 回退到最近的逗号或括号
+            for j in range(len(candidate) - 1, -1, -1):
+                if candidate[j] in (',', '[', '{'):
+                    candidate = candidate[:j + 1]
+                    break
+            else:
+                candidate = ""
+
+        # 去掉末尾的不完整键值（如 "key": 或 "key": "val）
+        candidate = candidate.rstrip(", \t\n\r")
+        if candidate.endswith(':'):
+            candidate = candidate[:-1].rstrip(", \t\n\r")
+
+        # 补全所有未闭合的括号
+        closing = ''.join(reversed(stack))
+        repaired = candidate + closing
+
+        try:
+            json.loads(repaired)
+            return repaired
+        except json.JSONDecodeError:
+            # 尝试更激进的修复：逐字符回退直到找到合法位置
+            for j in range(len(candidate) - 1, max(0, len(candidate) - 200), -1):
+                if candidate[j] in (',',):
+                    attempt = candidate[:j] + closing
+                    try:
+                        json.loads(attempt)
+                        return attempt
+                    except json.JSONDecodeError:
+                        continue
+
+    return None
+
+
 def _parse_llm_json(text: str):
-    """从 LLM 响应中提取 JSON（容错：markdown 代码块、前后多余文字）
+    """从 LLM 响应中提取 JSON（容错：markdown 代码块、前后多余文字、截断修复）
 
     Returns:
         解析后的对象，或 None 表示解析失败
@@ -1400,6 +1509,22 @@ def _parse_llm_json(text: str):
             return json.loads(text[start:end + 1])
         except json.JSONDecodeError:
             pass
+
+    # 5. 截断修复：LLM 输出因 token 限制被截断时，尝试补全闭合括号
+    #    优先尝试从 [ 到结尾的修复（数组是 chat_edit 最常见返回类型）
+    if start != -1 and text[start] == '[':
+        repaired = _repair_truncated_json(text[start:])
+        if repaired is not None:
+            return repaired
+    elif start != -1 and text[start] == '{':
+        repaired = _repair_truncated_json(text[start:])
+        if repaired is not None:
+            return repaired
+
+    # 6. 全文修复（兜底）
+    repaired = _repair_truncated_json(text)
+    if repaired is not None:
+        return repaired
 
     return None
 
