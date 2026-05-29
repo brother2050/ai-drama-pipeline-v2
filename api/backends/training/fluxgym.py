@@ -38,7 +38,10 @@ class FluxGymTrainer:
                 from gradio_client import Client
                 self._client = Client(self._api_url)
             except ImportError:
-                raise ImportError("需要安装 gradio_client: pip install gradio_client")
+                raise ImportError(
+                    "需要安装 gradio_client: pip install 'ai-drama-pipeline[training]'\n"
+                    "或直接: pip install gradio_client"
+                )
             except Exception as e:
                 raise ConnectionError(f"连接 FluxGym 失败 ({self._api_url}): {e}")
         return self._client
