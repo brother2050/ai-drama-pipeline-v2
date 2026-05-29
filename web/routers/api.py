@@ -86,6 +86,8 @@ from web.schemas import (
     SekoImportRequest,
     TrainingRequest,
     PrepareRequest,
+    BatchDeleteRequest,
+    StoryboardBatchDeleteRequest,
 )
 
 # ── 工具函数 ──
@@ -859,6 +861,23 @@ def delete_character(char_id: str):
     return {"status": "ok", "id": char_id}
 
 
+@router.post("/characters/batch-delete")
+def batch_delete_characters(req: BatchDeleteRequest):
+    """批量删除角色（文件 + DB + 资产目录）"""
+    from infra.database.characters import delete as db_del
+    deleted = []
+    errors = []
+    for char_id in req.ids:
+        try:
+            _yaml_delete("characters", char_id, "角色", db_delete=db_del)
+            deleted.append(char_id)
+        except HTTPException as e:
+            errors.append({"id": char_id, "error": e.detail})
+        except Exception as e:
+            errors.append({"id": char_id, "error": str(e)})
+    return {"status": "ok", "deleted": deleted, "errors": errors}
+
+
 @router.get("/scenes")
 def list_scenes():
     return {"scenes": _yaml_list("scenes", "scene")}
@@ -878,6 +897,23 @@ def delete_scene(scene_id: str):
     from infra.database.scenes import delete as db_del
     _yaml_delete("scenes", scene_id, "场景", db_delete=db_del)
     return {"status": "ok", "id": scene_id}
+
+
+@router.post("/scenes/batch-delete")
+def batch_delete_scenes(req: BatchDeleteRequest):
+    """批量删除场景（文件 + DB + 资产目录）"""
+    from infra.database.scenes import delete as db_del
+    deleted = []
+    errors = []
+    for scene_id in req.ids:
+        try:
+            _yaml_delete("scenes", scene_id, "场景", db_delete=db_del)
+            deleted.append(scene_id)
+        except HTTPException as e:
+            errors.append({"id": scene_id, "error": e.detail})
+        except Exception as e:
+            errors.append({"id": scene_id, "error": str(e)})
+    return {"status": "ok", "deleted": deleted, "errors": errors}
 
 
 @router.post("/scenes/{scene_id}/generate-image")
@@ -1066,6 +1102,46 @@ def save_storyboard(episode: int, data: dict):
         logger.debug(f"数据库同步跳过: {e}")
 
     return {"status": "ok", "count": len(shots)}
+
+
+@router.post("/storyboard/{episode}/batch-delete")
+def batch_delete_storyboard_shots(episode: int, req: StoryboardBatchDeleteRequest):
+    """批量删除分镜镜头"""
+    _check_episode(episode)
+    sb_path = _proj() / "storyboard" / "episodes.csv"
+    if not sb_path.exists():
+        raise HTTPException(404, "分镜表不存在")
+
+    # 读取现有分镜
+    import csv as _csv
+    shots = []
+    with open(sb_path, encoding="utf-8") as f:
+        shots = [dict(r) for r in _csv.DictReader(f)]
+
+    # 过滤掉要删除的镜头（只删除指定集的）
+    ids_to_delete = set(req.shot_ids)
+    before_count = len(shots)
+    remaining = [s for s in shots if not (int(s.get("episode", 0) or 0) == episode and s.get("shot_id") in ids_to_delete)]
+    deleted_count = before_count - len(remaining)
+
+    # 保存回去
+    from engines.storyboard import save_storyboard
+    save_storyboard(sb_path, remaining, episode, append=False)
+
+    # 同步删除数据库记录
+    try:
+        from infra.database.pool import get_pool
+        from infra.database.shots import delete as db_delete_shot
+        pool = get_pool()
+        for sid in ids_to_delete:
+            try:
+                db_delete_shot(pool, episode, sid)
+            except Exception:
+                pass
+    except Exception as e:
+        logger.debug(f"数据库同步跳过: {e}")
+
+    return {"status": "ok", "deleted": deleted_count, "remaining": len(remaining)}
 
 
 # ══════════════════════════════════════════════════════════

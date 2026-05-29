@@ -413,6 +413,17 @@ const I18N = {
   'ep.batch_gen': { zh: '🚀 全集生成', en: '🚀 Generate All' },
   'ep.batch_export': { zh: '📤 全集导出', en: '📤 Export All' },
 
+  // 批量删除
+  'btn.batch_delete': { zh: '🗑 批量删除', en: '🗑 Batch Delete' },
+  'btn.select_all': { zh: '全选', en: 'Select All' },
+  'btn.deselect_all': { zh: '取消全选', en: 'Deselect All' },
+  'confirm.batch_delete_chars': { zh: '确认删除选中的 {n} 个角色？此操作不可撤销。', en: 'Delete {n} selected characters? This cannot be undone.' },
+  'confirm.batch_delete_scenes': { zh: '确认删除选中的 {n} 个场景？此操作不可撤销。', en: 'Delete {n} selected scenes? This cannot be undone.' },
+  'confirm.batch_delete_shots': { zh: '确认删除选中的 {n} 个镜头？此操作不可撤销。', en: 'Delete {n} selected shots? This cannot be undone.' },
+  'toast.batch_deleted': { zh: '✅ 已删除 {n} 个', en: '✅ Deleted {n}' },
+  'toast.batch_delete_done': { zh: '批量删除完成: {done} 成功 {fail} 失败', en: 'Batch delete: {done} OK {fail} failed' },
+  'common.selected': { zh: '已选 {n} 个', en: '{n} selected' },
+
   // 4.4 实时协作指示
   'worker.running': { zh: '🔧 Worker 运行中', en: '🔧 Worker Running' },
   'worker.idle': { zh: '💤 Worker 空闲', en: '💤 Worker Idle' },

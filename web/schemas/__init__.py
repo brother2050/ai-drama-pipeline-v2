@@ -13,7 +13,43 @@ __all__ = [
     "SekoImportRequest",
     "TrainingRequest",
     "PrepareRequest",
+    "BatchDeleteRequest",
+    "StoryboardBatchDeleteRequest",
 ]
+
+
+# ── 批量删除 ──
+
+class BatchDeleteRequest(BaseModel):
+    """通用批量删除请求（角色/场景）"""
+    ids: list[str] = Field(..., min_length=1, max_length=200, description="要删除的 ID 列表")
+
+    @field_validator("ids")
+    @classmethod
+    def validate_ids(cls, v: list[str]) -> list[str]:
+        cleaned = [x.strip() for x in v if x.strip()]
+        if not cleaned:
+            raise ValueError("至少需要一个 ID")
+        for x in cleaned:
+            if not re.match(r"^[a-zA-Z0-9_\-\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]+$", x):
+                raise ValueError(f"无效的 ID: {x}")
+        return cleaned
+
+
+class StoryboardBatchDeleteRequest(BaseModel):
+    """分镜表批量删除请求"""
+    shot_ids: list[str] = Field(..., min_length=1, max_length=500, description="要删除的镜头 ID 列表")
+
+    @field_validator("shot_ids")
+    @classmethod
+    def validate_shot_ids(cls, v: list[str]) -> list[str]:
+        cleaned = [x.strip() for x in v if x.strip()]
+        if not cleaned:
+            raise ValueError("至少需要一个镜头 ID")
+        for x in cleaned:
+            if not re.match(r"^[a-zA-Z0-9_-]+$", x):
+                raise ValueError(f"无效的镜头 ID: {x}")
+        return cleaned
 
 
 # ── 镜头步骤 ──

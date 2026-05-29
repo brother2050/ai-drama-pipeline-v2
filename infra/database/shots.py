@@ -25,6 +25,14 @@ def get_by_episode(pool, episode: int) -> list[dict]:
         return [_row_to_dict(r) for r in cur.fetchall()]
 
 
+def delete(pool, episode: int, shot_id: str):
+    """删除单个镜头记录"""
+    with pool.connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM shots WHERE episode = %s AND shot_id = %s", (episode, shot_id))
+        conn.commit()
+
+
 def upsert(pool, episode: int, shot_id: str, data: dict):
     with pool.connection() as conn:
         cur = conn.cursor()

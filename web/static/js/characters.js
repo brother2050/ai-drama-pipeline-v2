@@ -1,18 +1,77 @@
 // MODULE: characters — 角色管理
 // ══════════════════════════════════════════════════════════
 
+/** 批量选择状态 */
+const _batchState = {};
+
 /** 通用实体列表渲染 */
-function _loadEntityPage(type, { pageId, icon, titleKey, emptyHintKey, emptyDescKey, editFn, newFn, aiFn, card, extraButtons }) {
+function _loadEntityPage(type, { pageId, icon, titleKey, emptyHintKey, emptyDescKey, editFn, newFn, aiFn, card, extraButtons, batchDeleteLabel }) {
   const el = document.getElementById(pageId);
   const addLabel = t('btn.add');
   cachedFetch(type, () => api(`/${type}`)).then(d => {
     const items = d[type] || [];
-    const grid = items.length
-      ? `<div class="entity-grid">${items.map(it => card(it)).join('')}</div>`
+    // 初始化批量选择状态
+    if (!_batchState[type]) _batchState[type] = new Set();
+    const selected = _batchState[type];
+    const hasItems = items.length > 0;
+    const batchEnabled = !!batchDeleteLabel;
+
+    const grid = hasItems
+      ? `<div class="entity-grid">${items.map(it => {
+          const cardHtml = card(it);
+          if (!batchEnabled) return cardHtml;
+          // 在卡片前插入复选框
+          const checked = selected.has(it.id) ? 'checked' : '';
+          return `<div class="entity-card-wrap" style="position:relative"><label class="batch-check" style="position:absolute;top:6px;left:6px;z-index:2"><input type="checkbox" class="batch-cb-${type}" value="${esc(it.id)}" ${checked} onclick="event.stopPropagation();_toggleBatchSelect('${type}','${esc(it.id)}',this.checked)"></label>${cardHtml}</div>`;
+        }).join('')}</div>`
       : `<div class="empty-state"><div class="empty-state-icon">${icon}</div><h3>${t(emptyHintKey)}</h3><p>${t(emptyDescKey)}</p><button class="btn btn-success" onclick="${newFn}()">+ ${addLabel}</button></div>`;
+
     const extraBtns = extraButtons ? extraButtons(items) : '';
-    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${icon} ${t(titleKey)}</h2><div style="display:flex;gap:0.5rem;flex-wrap:wrap">${extraBtns}<button class="btn btn-outline btn-ai" onclick="${aiFn}()">🤖 AI 生成</button><button class="btn btn-success" onclick="${newFn}()">+ ${addLabel}</button></div></div>${grid}</div>`;
+    const batchBtns = hasItems && batchEnabled
+      ? `<button class="btn btn-outline btn-sm" onclick="_toggleSelectAll('${type}')">${t('btn.select_all')}</button><button class="btn btn-danger btn-sm" onclick="_batchDeleteEntities('${type}','${batchDeleteLabel}')" id="batch-del-${type}" style="display:${selected.size > 0 ? '' : 'none'}">${t('btn.batch_delete')} (<span id="batch-count-${type}">${selected.size}</span>)</button>`
+      : '';
+    el.innerHTML = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${icon} ${t(titleKey)}</h2><div style="display:flex;gap:0.5rem;flex-wrap:wrap">${batchBtns}${extraBtns}<button class="btn btn-outline btn-ai" onclick="${aiFn}()">🤖 AI 生成</button><button class="btn btn-success" onclick="${newFn}()">+ ${addLabel}</button></div></div>${grid}</div>`;
   }).catch(e => { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; });
+}
+
+function _toggleBatchSelect(type, id, checked) {
+  if (!_batchState[type]) _batchState[type] = new Set();
+  if (checked) _batchState[type].add(id); else _batchState[type].delete(id);
+  _updateBatchBtn(type);
+}
+
+function _updateBatchBtn(type) {
+  const countEl = document.getElementById(`batch-count-${type}`);
+  const btnEl = document.getElementById(`batch-del-${type}`);
+  const n = _batchState[type]?.size || 0;
+  if (countEl) countEl.textContent = n;
+  if (btnEl) btnEl.style.display = n > 0 ? '' : 'none';
+}
+
+function _toggleSelectAll(type) {
+  const cbs = document.querySelectorAll(`.batch-cb-${type}`);
+  if (!_batchState[type]) _batchState[type] = new Set();
+  const allChecked = Array.from(cbs).every(cb => cb.checked);
+  cbs.forEach(cb => { cb.checked = !allChecked; });
+  if (allChecked) { _batchState[type].clear(); } else { cbs.forEach(cb => _batchState[type].add(cb.value)); }
+  _updateBatchBtn(type);
+}
+
+async function _batchDeleteEntities(type, labelKey) {
+  const ids = Array.from(_batchState[type] || []);
+  if (!ids.length) { toast('请先选择要删除的项目', 'error'); return; }
+  if (!await modalConfirm(t(labelKey, { n: ids.length }))) return;
+  try {
+    const r = await api(`/${type}/batch-delete`, { method: 'POST', body: { ids } });
+    const done = r.deleted?.length || 0;
+    const fail = r.errors?.length || 0;
+    _batchState[type].clear();
+    invalidateCache(type);
+    toast(t('toast.batch_delete_done', { done, fail }));
+    // 重载页面
+    if (type === 'characters') loadCharacters();
+    else if (type === 'scenes') loadScenes();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 /** 通用编辑面板 */
@@ -136,6 +195,7 @@ async function loadCharacters() {
     pageId: 'page-characters', icon: '👤', titleKey: 'char.title',
     emptyHintKey: 'char.empty_hint', emptyDescKey: 'char.empty_desc',
     editFn: 'editChar', newFn: 'newChar', aiFn: 'showAIGenCharacter',
+    batchDeleteLabel: 'confirm.batch_delete_chars',
     extraButtons: (items) => items.length ? `<button class="btn btn-outline btn-sm" onclick="batchTrainLora()" id="batch-train-btn">🏋 批量训练 LoRA</button>` : '',
     card: c => {
       const avatar = c.appearance ? esc(c.appearance.substring(0, 2)) : '👤';

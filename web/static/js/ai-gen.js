@@ -94,7 +94,7 @@ async function loadStoryboard() {
     const ss = d.shots || [];
     const epSelector = _episodeSelectHtml(episodes, 'switchEpisode');
     const header = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${t('sb.title')}</h2>
-      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">${epSelector}${_sbViewToggle()}<button class="btn btn-outline btn-ai" onclick="showAIGenStoryboard()">🤖 AI 生成分镜</button><button class="btn btn-outline" onclick="exportStoryboard()">📤 ${t('sb.export')}</button><button class="btn btn-outline" onclick="showImportDialog()">📥 ${t('sb.import')}</button><button class="btn btn-primary" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline')}</button><button class="btn btn-success" onclick="addShot()">+ ${t('btn.add')}</button></div></div>
+      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">${epSelector}${_sbViewToggle()}<button class="btn btn-outline btn-ai" onclick="showAIGenStoryboard()">🤖 AI 生成分镜</button><button class="btn btn-outline" onclick="exportStoryboard()">📤 ${t('sb.export')}</button><button class="btn btn-outline" onclick="showImportDialog()">📥 ${t('sb.import')}</button><button class="btn btn-danger btn-sm" onclick="batchDeleteShots()" id="sb-batch-del-btn" style="display:none">${t('btn.batch_delete')} (<span id="sb-batch-count">0</span>)</button><button class="btn btn-primary" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline')}</button><button class="btn btn-success" onclick="addShot()">+ ${t('btn.add')}</button></div></div>
       <p class="dim" style="font-size:.76rem;margin-bottom:.5rem">${t('sb.drag_hint')}</p>`;
 
     if (!ss.length) {
@@ -107,7 +107,8 @@ async function loadStoryboard() {
       const timeline = `<div class="timeline-container">${ss.map((s, i) => {
         const sid = _shotId(s, i);
         return `<div class="timeline-item" id="tl-${esc(sid)}"><div class="timeline-dot"></div>
-          <div class="timeline-card">
+          <div class="timeline-card" style="position:relative">
+            <label class="batch-check" style="position:absolute;top:6px;right:6px;z-index:2"><input type="checkbox" class="sb-batch-cb" value="${esc(sid)}" onclick="event.stopPropagation();_updateSB()"></label>
             <div class="timeline-thumb" id="tl-thumb-${esc(sid)}"><div class="thumb-skeleton"><div class="thumb-skeleton-pulse"></div></div></div>
             <div class="timeline-info">
               <div class="timeline-info-head"><span class="timeline-sid">${esc(sid)}</span><span class="timeline-meta">${esc(_resolveScene(s.scene))} · ${esc(_resolveChars(s.characters))}</span></div>
@@ -125,6 +126,7 @@ async function loadStoryboard() {
     } else {
       // 表格视图
       const rows = ss.map((s, i) => `<tr>
+        <td><input type="checkbox" class="sb-batch-cb" value="${esc(_shotId(s, i))}" onclick="event.stopPropagation();_updateSB()"></td>
         <td><span class="drag-handle" title="拖拽排序">⠿</span></td>
         <td>${_shotId(s, i)}</td>
         ${SB_FIELDS.slice(0, 4).map(f => { const _tip = f === 'characters' ? _resolveChars(s[f]) : f === 'scene' ? _resolveScene(s[f]) : ''; return `<td><input class="sb-inline-input" value="${esc(s[f] || '')}" data-idx="${i}" data-field="${f}"${_tip ? ` title="${esc(_tip)}"` : ''} onchange="updateShotField(this)"></td>`; }).join('')}
@@ -134,7 +136,7 @@ async function loadStoryboard() {
         <td><select class="sb-inline-input" data-idx="${i}" data-field="emotion" onchange="updateShotField(this)">${_selectOpts(EMOTIONS, s.emotion)}</select></td>
         <td><select class="sb-inline-input" data-idx="${i}" data-field="language" onchange="updateShotField(this)">${LANGUAGES.map(l => `<option value="${l.value}" ${(s.language || 'zh') === l.value ? 'selected' : ''}>${l.label}</option>`).join('')}</select></td>
         <td><button class="btn btn-xs btn-danger" onclick="deleteShotFromSB(${i})">🗑</button></td></tr>`).join('');
-      el.innerHTML = header + `<div style="overflow-x:auto"><table><thead><tr><th></th><th>${t('sb.shot_id')}</th><th>${t('edit.scene')}</th><th>${t('edit.characters')}</th><th>${t('edit.action')}</th><th>${t('edit.dialogue')}</th><th>${t('edit.camera')}</th><th>${t('edit.shot_type')}</th><th>${t('edit.duration')}</th><th>${t('sb.emotion')}</th><th>${t('edit.language')}</th><th></th></tr></thead>
+      el.innerHTML = header + `<div style="overflow-x:auto"><table><thead><tr><th><input type="checkbox" onclick="_toggleAllSB(this.checked)"></th><th></th><th>${t('sb.shot_id')}</th><th>${t('edit.scene')}</th><th>${t('edit.characters')}</th><th>${t('edit.action')}</th><th>${t('edit.dialogue')}</th><th>${t('edit.camera')}</th><th>${t('edit.shot_type')}</th><th>${t('edit.duration')}</th><th>${t('sb.emotion')}</th><th>${t('edit.language')}</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div></div>`;
       _initSortable();
     }
@@ -197,6 +199,35 @@ async function addShot() {
   const newShot = { episode: ep, shot_id: newId, scene: '', characters: '', action: '', dialogue: '', camera: _cameras()[0], shot_type: _shotTypes()[2], duration: 4, emotion: 'neutral', language: 'zh', outfit: '', action_en: '', dialogue_en: '' };
   shots.push(newShot);
   try { await api(`/storyboard/${ep}`, { method: 'POST', body: { shots } }); invalidateCache(`storyboard/${ep}`); toast(t('toast.created')); loadStoryboard(); } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── 分镜表批量选择/删除 ──
+
+function _updateSB() {
+  const cbs = document.querySelectorAll('.sb-batch-cb:checked');
+  const n = cbs.length;
+  const btn = document.getElementById('sb-batch-del-btn');
+  const count = document.getElementById('sb-batch-count');
+  if (btn) btn.style.display = n > 0 ? '' : 'none';
+  if (count) count.textContent = n;
+}
+
+function _toggleAllSB(checked) {
+  document.querySelectorAll('.sb-batch-cb').forEach(cb => { cb.checked = checked; });
+  _updateSB();
+}
+
+async function batchDeleteShots() {
+  const cbs = document.querySelectorAll('.sb-batch-cb:checked');
+  const shotIds = Array.from(cbs).map(cb => cb.value).filter(Boolean);
+  if (!shotIds.length) { toast('请先选择要删除的镜头', 'error'); return; }
+  if (!await modalConfirm(t('confirm.batch_delete_shots', { n: shotIds.length }))) return;
+  try {
+    const r = await api(`/storyboard/${ep}/batch-delete`, { method: 'POST', body: { shot_ids: shotIds } });
+    invalidateCache(`storyboard/${ep}`);
+    toast(t('toast.batch_deleted', { n: r.deleted || shotIds.length }));
+    loadStoryboard();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 

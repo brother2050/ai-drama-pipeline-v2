@@ -7,6 +7,7 @@ async function loadScenes() {
     pageId: 'page-scenes', icon: '🏔', titleKey: 'scene.title',
     emptyHintKey: 'scene.empty_hint', emptyDescKey: 'scene.empty_desc',
     editFn: 'editScene', newFn: 'newScene', aiFn: 'showAIGenScene',
+    batchDeleteLabel: 'confirm.batch_delete_scenes',
     card: s => {
       const thumb = (s.reference_images?.length) ? `<img src="${esc(s.reference_images[0])}" loading="lazy">` : '🏔';
       return `<div class="entity-card" onclick="editScene('${esc(s.id)}')"><div class="entity-card-thumb">${thumb}</div><div class="entity-card-body"><h3>${esc(s.name || s.id)}</h3><p>${esc(s.description || '')}</p></div><div class="entity-card-footer"><span class="entity-card-id">${esc(s.id)}</span><span class="dim" style="font-size:.7rem">${esc(s.lighting || '')} <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteScene('${esc(s.id)}')" title="${t('btn.delete')}">🗑</button></span></div></div>`;
