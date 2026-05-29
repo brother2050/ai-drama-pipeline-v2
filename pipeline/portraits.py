@@ -1,4 +1,10 @@
-"""定妆照生成 — 为所有角色生成参考图（含各服装）"""
+"""定妆照生成 — 为角色生成参考图（含各服装）
+
+被以下入口调用：
+- portraits_task / drama portraits CLI（批量，Celery）
+- portrait_single_task（单角色，Celery）
+- ai_prepare_task step 4（准备阶段，Celery）
+"""
 from __future__ import annotations
 
 import argparse
@@ -49,8 +55,21 @@ def _generate_outfit(char_id: str, appearance: str, outfit_key: str,
     return files or []
 
 
-def run_portraits(config_path: str, force: bool = False):
-    """生成定妆照（含各服装参考图）"""
+def run_portraits(
+    config_path: str,
+    *,
+    force: bool = False,
+    char_ids: list[str] | None = None,
+    write_db: bool = False,
+):
+    """生成定妆照（含各服装参考图）
+
+    Args:
+        config_path: 项目配置文件路径
+        force: True 时删除已有图片重新生成
+        char_ids: None=全部角色, list=只处理指定角色
+        write_db: True 时同步写入数据库
+    """
     cfg = Config(config_path)
     logger.info("生成定妆照")
 
@@ -81,11 +100,19 @@ def run_portraits(config_path: str, force: bool = False):
 
     import yaml
 
-    generated = 0
-    for f in chars_dir.glob("*.yaml"):
-        if f.suffix != ".yaml" or f.stem.endswith(".example"):
-            continue
+    # 确定要处理的角色文件列表
+    if char_ids is not None:
+        char_files = []
+        for cid in char_ids:
+            p = chars_dir / f"{cid}.yaml"
+            if p.exists():
+                char_files.append(p)
+    else:
+        char_files = [f for f in chars_dir.glob("*.yaml")
+                      if f.suffix == ".yaml" and not f.stem.endswith(".example")]
 
+    generated = 0
+    for f in char_files:
         try:
             with open(f) as fh:
                 data = yaml.safe_load(fh) or {}
@@ -193,6 +220,15 @@ def run_portraits(config_path: str, force: bool = False):
             from infra.config import save_yaml
             save_yaml(f, data)
             logger.info(f"    📝 已更新 YAML")
+
+            # ── 4. 同步数据库（可选）──
+            if write_db:
+                try:
+                    from infra.database.characters import upsert as db_up
+                    from infra.database.pool import get_pool
+                    db_up(get_pool(), char_id, char)
+                except Exception as e:
+                    logger.debug(f"DB 写入跳过: {e}")
 
         except Exception as e:
             logger.error(f"    ❌ 失败: {e}")
