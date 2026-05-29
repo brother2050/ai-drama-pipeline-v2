@@ -2,6 +2,11 @@
 // ══════════════════════════════════════════════════════════
 // 跨页面持久显示运行中的任务进度，不随路由切换丢失。
 // 任何模块提交任务后调用 trackTask(taskId, label) 即可。
+//
+// 设计原则：
+// - 当前页面的 pollTask 负责轮询 + 调用 updateTask 同步状态
+// - TaskPanel 自身仅在页面切换后（pollTask 丢失）接管轮询
+// - 不创建未使用的 Promise，避免内存泄漏
 
 const TaskPanel = (() => {
   // ── 状态 ──
@@ -11,11 +16,14 @@ const TaskPanel = (() => {
   let _badge = null;
   let _collapsed = false;
   let _pollTimer = null;
+  let _pollRunning = false;  // 防止并发轮询
   let _dragState = null;
+  let _userCollapsed = false;  // 用户主动折叠过，阻止自动展开
 
   const MAX_HISTORY = 20;     // 最多保留已完成任务数
-  const POLL_BASE = 800;      // 轮询基础间隔 ms
+  const POLL_BASE = 1200;     // 轮询基础间隔 ms（比 pollTask 慢，避免重复请求）
   const POLL_MAX = 5000;      // 轮询最大间隔 ms
+  const GC_DELAY = 30000;     // 已完成后多久移除（30s）
 
   // ── 初始化 ──
 
@@ -41,12 +49,13 @@ const TaskPanel = (() => {
     // 折叠/展开
     document.getElementById('task-panel-toggle').addEventListener('click', (e) => {
       e.stopPropagation();
-      _toggleCollapse();
+      _toggleCollapse(true);
     });
 
     // 点击 header 也能折叠/展开
-    document.getElementById('task-panel-header').addEventListener('click', () => {
-      _toggleCollapse();
+    document.getElementById('task-panel-header').addEventListener('click', (e) => {
+      if (e.target.tagName === 'BUTTON') return;
+      _toggleCollapse(true);
     });
 
     // 拖拽移动
@@ -56,6 +65,7 @@ const TaskPanel = (() => {
     const savedCollapsed = localStorage.getItem('task_panel_collapsed');
     if (savedCollapsed === 'true') {
       _collapsed = true;
+      _userCollapsed = true;
       _panel.classList.add('collapsed');
       document.getElementById('task-panel-toggle').textContent = '▼';
     }
@@ -71,13 +81,21 @@ const TaskPanel = (() => {
         _panel.style.top = 'auto';
       } catch {}
     }
+
+    // 页面重新可见时，检查是否有需要接管轮询的任务
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) _ensurePolling();
+    });
   }
 
-  function _toggleCollapse() {
+  function _toggleCollapse(userInitiated) {
     _collapsed = !_collapsed;
     _panel.classList.toggle('collapsed', _collapsed);
     document.getElementById('task-panel-toggle').textContent = _collapsed ? '▼' : '▲';
-    localStorage.setItem('task_panel_collapsed', _collapsed);
+    if (userInitiated) {
+      _userCollapsed = _collapsed;
+      localStorage.setItem('task_panel_collapsed', _collapsed);
+    }
   }
 
   function _initDrag() {
@@ -91,8 +109,6 @@ const TaskPanel = (() => {
       _dragState = {
         offsetX: e.clientX - rect.left,
         offsetY: e.clientY - rect.top,
-        startX: e.clientX,
-        startY: e.clientY,
       };
       _panel.classList.add('dragging');
     });
@@ -101,8 +117,8 @@ const TaskPanel = (() => {
       if (!_dragState) return;
       const x = e.clientX - _dragState.offsetX;
       const y = e.clientY - _dragState.offsetY;
-      _panel.style.left = Math.max(0, x) + 'px';
-      _panel.style.top = Math.max(0, y) + 'px';
+      _panel.style.left = Math.max(0, Math.min(x, window.innerWidth - 100)) + 'px';
+      _panel.style.top = Math.max(0, Math.min(y, window.innerHeight - 50)) + 'px';
       _panel.style.right = 'auto';
       _panel.style.bottom = 'auto';
     });
@@ -110,11 +126,14 @@ const TaskPanel = (() => {
     document.addEventListener('mouseup', () => {
       if (!_dragState) return;
       _panel.classList.remove('dragging');
-      // 保存位置（转为 right/bottom 坐标）
+      // 保存位置
       const rect = _panel.getBoundingClientRect();
       const right = window.innerWidth - rect.right;
       const bottom = window.innerHeight - rect.bottom;
-      localStorage.setItem('task_panel_pos', JSON.stringify({ right: Math.max(0, right), bottom: Math.max(0, bottom) }));
+      localStorage.setItem('task_panel_pos', JSON.stringify({
+        right: Math.max(0, Math.round(right)),
+        bottom: Math.max(0, Math.round(bottom)),
+      }));
       _dragState = null;
     });
   }
@@ -122,63 +141,53 @@ const TaskPanel = (() => {
   // ── 任务追踪 ──
 
   /**
-   * 追踪一个 Celery 任务。
+   * 注册一个任务到面板（不创建 Promise，纯追踪）。
    * @param {string} taskId - Celery task ID
-   * @param {string} label - 显示名称（如 "TTS s001"、"批量首帧"）
-   * @returns {Promise<object>} - 任务结果
+   * @param {string} label - 显示名称
    */
   function trackTask(taskId, label) {
+    if (!taskId) return;
     _init();
 
-    const task = {
-      id: taskId,
-      label: label || taskId,
-      status: 'pending',
-      progress: 0,
-      message: '等待中...',
-      startTime: Date.now(),
-      endTime: null,
-    };
-    _tasks.set(taskId, task);
-    _render();
-    _ensurePolling();
+    if (!_tasks.has(taskId)) {
+      _tasks.set(taskId, {
+        id: taskId,
+        label: label || taskId,
+        status: 'pending',
+        progress: 0,
+        message: '等待中...',
+        startTime: Date.now(),
+        endTime: null,
+        _lastUpdateTime: Date.now(),
+      });
+      _render();
 
-    return new Promise((resolve) => {
-      task._resolve = resolve;
-    });
+      // 有新任务时自动展开（仅用户未手动折叠时）
+      if (_collapsed && !_userCollapsed) {
+        _toggleCollapse(false);
+      }
+    }
+
+    // 启动兜底轮询（当 pollTask 不活跃时接管）
+    _ensurePolling();
   }
 
-  /** 更新任务状态（供 pollTask 回调使用） */
+  /** 更新任务状态（由 pollTask 调用） */
   function updateTask(taskId, info) {
     const task = _tasks.get(taskId);
     if (!task) return;
 
     task.progress = info.progress ?? task.progress;
     task.message = info.message || task.message;
-    task.status = info.status || task.status;
+    task._lastUpdateTime = Date.now();
 
-    if (['success', 'failed', 'cancelled', 'timeout'].includes(info.status)) {
-      task.endTime = Date.now();
-      if (task._resolve) {
-        task._resolve(info);
-        task._resolve = null;
+    if (info.status && info.status !== task.status) {
+      task.status = info.status;
+      if (['success', 'failed', 'cancelled', 'timeout'].includes(info.status)) {
+        task.endTime = Date.now();
       }
     }
-    _render();
-  }
 
-  /** 主动标记任务完成（外部调用） */
-  function completeTask(taskId, status, result) {
-    const task = _tasks.get(taskId);
-    if (!task) return;
-
-    task.status = status || 'success';
-    task.progress = status === 'success' ? 100 : task.progress;
-    task.endTime = Date.now();
-    if (task._resolve) {
-      task._resolve(result || { status });
-      task._resolve = null;
-    }
     _render();
   }
 
@@ -186,73 +195,82 @@ const TaskPanel = (() => {
   async function cancelTask(taskId) {
     try {
       await api(`/tasks/${taskId}/cancel`, { method: 'POST' });
-      completeTask(taskId, 'cancelled');
+      updateTask(taskId, { status: 'cancelled' });
+      toast('任务已取消');
     } catch (e) {
-      console.error('取消任务失败:', e);
+      toast('取消失败: ' + e.message, 'error');
     }
   }
 
-  // ── 轮询 ──
+  // ── 兜底轮询 ──
+  // 仅在页面切换后（pollTask 停止）对长时间未更新的任务进行轮询
+
+  function _hasStaleTasks() {
+    const now = Date.now();
+    for (const task of _tasks.values()) {
+      if (['success', 'failed', 'cancelled', 'timeout'].includes(task.status)) continue;
+      // 超过 5 秒未被 pollTask 更新，认为需要兜底轮询
+      if (now - task._lastUpdateTime > 5000) return true;
+    }
+    return false;
+  }
 
   function _ensurePolling() {
-    if (_pollTimer) return;
+    if (_pollTimer || _pollRunning) return;
+    if (!_hasStaleTasks()) return;
     _pollLoop();
   }
 
   async function _pollLoop() {
-    const activeIds = [];
-    for (const [id, task] of _tasks) {
-      if (!['success', 'failed', 'cancelled', 'timeout'].includes(task.status)) {
-        activeIds.push(id);
+    if (_pollRunning) return;
+    _pollRunning = true;
+
+    try {
+      const now = Date.now();
+      const activeIds = [];
+      for (const [id, task] of _tasks) {
+        if (['success', 'failed', 'cancelled', 'timeout'].includes(task.status)) continue;
+        // 只轮询超过 5 秒未被 pollTask 更新的任务
+        if (now - task._lastUpdateTime > 5000) {
+          activeIds.push(id);
+        }
       }
+
+      if (activeIds.length === 0) {
+        _pollTimer = null;
+        return;
+      }
+
+      // 并发轮询
+      await Promise.allSettled(activeIds.map(async (id) => {
+        try {
+          const info = await api(`/tasks/${id}`);
+          updateTask(id, info);
+        } catch {}
+      }));
+    } finally {
+      _pollRunning = false;
     }
 
-    if (activeIds.length === 0) {
-      _pollTimer = null;
-      return;
-    }
-
-    // 并发轮询所有活跃任务
-    await Promise.allSettled(activeIds.map(async (id) => {
-      try {
-        const info = await api(`/tasks/${id}`);
-        updateTask(id, info);
-      } catch (e) {
-        // 网络错误，下次重试
-      }
-    }));
-
-    // 清理过期的已完成任务
+    // 清理过期已完成任务
     _gcCompleted();
 
     // 继续轮询
-    const delay = _calcDelay();
-    _pollTimer = setTimeout(_pollLoop, delay);
-  }
-
-  function _calcDelay() {
-    // 有活跃任务用短间隔，只有已完成的用长间隔
-    let hasActive = false;
-    for (const task of _tasks.values()) {
-      if (!['success', 'failed', 'cancelled', 'timeout'].includes(task.status)) {
-        hasActive = true;
-        break;
-      }
-    }
-    return hasActive ? POLL_BASE : POLL_MAX;
+    const delay = _hasStaleTasks() ? POLL_BASE : POLL_MAX;
+    _pollTimer = setTimeout(() => {
+      _pollTimer = null;
+      _pollLoop();
+    }, delay);
   }
 
   function _gcCompleted() {
-    const completed = [];
+    const now = Date.now();
     for (const [id, task] of _tasks) {
       if (['success', 'failed', 'cancelled', 'timeout'].includes(task.status)) {
-        completed.push({ id, endTime: task.endTime || 0 });
+        if (task.endTime && now - task.endTime > GC_DELAY) {
+          _tasks.delete(id);
+        }
       }
-    }
-    if (completed.length > MAX_HISTORY) {
-      completed.sort((a, b) => a.endTime - b.endTime);
-      const toRemove = completed.slice(0, completed.length - MAX_HISTORY);
-      toRemove.forEach(({ id }) => _tasks.delete(id));
     }
   }
 
@@ -271,13 +289,6 @@ const TaskPanel = (() => {
     _badge.style.display = active.length > 0 ? 'inline-flex' : 'none';
     _panel.classList.toggle('has-active', active.length > 0);
 
-    // 自动展开：有新任务时展开
-    if (active.length > 0 && _collapsed) {
-      _collapsed = false;
-      _panel.classList.remove('collapsed');
-      document.getElementById('task-panel-toggle').textContent = '▲';
-    }
-
     let html = '';
 
     // 活跃任务
@@ -295,7 +306,7 @@ const TaskPanel = (() => {
       </div>`;
     }
 
-    // 最近完成的任务（最多显示 5 条）
+    // 最近完成的任务（最多 5 条）
     const recentDone = done.slice(0, 5);
     if (recentDone.length > 0) {
       if (active.length > 0) html += '<div class="task-divider">最近完成</div>';
@@ -346,7 +357,6 @@ const TaskPanel = (() => {
   return {
     trackTask,
     updateTask,
-    completeTask,
     cancelTask,
     /** 获取当前活跃任务数 */
     get activeCount() {
