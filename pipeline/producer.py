@@ -192,12 +192,21 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
                         logger.warning(
                             f"  ⚠ LoRA '{lora_name}' 未确认存在于服务器 {image_server_url}")
 
+                from engines.workflow import find_character_load_image_nodes as _find_char_nodes
+                _char_node_set = set(_find_char_nodes(wf))
                 for node_id, file_path in wb.build_upload_map(shot, wf).items():
                     if Path(file_path).exists():
                         try:
-                            comfyui.upload_image(file_path)
+                            # 角色参考图加 char_id 前缀，避免 ComfyUI 同名覆盖
+                            if node_id in _char_node_set and "/assets/characters/" in file_path:
+                                parts = Path(file_path).parts
+                                char_idx = parts.index("characters") + 1
+                                remote_name = f"{parts[char_idx]}_{Path(file_path).name}" if char_idx < len(parts) else Path(file_path).name
+                            else:
+                                remote_name = Path(file_path).name
+                            comfyui.upload_image(file_path, filename=remote_name)
                             if node_id in wf and wf[node_id].get("class_type") in ("LoadImage", "LoadImageFromPath", "ImageLoad"):
-                                wf[node_id]["inputs"]["image"] = Path(file_path).name
+                                wf[node_id]["inputs"]["image"] = remote_name
                         except Exception as e:
                             logger.warning(f"  ⚠ 参考图上传失败 [{node_id}]: {e}")
                 files = comfyui.generate(wf, str(shot_out))

@@ -37,13 +37,15 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
                    comfyui, wb, filename: str, shot_type: str,
                    seed: int | None = None,
                    ref_image: str | None = None,
-                   char: dict | None = None) -> str:
+                   char: dict | None = None,
+                   project_name: str = "") -> str:
     """生成单张视图，返回文件路径或空字符串
 
     Args:
         seed: 指定 seed 保持一致性（None 则随机）
         ref_image: IP-Adapter 参考图路径（用于保持角色一致性）
         char: 角色数据 dict（用于读取视角专属描述）
+        project_name: 项目名（用于 ComfyUI 上传文件名隔离）
     """
     # 获取视角专属外貌描述（背面/侧面自动去除面部细节）
     from engines.prompt import get_view_appearance
@@ -60,10 +62,12 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
         from engines.workflow import find_character_load_image_nodes
         char_nodes = find_character_load_image_nodes(wf)
         if char_nodes:
-            wf[char_nodes[0]]["inputs"]["image"] = os.path.basename(ref_image)
+            # 用 项目名_char_id_文件名 前缀避免 ComfyUI 同名文件覆盖（跨项目+多角色并行安全）
+            remote_name = f"{project_name}_{char_id}_{os.path.basename(ref_image)}" if project_name else f"{char_id}_{os.path.basename(ref_image)}"
+            wf[char_nodes[0]]["inputs"]["image"] = remote_name
             # 上传参考图到 ComfyUI
             try:
-                comfyui.upload_image(ref_image)
+                comfyui.upload_image(ref_image, filename=remote_name)
             except Exception as e:
                 logger.warning(f"参考图上传失败: {e}")
 
@@ -89,6 +93,7 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None) -> str
       - True: 同时为各 outfit 生成参考图
     """
     project_dir = config.get("_project_dir", os.getcwd())
+    project_name = Path(project_dir).name
     portrait_dir = Path(project_dir) / "assets" / "characters" / char_id
 
     # 检查三视图是否齐全
@@ -156,7 +161,7 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None) -> str
 
             result = _generate_view(char_id, appearance, portrait_dir, comfyui, wb,
                                     filename, shot_type, seed=view_seed, ref_image=ref,
-                                    char=char)
+                                    char=char, project_name=project_name)
             if result:
                 generated_urls.append(f"/api/assets/characters/{char_id}/{filename}")
                 logger.info(f"  ✅ {label}视图: {filename} (seed={view_seed})")
@@ -200,6 +205,7 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
     使用 cover.png 作为 IP-Adapter 参考图，保持角色面部一致性。
     """
     import yaml
+    project_name = Path(project_dir).name
     char_file = Path(project_dir) / "config" / "characters" / f"{char_id}.yaml"
     if not char_file.exists():
         return
@@ -261,9 +267,10 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
             from engines.workflow import find_character_load_image_nodes
             char_nodes = find_character_load_image_nodes(wf)
             if char_nodes:
-                wf[char_nodes[0]]["inputs"]["image"] = os.path.basename(str(cover_path))
+                remote_name = f"{project_name}_{char_id}_{os.path.basename(str(cover_path))}"
+                wf[char_nodes[0]]["inputs"]["image"] = remote_name
                 try:
-                    comfyui.upload_image(str(cover_path))
+                    comfyui.upload_image(str(cover_path), filename=remote_name)
                 except Exception as e:
                     logger.warning(f"参考图上传失败: {e}")
 
