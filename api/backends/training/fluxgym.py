@@ -131,9 +131,10 @@ class FluxGymTrainer:
         )
 
         # 解析返回: [img0, cap0, img1, cap1, ...]
+        # caption 可能是 str，也可能是 Gradio 组件对象 {'value': '...', ...}
         captions = []
         for i in range(1, len(result), 2):
-            cap = result[i] if i < len(result) else ""
+            cap = self._extract_value(result[i]) if i < len(result) else ""
             captions.append(cap if cap else trigger_word)
 
         # 补齐/截断
