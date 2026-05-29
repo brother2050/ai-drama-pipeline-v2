@@ -400,15 +400,17 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, forc
 
     # ── 上传参考图 ──
     from engines.workflow import find_character_load_image_nodes as _find_char_nodes
+    from infra.asset_tracker import comfyui_asset_name
     _char_node_set = set(_find_char_nodes(wf))
     for node_id, file_path in wb.build_upload_map(shot, wf).items():
         if Path(file_path).exists():
             try:
-                # 角色参考图加 char_id 前缀，避免 ComfyUI 同名覆盖（跨项目+多角色并行安全）
+                # 角色参考图：用 project_dir+char_id 生成唯一文件名 + AssetTracker 跟踪
                 if node_id in _char_node_set and "/assets/characters/" in file_path:
                     parts = Path(file_path).parts
                     char_idx = parts.index("characters") + 1
-                    remote_name = f"{parts[char_idx]}_{Path(file_path).name}" if char_idx < len(parts) else Path(file_path).name
+                    cid = parts[char_idx] if char_idx < len(parts) else "unknown"
+                    remote_name = comfyui_asset_name(cfg.project_dir, cid, Path(file_path).name)
                 else:
                     remote_name = Path(file_path).name
                 comfyui.upload_image(file_path, filename=remote_name)
@@ -884,13 +886,14 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
     cover_ref = project_dir / "assets" / "characters" / char_id / "cover.png"
     if cover_ref.exists():
         from engines.workflow import find_character_load_image_nodes
+        from infra.asset_tracker import comfyui_asset_name, AssetTracker
         char_nodes = find_character_load_image_nodes(wf)
         if char_nodes:
-            project_name = project_dir.name
-            remote_name = f"{project_name}_{char_id}_{os.path.basename(str(cover_ref))}"
+            remote_name = comfyui_asset_name(str(project_dir), char_id, os.path.basename(str(cover_ref)))
             wf[char_nodes[0]]["inputs"]["image"] = remote_name
             try:
-                comfyui.upload_image(str(cover_ref), filename=remote_name)
+                tracker = AssetTracker(str(project_dir))
+                tracker.upload_if_needed(comfyui, str(cover_ref), remote_name, comfyui.url)
             except Exception as e:
                 logger.warning(f"参考图上传失败: {e}")
 

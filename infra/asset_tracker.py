@@ -5,9 +5,26 @@
 """
 from __future__ import annotations
 
+import hashlib
 import logging
+import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def comfyui_asset_name(project_dir: str, char_id: str, filename: str) -> str:
+    """生成 ComfyUI 服务器端唯一文件名
+
+    格式: proj_{hash8}_{char_id}_{filename}
+    - project_dir 的 MD5 前 8 位：不同项目即使同名也不碰撞
+    - char_id：不同角色隔离
+    - filename：原始文件名
+
+    与视频帧的 ASCII 化逻辑保持一致风格。
+    """
+    dir_hash = hashlib.md5(project_dir.encode("utf-8")).hexdigest()[:8]
+    return f"proj_{dir_hash}_{char_id}_{filename}"
 
 
 class AssetTracker:
@@ -46,6 +63,35 @@ class AssetTracker:
     def untrack_lora(self, server_url: str, lora_name: str) -> None:
         """移除 LoRA 记录（文件被删除时使用）"""
         self._unmark(server_url, "lora", lora_name)
+
+    def upload_if_needed(self, comfyui, local_path: str, remote_name: str,
+                         server_url: str) -> bool:
+        """带跟踪的上传：已存在则跳过，不存在则上传并记录
+
+        Args:
+            comfyui: ComfyUI 后端实例
+            local_path: 本地文件路径
+            remote_name: ComfyUI 服务端文件名
+            server_url: ComfyUI 服务器 URL
+
+        Returns:
+            True=上传了，False=跳过了
+        """
+        # 1) tracker 记录了 + 服务端确实存在 → 跳过
+        if self.is_image_tracked(server_url, remote_name):
+            try:
+                if comfyui.check_image_exists(remote_name, asset_type="input"):
+                    logger.debug(f"参考图 {remote_name} 已在服务器，跳过上传")
+                    return False
+                else:
+                    self.untrack_image(server_url, remote_name)
+            except Exception:
+                pass
+
+        # 2) 上传 + 记录
+        comfyui.upload_image(local_path, filename=remote_name)
+        self.mark_image_tracked(server_url, remote_name)
+        return True
 
     # ── 内部实现 ────────────────────────────────────────
 

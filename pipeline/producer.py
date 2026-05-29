@@ -193,15 +193,17 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
                             f"  ⚠ LoRA '{lora_name}' 未确认存在于服务器 {image_server_url}")
 
                 from engines.workflow import find_character_load_image_nodes as _find_char_nodes
+                from infra.asset_tracker import comfyui_asset_name
                 _char_node_set = set(_find_char_nodes(wf))
                 for node_id, file_path in wb.build_upload_map(shot, wf).items():
                     if Path(file_path).exists():
                         try:
-                            # 角色参考图加 char_id 前缀，避免 ComfyUI 同名覆盖
+                            # 角色参考图：用 project_dir+char_id 生成唯一文件名
                             if node_id in _char_node_set and "/assets/characters/" in file_path:
                                 parts = Path(file_path).parts
                                 char_idx = parts.index("characters") + 1
-                                remote_name = f"{parts[char_idx]}_{Path(file_path).name}" if char_idx < len(parts) else Path(file_path).name
+                                cid = parts[char_idx] if char_idx < len(parts) else "unknown"
+                                remote_name = comfyui_asset_name(cfg.project_dir, cid, Path(file_path).name)
                             else:
                                 remote_name = Path(file_path).name
                             comfyui.upload_image(file_path, filename=remote_name)

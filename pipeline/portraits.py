@@ -34,14 +34,14 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
                    seed: int | None = None,
                    ref_image: str | None = None,
                    char: dict | None = None,
-                   project_name: str = "") -> bool:
+                   project_dir: str = "") -> bool:
     """生成单张视图，成功返回 True
 
     Args:
         seed: 指定 seed 保持一致性
         ref_image: IP-Adapter 参考图路径（side/back 用 cover 做参考）
         char: 角色数据 dict（用于读取视角专属描述）
-        project_name: 项目名（用于 ComfyUI 上传文件名隔离）
+        project_dir: 项目目录全路径（用于唯一文件名 + AssetTracker）
     """
     # 获取视角专属外貌描述（背面/侧面自动去除面部细节）
     from engines.prompt import get_view_appearance
@@ -56,12 +56,14 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
     # 注入参考图到 IP-Adapter
     if ref_image and os.path.exists(ref_image):
         from engines.workflow import find_character_load_image_nodes
+        from infra.asset_tracker import comfyui_asset_name, AssetTracker
         char_nodes = find_character_load_image_nodes(wf)
         if char_nodes:
-            remote_name = f"{project_name}_{char_id}_{os.path.basename(ref_image)}" if project_name else f"{char_id}_{os.path.basename(ref_image)}"
+            remote_name = comfyui_asset_name(project_dir, char_id, os.path.basename(ref_image))
             wf[char_nodes[0]]["inputs"]["image"] = remote_name
             try:
-                comfyui.upload_image(ref_image, filename=remote_name)
+                tracker = AssetTracker(project_dir)
+                tracker.upload_if_needed(comfyui, ref_image, remote_name, comfyui.url)
             except Exception as e:
                 logger.warning(f"参考图上传失败: {e}")
 
@@ -77,13 +79,13 @@ def _generate_outfit(char_id: str, appearance: str, outfit_key: str,
                      outfit_desc: str, base_dir: Path, comfyui, wb, llm,
                      seed: int | None = None,
                      ref_image: str | None = None,
-                     project_name: str = "") -> bool:
+                     project_dir: str = "") -> bool:
     """为指定服装生成参考图，成功返回 True
 
     Args:
         seed: 指定 seed 保持一致性
         ref_image: IP-Adapter 参考图路径（用 cover 保持面部一致）
-        project_name: 项目名（用于 ComfyUI 上传文件名隔离）
+        project_dir: 项目目录全路径（用于唯一文件名 + AssetTracker）
     """
     from engines.prompt import translate_to_english
 
@@ -103,12 +105,14 @@ def _generate_outfit(char_id: str, appearance: str, outfit_key: str,
     # 注入 cover 参考图
     if ref_image and os.path.exists(ref_image):
         from engines.workflow import find_character_load_image_nodes
+        from infra.asset_tracker import comfyui_asset_name, AssetTracker
         char_nodes = find_character_load_image_nodes(wf)
         if char_nodes:
-            remote_name = f"{project_name}_{char_id}_{os.path.basename(ref_image)}" if project_name else f"{char_id}_{os.path.basename(ref_image)}"
+            remote_name = comfyui_asset_name(project_dir, char_id, os.path.basename(ref_image))
             wf[char_nodes[0]]["inputs"]["image"] = remote_name
             try:
-                comfyui.upload_image(ref_image, filename=remote_name)
+                tracker = AssetTracker(project_dir)
+                tracker.upload_if_needed(comfyui, ref_image, remote_name, comfyui.url)
             except Exception as e:
                 logger.warning(f"参考图上传失败: {e}")
 
@@ -138,7 +142,6 @@ def run_portraits(
     """
     cfg = Config(config_path)
     logger.info("生成定妆照（三视图）")
-    project_name = Path(cfg.project_dir).name
 
     from api import _ensure_registered; _ensure_registered()
     from api.registry import Container
@@ -232,7 +235,7 @@ def run_portraits(
                 try:
                     ok = _generate_view(char_id, appearance, portrait_dir, comfyui, wb,
                                         filename, shot_type, seed=view_seed, ref_image=ref,
-                                        char=char, project_name=project_name)
+                                        char=char, project_dir=cfg.project_dir)
                     if ok:
                         if old_file and force:
                             pass  # os.replace 已覆盖
@@ -293,7 +296,7 @@ def run_portraits(
                             char_id, appearance, outfit_key, outfit_desc,
                             portrait_dir, comfyui, wb, llm,
                             seed=outfit_seed, ref_image=ref,
-                            project_name=project_name)
+                            project_dir=cfg.project_dir)
                         if ok:
                             outfit_url = f"/api/assets/characters/{char_id}/{outfit_key}/cover.png"
                             outfit_val.setdefault("reference_images", [])
