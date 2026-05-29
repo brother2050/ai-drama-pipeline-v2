@@ -83,7 +83,7 @@ async function loadDashboard() {
 
     el.innerHTML = `
       <div class="dash-hero">
-        <h1>🎬 ${currentProj?.name || t('app.title')}</h1>
+        <h1>${currentProj?.name ? `🎬 ${currentProj.name}` : t('app.title')}</h1>
         <p>${t('dash.welcome_desc')}</p>
         <div class="inspire-box">
           <textarea id="dash-inspire-input" class="inspire-input" rows="3" placeholder="${esc(t('dash.inspire_placeholder'))}"></textarea>
