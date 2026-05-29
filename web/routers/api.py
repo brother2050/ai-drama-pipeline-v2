@@ -1495,7 +1495,9 @@ def training_status(char_id: str):
     """查询角色 LoRA 训练状态"""
     _check_id(char_id, "角色 ID")
     project = _proj()
-    lora_path = project / "assets" / "loras" / f"{char_id}_lora.safetensors"
+    from infra.asset_tracker import comfyui_asset_name
+    lora_name = comfyui_asset_name(str(project), char_id, f"{char_id}_lora.safetensors")
+    lora_path = project / "assets" / "loras" / lora_name
     char_yaml = project / "config" / "characters" / f"{char_id}.yaml"
     has_lora = lora_path.exists()
     lora_size = lora_path.stat().st_size if has_lora else 0

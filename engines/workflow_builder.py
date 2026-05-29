@@ -339,8 +339,10 @@ class WorkflowBuilder:
     def _find_character_lora(self, char_id: str) -> str | None:
         """查找已训练的角色 LoRA 文件"""
         lora_dir = Path(self.project_dir) / "assets" / "loras"
+        from infra.asset_tracker import comfyui_asset_name
+        lora_name = comfyui_asset_name(self.project_dir, char_id, f"{char_id}_lora.safetensors")
         candidates = [
-            lora_dir / f"{char_id}_lora.safetensors",
+            lora_dir / lora_name,
             lora_dir / f"{char_id}.safetensors",
         ]
         # 也检查角色目录下的 lora 子目录
@@ -411,9 +413,9 @@ class WorkflowBuilder:
 
         # 创建 LoraLoader 节点（加随机后缀防冲突，如同一角色多次注入）
         lora_node_id = f"lora_{Path(lora_path).stem}_{random.randint(1000, 9999)}"
-        # LoRA 文件由用户手动放入 ComfyUI 的 models/loras/ 目录，ComfyUI 无上传模型 API，
-        # 因此工作流中的 lora_name 必须与磁盘文件名一致，不能加 project_dir hash 前缀。
-        lora_name = os.path.basename(lora_path)
+        # 用 project_dir hash 做前缀，避免不同项目同名角色的 LoRA 在 ComfyUI 上互相覆盖
+        from infra.asset_tracker import comfyui_asset_name
+        lora_name = comfyui_asset_name(self.project_dir, Path(lora_path).stem, Path(lora_path).name)
 
         wf[lora_node_id] = {
             "class_type": "LoraLoader",

@@ -1909,7 +1909,9 @@ def train_lora_task(self, config_path: str, char_id: str, *,
         return {"status": "error", "reason": f"角色 {char_id} 不存在"}
 
     # 检查是否已有 LoRA
-    lora_path = project_dir / "assets" / "loras" / f"{char_id}_lora.safetensors"
+    from infra.asset_tracker import comfyui_asset_name
+    lora_filename = comfyui_asset_name(str(project_dir), char_id, f"{char_id}_lora.safetensors")
+    lora_path = project_dir / "assets" / "loras" / lora_filename
     if lora_path.exists() and not force:
         return {"status": "skipped", "reason": f"LoRA 已存在: {lora_path.name}，使用 force 覆盖"}
 
@@ -1968,6 +1970,16 @@ def train_lora_task(self, config_path: str, char_id: str, *,
     self.update_state(state="PROGRESS", meta={
         "step": "train_lora", "progress": 95,
         "message": "训练完成，更新角色配置..."})
+
+    # 重命名 LoRA 文件：加 project_dir hash 前缀，避免跨项目同名角色 LoRA 覆盖
+    from infra.asset_tracker import comfyui_asset_name
+    original_name = Path(result_path).name
+    new_name = comfyui_asset_name(str(project_dir), char_id, original_name)
+    new_path = Path(result_path).parent / new_name
+    if Path(result_path).exists() and not new_path.exists():
+        os.replace(result_path, str(new_path))
+        result_path = str(new_path)
+        logger.info(f"LoRA 已重命名: {original_name} → {new_name}")
 
     # 更新角色 YAML，标记 LoRA 路径
     try:
