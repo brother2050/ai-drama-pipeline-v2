@@ -80,7 +80,7 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
     return str(target)
 
 
-def ensure_portrait(char_id: str, config: dict, container=None, llm=None) -> str:
+def ensure_portrait(char_id: str, config: dict, container=None, llm=None, force: bool = False) -> str:
     """确保角色有定妆照（三视图），没有则生成
 
     生成三张图：
@@ -91,6 +91,9 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None) -> str
     配置项 portraits.auto_outfit:
       - False（默认）: 只生成三视图，不遍历 outfits
       - True: 同时为各 outfit 生成参考图
+
+    Args:
+        force: True 时重新生成（递增代数计数器）
     """
     project_dir = config.get("_project_dir", os.getcwd())
     portrait_dir = Path(project_dir) / "assets" / "characters" / char_id
