@@ -193,16 +193,15 @@ class FluxGymTrainer:
                        resolution: int) -> tuple[str, str]:
         """生成训练脚本和配置
 
-        API: /update
-          参数 (179个):
-            命名参数 (15个):
-              base_model, lora_name, resolution, seed, workers,
-              class_tokens, learning_rate, network_dim,
-              max_train_epochs, save_every_n_epochs,
-              timestep_sampling, guidance_scale, vram,
-              num_repeats, sample_prompts
-            高级参数 (164个):
-              param_16 ~ param_178
+        API: /update (179 参数)
+          命名参数 (16个):
+            base_model, lora_name, resolution, seed, workers,
+            class_tokens, learning_rate, network_dim,
+            max_train_epochs, save_every_n_epochs,
+            timestep_sampling, guidance_scale, vram,
+            num_repeats, sample_prompts, sample_every_n_steps
+          高级参数 (163个):
+            param_16 ~ param_178 (Checkbox=bool, Textbox=str)
 
           返回: tuple of 2 — (train_script, train_config)
         """
