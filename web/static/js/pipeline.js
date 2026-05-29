@@ -72,13 +72,15 @@ function renderWB(episodes) {
       <button class="btn btn-outline" onclick="undo()" title="Ctrl+Z">↩ ${t('undo.undo')}</button>
       <button class="btn btn-outline" onclick="redo()" title="Ctrl+Shift+Z">↪ ${t('undo.redo')}</button>
       <label class="force-toggle" title="${t('wb.force_overwrite')}"><input type="checkbox" id="wb-force-cb"> ${t('wb.force_overwrite')}</label>
-      ${_stepBtns().map(b => `<button class="btn btn-outline" onclick="batchRun('${b.step}')">${b.icon} ${t('wb.batch_label')} ${b.label}</button>`).join('')}
       <span class="dim" style="margin:0 0.3rem">|</span>
       <button class="btn btn-outline" onclick="runPortraits()">📸 ${t('wb.gen_portraits')}</button>
       <button class="btn btn-outline" onclick="runSceneImages()">🏔 ${t('wb.gen_scene_images')}</button>
-      <button class="btn btn-outline" onclick="runPost()">🎞 ${t('wb.post_process')}</button>
-      <button class="btn btn-outline" onclick="runMusic()">🎵 ${t('wb.gen_music')}</button>
+      <span class="dim" style="margin:0 0.3rem">|</span>
+      ${_stepBtns().map(b => `<button class="btn btn-outline" onclick="batchRun('${b.step}')">${b.icon} ${t('wb.batch_label')} ${b.label}</button>`).join('')}
+      <span class="dim" style="margin:0 0.3rem">|</span>
       <button class="btn btn-outline" onclick="runSubtitle()">📝 ${t('wb.gen_subtitle')}</button>
+      <button class="btn btn-outline" onclick="runMusic()">🎵 ${t('wb.gen_music')}</button>
+      <button class="btn btn-outline" onclick="runPost()">🎞 ${t('wb.post_process')}</button>
       <button class="btn btn-primary" onclick="runAll()">🚀 ${t('wb.run_all')}</button>
     </div></div>
     <div class="card" style="margin-bottom:.7rem"><h2>${t('wb.flow_title')}</h2>${flowHtml}</div>
