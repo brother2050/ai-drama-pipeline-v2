@@ -28,10 +28,17 @@ _THREE_VIEWS = [
 ]
 
 
-def _char_seed(char_id: str, generation: int = 0) -> int:
-    """为角色生成 seed，generation 控制重新生成时的变化"""
+def _view_seed(char_id: str, generation: int, view_index: int) -> int:
+    """三视图 seed：不同角色完全隔离"""
     import hashlib
-    h = hashlib.md5(f"{char_id}:gen{generation}".encode("utf-8")).hexdigest()
+    h = hashlib.md5(f"{char_id}:gen{generation}:view{view_index}".encode("utf-8")).hexdigest()
+    return int(h[:16], 16)
+
+
+def _outfit_seed(char_id: str, generation: int, outfit_index: int) -> int:
+    """服装图 seed：不同角色完全隔离"""
+    import hashlib
+    h = hashlib.md5(f"{char_id}:gen{generation}:outfit{outfit_index}".encode("utf-8")).hexdigest()
     return int(h[:16], 16)
 
 
@@ -206,7 +213,6 @@ def run_portraits(
                 save_yaml(f, data)
                 logger.info(f"    🔄 重新生成，代数: {generation}")
 
-            base_seed = _char_seed(char_id, generation)
             cover_path = portrait_dir / "cover.png"
             char_generated = 0
             for i, (filename, shot_type, label) in enumerate(_THREE_VIEWS):
@@ -218,8 +224,8 @@ def run_portraits(
                 old_file = view_path if view_path.exists() else None
                 logger.info(f"    🎨 生成{label}视图 ({filename})...")
 
-                # cover 用基础 seed，side/back 用 seed+偏移
-                view_seed = base_seed + i
+                # 每个视角独立 seed（含 char_id，不同角色完全隔离）
+                view_seed = _view_seed(char_id, generation, i)
                 # side/back 用 cover 做 IP-Adapter 参考
                 ref = str(cover_path) if i > 0 and cover_path.exists() else None
 
@@ -275,8 +281,8 @@ def run_portraits(
                         logger.info(f"      ⏭ {outfit_key}: 已有图，跳过")
                         continue
 
-                    # 服装 seed = base_seed + 100 + index（与三视图错开）
-                    outfit_seed = base_seed + 100 + outfit_idx
+                    # 服装 seed（含 char_id，不同角色完全隔离）
+                    outfit_seed = _outfit_seed(char_id, generation, outfit_idx)
                     # 用 cover 做参考保持面部一致
                     ref = str(cover_path) if cover_path.exists() else None
 

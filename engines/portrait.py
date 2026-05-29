@@ -21,13 +21,15 @@ _THREE_VIEWS = [
 ]
 
 
-def _char_seed(char_id: str, generation: int = 0) -> int:
-    """为角色生成 seed，generation 控制重新生成时的变化
+def _view_seed(char_id: str, generation: int, view_index: int) -> int:
+    """三视图 seed：同角色同代不同视角，不同角色完全隔离"""
+    h = hashlib.md5(f"{char_id}:gen{generation}:view{view_index}".encode("utf-8")).hexdigest()
+    return int(h[:16], 16)
 
-    generation=0: 首次生成（确定性）
-    generation=1,2,3...: 重新生成时递增，得到不同结果
-    """
-    h = hashlib.md5(f"{char_id}:gen{generation}".encode("utf-8")).hexdigest()
+
+def _outfit_seed(char_id: str, generation: int, outfit_index: int) -> int:
+    """服装图 seed：同角色同代不同服装，不同角色完全隔离"""
+    h = hashlib.md5(f"{char_id}:gen{generation}:outfit{outfit_index}".encode("utf-8")).hexdigest()
     return int(h[:16], 16)
 
 
@@ -132,7 +134,6 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None) -> str
             logger.info(f"  🔄 重新生成，代数: {generation}")
 
         # 确定性 seed：同一角色+同一代 → 所有视图/服装共享基础 seed
-        base_seed = _char_seed(char_id, generation)
         cover_path = portrait_dir / "cover.png"
 
         generated_urls = []
@@ -141,8 +142,8 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None) -> str
                 generated_urls.append(f"/api/assets/characters/{char_id}/{filename}")
                 continue
 
-            # cover 用基础 seed，side/back 用 seed+偏移（保持风格但允许视角变化）
-            view_seed = base_seed + i
+            # 每个视角独立 seed（含 char_id + generation + view_index，不同角色完全隔离）
+            view_seed = _view_seed(char_id, generation, i)
 
             # side/back 视图用 cover 做 IP-Adapter 参考（保持角色一致性）
             ref = str(cover_path) if i > 0 and cover_path.exists() else None
@@ -220,7 +221,6 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
     # 使用 cover.png 作为所有服装图的 IP-Adapter 参考（保持角色面部一致性）
     cover_path = portrait_dir / "cover.png"
     generation = char.get("portrait_generation", 0)
-    base_seed = _char_seed(char_id, generation)
 
     for outfit_idx, (outfit_key, outfit_val) in enumerate(outfits.items()):
         if not isinstance(outfit_val, dict):
@@ -240,8 +240,8 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
         if any(ord(c) > 127 for c in full_desc):
             full_desc = translate_to_english(full_desc, llm=None)
 
-        # 服装图 seed = base_seed + 100 + outfit_index（与三视图错开）
-        outfit_seed = base_seed + 100 + outfit_idx
+        # 服装图 seed（含 char_id + generation + outfit_index，不同角色完全隔离）
+        outfit_seed = _outfit_seed(char_id, generation, outfit_idx)
 
         fake_shot = {"characters": char_id, "emotion": "neutral",
                      "shot_type": "全身", "camera": "固定"}
