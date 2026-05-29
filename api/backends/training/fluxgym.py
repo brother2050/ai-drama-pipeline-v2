@@ -211,6 +211,8 @@ class FluxGymTrainer:
 
         # ── 15 个命名参数（按文档顺序） ──
         # Number 组件必须传 int/float，不能传 str
+        # 只传这 15 个，高级参数省略让 gradio_client 使用 UI 默认值
+        # （高级参数的类型文档与实际 UI 可能不一致，传了反而报错）
         args = [
             self._base_model,           # base_model (str)
             lora_name,                  # lora_name (str)
@@ -229,12 +231,9 @@ class FluxGymTrainer:
             "",                         # sample_prompts (str)
         ]
 
-        # ── 164 个高级参数 (param_16 ~ param_178) ──
-        args.extend(self._advanced_defaults())
-
         logger.info(f"  生成训练配置: epochs={max_epochs}, lr={learning_rate}, "
                     f"dim={rank}, vram={self._default_vram}")
-        logger.debug(f"  /update 参数数: {len(args)} (应为 179)")
+        logger.debug(f"  /update 参数数: {len(args)} (15 命名参数，高级参数用 UI 默认值)")
 
         result = client.predict(*args, api_name="/update")
 
