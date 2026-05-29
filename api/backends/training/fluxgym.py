@@ -238,8 +238,12 @@ class FluxGymTrainer:
         result = client.predict(*args, api_name="/update")
 
         if isinstance(result, (list, tuple)) and len(result) >= 2:
+            # gradio_client 可能返回原始字符串，也可能返回组件对象 dict
+            # {'visible': True, 'value': '...', '__type__': 'update'}
+            train_script = self._extract_value(result[0])
+            train_config = self._extract_value(result[1])
             logger.info(f"  训练脚本已生成")
-            return str(result[0]), str(result[1])
+            return str(train_script), str(train_config)
 
         raise RuntimeError(f"/update 返回格式异常: {type(result)} {result}")
 
@@ -456,6 +460,21 @@ class FluxGymTrainer:
     # ────────────────────────────────────────────────
     # 工具方法
     # ────────────────────────────────────────────────
+
+    @staticmethod
+    def _extract_value(result) -> str:
+        """从 gradio_client 返回值中提取原始内容
+
+        gradio_client 可能返回:
+          - 直接字符串
+          - Gradio 组件更新对象: {'value': '...', 'visible': True, '__type__': 'update'}
+          - 其他类型（直接 str() 转换）
+        """
+        if isinstance(result, str):
+            return result
+        if isinstance(result, dict):
+            return result.get("value", str(result))
+        return str(result)
 
     def _find_api(self, client, keyword: str, fallback: str) -> str:
         """查找包含 keyword 的 API 端点"""
