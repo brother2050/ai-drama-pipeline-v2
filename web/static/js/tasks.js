@@ -178,11 +178,18 @@ const TaskPanel = (() => {
     if (!task) return;
 
     task.progress = info.progress ?? task.progress;
-    task.message = info.message || task.message;
+    // 只有 API 返回了有效消息才覆盖（避免丢失实际进度消息）
+    if (info.message && info.message.trim()) {
+      task.message = info.message;
+    }
     task._lastUpdateTime = Date.now();
 
     if (info.status && info.status !== task.status) {
       task.status = info.status;
+      // 首次从 pending 变为 running 时，确保消息不再是初始占位符
+      if (info.status === 'running' && task.message === '等待中...') {
+        task.message = info.message || '任务执行中...';
+      }
       if (['success', 'failed', 'cancelled', 'timeout'].includes(info.status)) {
         task.endTime = Date.now();
       }
@@ -276,6 +283,19 @@ const TaskPanel = (() => {
 
   // ── 渲染 ──
 
+  function _statusBadge(status) {
+    const map = {
+      pending: { text: '排队中', cls: 'st-pending' },
+      running: { text: '执行中', cls: 'st-running' },
+      success: { text: '完成', cls: 'st-success' },
+      failed:  { text: '失败', cls: 'st-failed' },
+      cancelled: { text: '已取消', cls: 'st-cancelled' },
+      timeout: { text: '超时', cls: 'st-failed' },
+    };
+    const s = map[status] || map.pending;
+    return `<span class="task-status-badge ${s.cls}">${s.text}</span>`;
+  }
+
   function _render() {
     if (!_body) return;
 
@@ -284,10 +304,24 @@ const TaskPanel = (() => {
     const done = entries.filter(t => ['success', 'failed', 'cancelled', 'timeout'].includes(t.status))
       .sort((a, b) => (b.endTime || 0) - (a.endTime || 0));
 
-    // 徽章
+    // 徽章 + 标题
     _badge.textContent = active.length;
     _badge.style.display = active.length > 0 ? 'inline-flex' : 'none';
     _panel.classList.toggle('has-active', active.length > 0);
+
+    // 标题显示当前状态概要
+    const titleEl = _panel.querySelector('.task-panel-title');
+    if (titleEl) {
+      if (active.length === 0) {
+        titleEl.textContent = '⏳ 任务';
+      } else if (active.length === 1) {
+        const t = active[0];
+        const st = t.status === 'running' ? '执行中' : t.status === 'pending' ? '排队中' : '处理中';
+        titleEl.textContent = `⏳ ${_esc(t.label)} · ${st}`;
+      } else {
+        titleEl.textContent = `⏳ ${active.length} 个任务运行中`;
+      }
+    }
 
     let html = '';
 
@@ -295,13 +329,19 @@ const TaskPanel = (() => {
     for (const t of active) {
       const elapsed = _fmtElapsed(Date.now() - t.startTime);
       const pct = t.progress || 0;
+      // 根据状态决定显示什么消息
+      let msg = t.message;
+      if (t.status === 'pending' && t.message === '等待中...') {
+        msg = '已提交，等待 Worker 处理...';
+      }
       html += `<div class="task-item task-active">
         <div class="task-item-head">
           <span class="task-item-label">${_esc(t.label)}</span>
+          ${_statusBadge(t.status)}
           <span class="task-item-elapsed">${elapsed}</span>
         </div>
         <div class="task-item-bar"><div class="task-item-fill" style="width:${pct}%"></div></div>
-        <div class="task-item-msg">${_esc(t.message)} (${pct}%)</div>
+        <div class="task-item-msg">${_esc(msg)} · ${pct}%</div>
         <button class="task-item-cancel" onclick="TaskPanel.cancelTask('${t.id}')" title="取消">⏹</button>
       </div>`;
     }
