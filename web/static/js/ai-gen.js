@@ -93,6 +93,7 @@ async function loadStoryboard() {
     const episodes = await loadEpisodeSelector();
     const d = await cachedFetch(`storyboard/${ep}`, () => api(`/storyboard/${ep}`));
     const ss = d.shots || [];
+    shots = ss; // 同步全局变量（撤销/重做/时间轴缩略图依赖它）
     const epSelector = _episodeSelectHtml(episodes, 'switchEpisode');
     const header = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem"><h2>${t('sb.title')}</h2>
       <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">${epSelector}${_sbViewToggle()}<button class="btn btn-outline btn-ai" onclick="showAIGenStoryboard()">🤖 AI 生成分镜</button><button class="btn btn-outline" onclick="exportStoryboard()">📤 ${t('sb.export')}</button><button class="btn btn-outline" onclick="showImportDialog()">📥 ${t('sb.import')}</button><button class="btn btn-danger btn-sm" onclick="batchDeleteShots()" id="sb-batch-del-btn" style="display:none">${t('btn.batch_delete')} (<span id="sb-batch-count">0</span>)</button><button class="btn btn-primary" onclick="navTo('pipeline')">🎬 ${t('nav.pipeline')}</button><button class="btn btn-success" onclick="addShot()">+ ${t('btn.add')}</button></div></div>
