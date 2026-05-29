@@ -23,7 +23,7 @@ llm:
   api_key: ''
 training:
   enabled: false
-  backend: fluxgym
+  backend: kohya-ss
   api_url: http://127.0.0.1:7860
   poll_interval: 10
   defaults:

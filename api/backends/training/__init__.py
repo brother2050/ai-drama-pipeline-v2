@@ -1,1 +1,1 @@
-"""训练后端 — FluxGym 远程 LoRA 训练"""
+"""训练后端 — kohya-ss 远程 LoRA 训练"""

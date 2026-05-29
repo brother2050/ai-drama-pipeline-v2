@@ -1918,10 +1918,20 @@ def train_lora_task(self, config_path: str, char_id: str, *,
                         {"status": "error", "reason": f"角色 {char_id} 不存在"})
         return {"status": "error", "reason": f"角色 {char_id} 不存在"}
 
-    # 检查是否已有 LoRA
+    # 检查是否已有 LoRA（多候选路径查找）
+    lora_dir = project_dir / "assets" / "loras"
     lora_filename = comfyui_asset_name(str(project_dir), char_id, f"{char_id}_lora.safetensors")
-    lora_path = project_dir / "assets" / "loras" / lora_filename
-    if lora_path.exists() and not force:
+    lora_candidates = [
+        lora_dir / lora_filename,                        # proj_{hash}_{char_id}_lora.safetensors
+        lora_dir / f"{char_id}_lora.safetensors",        # {char_id}_lora.safetensors
+        lora_dir / f"{char_id}.safetensors",             # {char_id}.safetensors
+    ]
+    lora_path = None
+    for p in lora_candidates:
+        if p.exists():
+            lora_path = p
+            break
+    if lora_path and not force:
         _db_record_step(config_path, 0, char_id, "train_lora",
                         {"status": "skipped", "reason": f"LoRA 已存在: {lora_path.name}"})
         return {"status": "skipped", "reason": f"LoRA 已存在: {lora_path.name}，使用 force 覆盖"}

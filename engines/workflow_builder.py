@@ -348,8 +348,9 @@ class WorkflowBuilder:
         from infra.asset_tracker import comfyui_asset_name
         lora_name = comfyui_asset_name(self.project_dir, char_id, f"{char_id}_lora.safetensors")
         candidates = [
-            lora_dir / lora_name,
-            lora_dir / f"{char_id}.safetensors",
+            lora_dir / lora_name,                            # proj_{hash}_{char_id}_lora.safetensors
+            lora_dir / f"{char_id}_lora.safetensors",        # {char_id}_lora.safetensors（kohya-ss 产出）
+            lora_dir / f"{char_id}.safetensors",             # {char_id}.safetensors
         ]
         # 也检查角色目录下的 lora 子目录
         char_dir = Path(self.project_dir) / "assets" / "characters" / char_id / "lora"

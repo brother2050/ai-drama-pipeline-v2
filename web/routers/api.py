@@ -354,7 +354,7 @@ def test_tool(name: str):
                 return {"ok": False, "name": name, "message": "训练服务地址未配置", **result}
             import httpx
             r = httpx.get(api_url, timeout=5)
-            return {"ok": True, "name": name, "message": f"FluxGym 连接成功 (HTTP {r.status_code})", **result}
+            return {"ok": True, "name": name, "message": f"kohya-ss 连接成功 (HTTP {r.status_code})", **result}
 
         return {"ok": True, "name": name, "message": "可用", **result}
 
@@ -1496,10 +1496,21 @@ def training_status(char_id: str):
     _check_id(char_id, "角色 ID")
     project = _proj()
     from infra.asset_tracker import comfyui_asset_name
+    lora_dir = project / "assets" / "loras"
+    # 按优先级查找 LoRA 文件
     lora_name = comfyui_asset_name(str(project), char_id, f"{char_id}_lora.safetensors")
-    lora_path = project / "assets" / "loras" / lora_name
+    candidates = [
+        lora_dir / lora_name,                            # proj_{hash}_{char_id}_lora.safetensors
+        lora_dir / f"{char_id}_lora.safetensors",        # {char_id}_lora.safetensors
+        lora_dir / f"{char_id}.safetensors",             # {char_id}.safetensors
+    ]
+    lora_path = None
+    for p in candidates:
+        if p.exists():
+            lora_path = p
+            break
     char_yaml = project / "config" / "characters" / f"{char_id}.yaml"
-    has_lora = lora_path.exists()
+    has_lora = lora_path is not None
     lora_size = lora_path.stat().st_size if has_lora else 0
     # 读取角色配置中的 lora_path
     lora_path_in_yaml = ""
