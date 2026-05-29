@@ -36,16 +36,27 @@ def _outfit_seed(char_id: str, generation: int, outfit_index: int) -> int:
 def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
                    comfyui, wb, filename: str, shot_type: str,
                    seed: int | None = None,
-                   ref_image: str | None = None) -> str:
+                   ref_image: str | None = None,
+                   char: dict | None = None,
+                   llm=None) -> str:
     """生成单张视图，返回文件路径或空字符串
 
     Args:
         seed: 指定 seed 保持一致性（None 则随机）
         ref_image: IP-Adapter 参考图路径（用于保持角色一致性）
+        char: 角色数据 dict（用于读取视角专属描述）
+        llm: LLM 实例（用于实时生成视角描述）
     """
+    # 获取视角专属外貌描述（背面/侧面自动去除面部细节）
+    from engines.prompt import get_view_appearance
+    if char:
+        view_desc = get_view_appearance(char, shot_type, llm=llm)
+    else:
+        view_desc = appearance
+
     fake_shot = {"characters": char_id, "emotion": "neutral",
                  "shot_type": shot_type, "camera": "固定"}
-    prompt, wf = wb.build_first_frame(fake_shot, character_desc=appearance, seed=seed)
+    prompt, wf = wb.build_first_frame(fake_shot, character_desc=view_desc, seed=seed)
     if not wf:
         return ""
 
@@ -149,7 +160,8 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None) -> str
             ref = str(cover_path) if i > 0 and cover_path.exists() else None
 
             result = _generate_view(char_id, appearance, portrait_dir, comfyui, wb,
-                                    filename, shot_type, seed=view_seed, ref_image=ref)
+                                    filename, shot_type, seed=view_seed, ref_image=ref,
+                                    char=char, llm=llm)
             if result:
                 generated_urls.append(f"/api/assets/characters/{char_id}/{filename}")
                 logger.info(f"  ✅ {label}视图: {filename} (seed={view_seed})")

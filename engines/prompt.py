@@ -87,6 +87,94 @@ def _strip_dialogue(text: str) -> str:
     return text
 
 
+# ── 视角感知的外貌描述拆分 ──
+
+_VIEW_SPLIT_SYSTEM = """你是一位专业的 AI 绘画提示词工程师。根据用户提供的角色外貌描述，为三个不同视角生成英文提示词。
+
+规则：
+1. 只描述该视角**可见**的内容，不可见的特征必须省略
+2. 正面（front）：包含面部特征、表情、发型正面、全身服装、配饰
+3. 侧面（side）：侧面轮廓、发型侧面、体型剪影、服装侧面，可保留鼻梁/下巴轮廓
+4. 背面（back）：只包含后脑勺/发型背面、背部、体型背面、服装背面、手臂/手部。**绝对不能包含任何面部特征**
+5. 输出纯英文，逗号分隔的短语，不要完整句子
+6. 保持原始描述的风格基调（病态/活力/冷酷等）
+
+输出格式（严格 JSON，不要其他文字）：
+```json
+{
+  "front": "...",
+  "side": "...",
+  "back": "..."
+}
+```"""
+
+
+def generate_view_prompts(appearance_zh: str, llm) -> dict[str, str]:
+    """用 LLM 将外貌描述拆分为三个视角的英文提示词
+
+    Args:
+        appearance_zh: 中文外貌描述
+        llm: LLM 后端实例
+
+    Returns:
+        {"front": "...", "side": "...", "back": "..."} 或空 dict（失败时）
+    """
+    if not appearance_zh or not llm:
+        return {}
+
+    prompt = f"角色外貌描述：\n{appearance_zh}\n\n请拆分为三个视角的英文提示词。"
+
+    try:
+        from infra.json_parse import parse_llm_json
+        response = llm.chat(prompt, system=_VIEW_SPLIT_SYSTEM)
+        result = parse_llm_json(response)
+        if isinstance(result, dict) and all(k in result for k in ("front", "side", "back")):
+            return {k: v.strip() for k, v in result.items() if isinstance(v, str)}
+        logger.warning(f"LLM 视角拆分返回格式不正确: {response[:200]}")
+    except Exception as e:
+        logger.warning(f"LLM 视角拆分失败: {e}")
+
+    return {}
+
+
+def get_view_appearance(char: dict, shot_type: str, llm=None) -> str:
+    """获取角色在指定视角的外貌描述
+
+    优先使用预生成的视角专属描述（appearance_{view}_en），
+    无则回退到通用 appearance_en / appearance。
+
+    Args:
+        char: 角色数据 dict
+        shot_type: 景别（特写/侧面特写/背面特写/全身 等）
+        llm: LLM 实例（仅在需要实时生成时使用）
+
+    Returns:
+        英文外貌描述字符串
+    """
+    # 确定视角类型
+    if "背面" in shot_type:
+        view_key = "back"
+    elif "侧面" in shot_type:
+        view_key = "side"
+    else:
+        view_key = "front"
+
+    # 1. 优先用预生成的视角专属描述
+    view_en = char.get(f"appearance_{view_key}_en", "")
+    if view_en:
+        return view_en
+
+    # 2. 回退到通用英文描述
+    appearance_en = char.get("appearance_en", "")
+    if appearance_en:
+        # 通用描述没有视角过滤，对背面/侧面可能包含面部细节
+        # 但如果用户没有运行 prepare 阶段的视角拆分，这是可接受的回退
+        return appearance_en
+
+    # 3. 最后回退到中文原文（会被 build_prompt 翻译）
+    return char.get("appearance", "")
+
+
 def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
                  style: str = "cinematic", genre: str = "urban",
                  llm=None) -> str:

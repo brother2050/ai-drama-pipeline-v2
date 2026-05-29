@@ -2068,6 +2068,42 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                 data["character"] = char
                 save_yaml(f, data)
 
+    # ── 1b. 批量生成视角专属外貌描述 ──
+    if translate and llm:
+        self.update_state(state="PROGRESS", meta={
+            "step": "prepare", "progress": 20, "message": "生成视角专属描述..."})
+
+        from engines.prompt import generate_view_prompts
+
+        char_dir = project_dir / "config" / "characters"
+        if char_dir.exists():
+            for f in char_dir.glob("*.yaml"):
+                if f.stem.endswith(".example"):
+                    continue
+                try:
+                    with open(f, encoding="utf-8") as fh:
+                        data = yaml.safe_load(fh) or {}
+                except Exception:
+                    continue
+                char = data.get("character", {})
+                if not char.get("id"):
+                    continue
+
+                appearance = char.get("appearance", "")
+                has_view_prompts = all(char.get(f"appearance_{v}_en") for v in ("front", "side", "back"))
+
+                if appearance and (not has_view_prompts or force):
+                    if any(ord(c) > 127 for c in appearance):
+                        view_prompts = generate_view_prompts(appearance, llm)
+                        if view_prompts:
+                            char["appearance_front_en"] = view_prompts["front"]
+                            char["appearance_side_en"] = view_prompts["side"]
+                            char["appearance_back_en"] = view_prompts["back"]
+                            data["character"] = char
+                            save_yaml(f, data)
+                            result["translated_chars"] += 1
+                            logger.info(f"  视角拆分 {char.get('id')}: front/side/back")
+
     # ── 2. 批量翻译场景描述 ──
     if translate and llm:
         self.update_state(state="PROGRESS", meta={
