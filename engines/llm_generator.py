@@ -6,6 +6,8 @@ import logging
 import re
 from typing import Any
 
+from infra.json_parse import parse_llm_json
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -98,7 +100,7 @@ def generate_storyboard(llm, outline: str, characters: list[dict] = None,
 
     try:
         raw = llm.chat(prompt, system=STORYBOARD_SYSTEM, max_tokens=4096)
-        shots = _parse_json_response(raw)
+        shots = parse_llm_json(raw)
         if not shots:
             logger.error("LLM 返回无法解析为镜头列表")
             return []
@@ -200,7 +202,7 @@ def generate_characters(llm, descriptions: list[str], expected_ids: list[str] | 
         logger.info(f"LLM 生成角色: {desc[:40]}...")
         try:
             raw = llm.chat(desc, system=CHARACTER_SYSTEM, max_tokens=1024)
-            char = _parse_json_response(raw)
+            char = parse_llm_json(raw)
             if char and isinstance(char, dict):
                 if expected_ids and i < len(expected_ids):
                     char["id"] = expected_ids[i]
@@ -265,7 +267,7 @@ def generate_scenes(llm, descriptions: list[str], expected_ids: list[str] | None
         logger.info(f"LLM 生成场景: {desc[:40]}...")
         try:
             raw = llm.chat(desc, system=SCENE_SYSTEM, max_tokens=1024)
-            scene = _parse_json_response(raw)
+            scene = parse_llm_json(raw)
             if scene and isinstance(scene, dict):
                 if expected_ids and i < len(expected_ids):
                     scene["id"] = expected_ids[i]
@@ -307,110 +309,6 @@ def expand_outline(llm, outline: str) -> str:
 
 # ── 内部工具 ──
 
-def _parse_json_response(text: str) -> Any:
-    """从 LLM 回复中提取 JSON（兼容 markdown 代码块、单引号、注释等）"""
-    if not text:
-        return None
-
-    text = text.strip()
-
-    # 1. 去掉 markdown 代码块
-    patterns = [
-        r'```json\s*\n?(.*?)\n?\s*```',
-        r'```\s*\n?(.*?)\n?\s*```',
-    ]
-    for pat in patterns:
-        m = re.search(pat, text, re.DOTALL)
-        if m:
-            text = m.group(1).strip()
-            break
-
-    # 2. 直接尝试
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    # 3. 去掉尾随逗号
-    fixed = re.sub(r',\s*([\]}])', r'\1', text)
-    try:
-        return json.loads(fixed)
-    except json.JSONDecodeError:
-        pass
-
-    # 4. 去掉行注释 (// ...)
-    fixed = re.sub(r'//[^\n]*', '', fixed)
-    fixed = re.sub(r',\s*([\]}])', r'\1', fixed)
-    try:
-        return json.loads(fixed)
-    except json.JSONDecodeError:
-        pass
-
-    # 5. 单引号 → 双引号（Python 风格 dict → JSON）
-    # 仅当文本不含双引号且不含英文撇号时才替换（避免破坏 it's 等）
-    if "'" in text and '"' not in text and "\u2019" not in text:
-        # 先尝试用 ast.literal_eval 解析 Python dict
-        try:
-            import ast
-            return ast.literal_eval(text)
-        except (ValueError, SyntaxError):
-            pass
-        # 退而求其次：替换单引号（可能破坏含撇号的值）
-        fixed = text.replace("'", '"')
-        fixed = re.sub(r',\s*([\]}])', r'\1', fixed)
-        try:
-            return json.loads(fixed)
-        except json.JSONDecodeError:
-            pass
-
-    # 6. 从大段文本中提取最外层 JSON（找匹配的 [] 或 {}）
-    for start_ch, end_ch in [('[', ']'), ('{', '}')]:
-        idx = text.find(start_ch)
-        if idx < 0:
-            continue
-        depth = 0
-        in_str = False
-        escape = False
-        for i in range(idx, len(text)):
-            c = text[i]
-            if escape:
-                escape = False
-                continue
-            if c == '\\' and in_str:
-                escape = True
-                continue
-            if c == '"' and not escape:
-                in_str = not in_str
-                continue
-            if in_str:
-                continue
-            if c == start_ch:
-                depth += 1
-            elif c == end_ch:
-                depth -= 1
-                if depth == 0:
-                    candidate = text[idx:i+1]
-                    try:
-                        return json.loads(candidate)
-                    except json.JSONDecodeError:
-                        # 尝试修复后解析
-                        candidate = re.sub(r',\s*([\]}])', r'\1', candidate)
-                        try:
-                            return json.loads(candidate)
-                        except json.JSONDecodeError:
-                            break
-
-    # 7. 最后尝试：去掉所有换行和多余空白后解析
-    oneline = re.sub(r'\s+', ' ', text).strip()
-    if oneline.startswith('[') or oneline.startswith('{'):
-        try:
-            return json.loads(oneline)
-        except json.JSONDecodeError:
-            pass
-
-    logger.warning(f"无法从 LLM 回复中提取 JSON（前 200 字）: {text[:200]}")
-    return None
-
 
 def _postprocess_shots(shots: list[dict], episode: int) -> list[dict]:
     """后处理镜头列表"""
@@ -423,11 +321,15 @@ def _postprocess_shots(shots: list[dict], episode: int) -> list[dict]:
             shot["shot_id"] = f"{i+1:03d}"
         # 确保 episode（统一为字符串，与 CSV 读取行为一致）
         shot["episode"] = str(episode)
-        # 限制 duration 范围
+        # 限制 duration 范围（截断时警告，避免用户不知情）
         try:
             d = int(shot.get("duration", 4))
-            shot["duration"] = max(2, min(8, d))
+            clamped = max(2, min(8, d))
+            if clamped != d:
+                logger.warning(f"镜头 {shot.get('shot_id', '?')} duration={d} 超出范围 [2,8]，已截断为 {clamped}")
+            shot["duration"] = clamped
         except (ValueError, TypeError):
+            logger.warning(f"镜头 {shot.get('shot_id', '?')} duration 格式无效，使用默认值 4")
             shot["duration"] = 4
         # 清理 dialogue / action_en / dialogue_en 中的引号
         for _k in ("dialogue", "action_en", "dialogue_en"):

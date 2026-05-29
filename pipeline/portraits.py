@@ -132,12 +132,11 @@ def run_portraits(
         existing = list(portrait_dir.glob("*.png")) + list(portrait_dir.glob("*.jpg"))
         # 排除子目录（outfit 目录）里的图片
         existing = [img for img in existing if img.parent == portrait_dir]
+        old_images_to_delete = []  # 生成成功后再删除
         if existing:
             if force:
-                for img in existing:
-                    img.unlink()
-                logger.info(f"    已有 {len(existing)} 张定妆照，已删除（强制模式）")
-                existing = []  # 清空，强制重新生成
+                old_images_to_delete = list(existing)
+                existing = []  # 标记需要重新生成
             else:
                 logger.info(f"    已有 {len(existing)} 张定妆照，跳过主图")
                 existing = []  # 跳过主图，但仍然检查 outfits
@@ -165,8 +164,16 @@ def run_portraits(
                     img_url = f"/api/assets/characters/{char_id}/{Path(files[0]).name}"
                     logger.info(f"    ✅ 主图生成完成")
                     generated += 1
+                    # 生成成功后删除旧图
+                    for old_img in old_images_to_delete:
+                        try:
+                            old_img.unlink()
+                        except OSError:
+                            pass
+                    if old_images_to_delete:
+                        logger.info(f"    🗑 已删除 {len(old_images_to_delete)} 张旧定妆照")
                 else:
-                    logger.warning(f"    ⚠ 主图未生成")
+                    logger.warning(f"    ⚠ 主图未生成（保留旧图）")
                     img_url = ""
 
             # 回写主图 reference_images
@@ -194,9 +201,7 @@ def run_portraits(
                         logger.info(f"      ⏭ {outfit_key}: 已有图，跳过")
                         continue
 
-                    if force:
-                        for img in outfit_existing:
-                            img.unlink()
+                    old_outfit_imgs = list(outfit_existing) if force else []
 
                     logger.info(f"      🎨 生成 {outfit_key}...")
                     try:
@@ -204,6 +209,12 @@ def run_portraits(
                             char_id, appearance, outfit_key, outfit_desc,
                             portrait_dir, comfyui, wb, llm)
                         if files:
+                            # 生成成功后删除旧图
+                            for old_img in old_outfit_imgs:
+                                try:
+                                    old_img.unlink()
+                                except OSError:
+                                    pass
                             outfit_url = f"/api/assets/characters/{char_id}/{outfit_key}/{Path(files[0]).name}"
                             outfit_val.setdefault("reference_images", [])
                             prefix = f"/api/assets/characters/{char_id}/{outfit_key}/cover"

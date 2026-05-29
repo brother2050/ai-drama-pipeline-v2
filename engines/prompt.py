@@ -143,7 +143,7 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
 
 
 # 常见中文外貌描述→英文映射（兜底用，覆盖常见词）
-_TRANSLATE_API = "http://shanhe.kim/api/fany/fanyi.php"
+_TRANSLATE_API = "https://shanhe.kim/api/fany/fanyi.php"
 _translate_cache: dict[str, str] = {}
 _CACHE_MAX_SIZE = 4096
 
@@ -158,27 +158,39 @@ def _cache_set(key: str, value: str) -> None:
 
 
 def _http_translate(text: str) -> str:
-    """通过山河翻译 API 进行中→英翻译（带缓存）"""
+    """通过山河翻译 API 进行中→英翻译（带缓存 + 重试）"""
     if text in _translate_cache:
         return _translate_cache[text]
+    import time as _time
     try:
-        url = f"{_TRANSLATE_API}?msg={urllib.parse.quote(text)}"
-        req = urllib.request.Request(url, headers={"User-Agent": "ai-drama-pipeline/1.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-        # 返回格式: "内容：xxx<br>结果：yyy" 或 "内容：xxx\n结果：yyy"
-        m = re.search(r"结果[：:]\s*(.+)", raw, re.DOTALL)
-        if m:
-            result = m.group(1).strip()
-            # 去掉可能残留的 HTML 标签
-            result = re.sub(r"<[^>]+>", "", result).strip()
-            if result:
-                _cache_set(text, result)
-                logger.debug(f"HTTP 翻译成功: {text[:30]} → {result[:30]}")
-                return result
-        logger.warning(f"HTTP 翻译返回格式异常: {raw[:100]}")
-    except Exception as e:
-        logger.warning(f"HTTP 翻译失败: {e}")
+        import httpx
+        _do_http = lambda url: httpx.get(url, timeout=10, follow_redirects=True).text
+    except ImportError:
+        _do_http = lambda url: urllib.request.urlopen(
+            urllib.request.Request(url, headers={"User-Agent": "ai-drama-pipeline/2.0"}),
+            timeout=10).read().decode("utf-8", errors="replace")
+
+    for attempt in range(3):
+        try:
+            url = f"{_TRANSLATE_API}?msg={urllib.parse.quote(text)}"
+            raw = _do_http(url)
+            # 返回格式: "内容：xxx<br>结果：yyy" 或 "内容：xxx\n结果：yyy"
+            m = re.search(r"结果[：:]\s*(.+)", raw, re.DOTALL)
+            if m:
+                result = m.group(1).strip()
+                # 去掉可能残留的 HTML 标签
+                result = re.sub(r"<[^>]+>", "", result).strip()
+                if result:
+                    _cache_set(text, result)
+                    logger.debug(f"HTTP 翻译成功: {text[:30]} → {result[:30]}")
+                    return result
+            logger.warning(f"HTTP 翻译返回格式异常: {raw[:100]}")
+        except Exception as e:
+            if attempt < 2:
+                _time.sleep(0.5 * (attempt + 1))
+                logger.debug(f"HTTP 翻译重试 ({attempt+1}/3): {e}")
+            else:
+                logger.warning(f"HTTP 翻译失败（已重试3次）: {e}")
     return ""
 
 

@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from pipeline.celery_app import app
+from infra.json_parse import parse_llm_json
 
 try:
     from celery.exceptions import SoftTimeLimitException
@@ -847,10 +848,8 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
 
     outfit_dir = project_dir / "assets" / "characters" / char_id / outfit_key
     outfit_dir.mkdir(parents=True, exist_ok=True)
-    for old in outfit_dir.glob("*.png"):
-        old.unlink()
-    for old in outfit_dir.glob("*.jpg"):
-        old.unlink()
+    # 记录旧图，生成成功后再删除（避免生成失败导致无图）
+    old_outfit_imgs = list(outfit_dir.glob("*.png")) + list(outfit_dir.glob("*.jpg"))
 
     full_desc = f"{appearance}, wearing {outfit_desc}"
     if any(ord(c) > 127 for c in full_desc):
@@ -872,6 +871,13 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
         return {"status": "error", "reason": f"ComfyUI 生成失败: {e}"}
     if not files:
         return {"status": "error", "reason": "ComfyUI 未返回任何图片"}
+
+    # 生成成功后删除旧图
+    for old_img in old_outfit_imgs:
+        try:
+            old_img.unlink()
+        except OSError:
+            pass
 
     img_url = f"/api/assets/characters/{char_id}/{outfit_key}/{Path(files[0]).name}"
 
@@ -1359,174 +1365,7 @@ def ai_scenes_task(self, config_path: str, descriptions: list[str]) -> dict:
 # 4.1 对话式编辑 — LLM Chat Edit
 # ══════════════════════════════════════════════════════════
 
-def _repair_truncated_json(text: str) -> str | None:
-    """尝试修复被截断的 JSON（LLM 输出常因 token 限制被截断）
 
-    策略：逐字符跟踪 JSON 结构深度，遇到截断时补全缺失的闭合括号。
-    """
-    if not text:
-        return None
-
-    text = text.rstrip()
-    if not text:
-        return None
-
-    # 去掉末尾可能的不完整内容（如截断在逗号、冒号、值中间）
-    # 先去掉末尾的逗号和空白
-    cleaned = text.rstrip(", \t\n\r")
-
-    # 尝试直接解析清理后的文本
-    try:
-        json.loads(cleaned)
-        return cleaned
-    except json.JSONDecodeError:
-        pass
-
-    # 逐字符跟踪结构，找到最后一个合法位置
-    stack = []  # 记录未闭合的括号: '[' 或 '{'
-    in_string = False
-    escape = False
-    last_safe = -1  # 最后一个合法的字符位置（闭合括号或数组/对象元素之后）
-
-    for i, ch in enumerate(cleaned):
-        if escape:
-            escape = False
-            continue
-        if ch == '\\' and in_string:
-            escape = True
-            continue
-        if ch == '"' and not escape:
-            in_string = not in_string
-            continue
-        if in_string:
-            continue
-
-        if ch == '[':
-            stack.append(']')
-        elif ch == '{':
-            stack.append('}')
-        elif ch in (']', '}'):
-            if stack and stack[-1] == ch:
-                stack.pop()
-                last_safe = i
-            # 如果栈顶不匹配，说明结构已损坏，但继续尝试
-        elif ch == ',':
-            if not stack:
-                # 顶层逗号，记录为安全位置
-                last_safe = i
-
-    # 情况1：完整 JSON，只是末尾有垃圾
-    if not stack and last_safe >= 0:
-        # 尝试截取到最后一个合法闭合位置
-        candidate = cleaned[:last_safe + 1]
-        try:
-            json.loads(candidate)
-            return candidate
-        except json.JSONDecodeError:
-            pass
-
-    # 情况2：JSON 被截断，需要补全闭合括号
-    if stack:
-        # 找到栈中最后一个完整元素的位置
-        # 从末尾去掉不完整的键值对（如 "key": "incomplete_value"）
-        candidate = cleaned
-
-        # 如果末尾在字符串中间，截断到上一个完整 token
-        if in_string:
-            # 找最后一个未闭合引号之前的位置
-            # 回退到最近的逗号或括号
-            for j in range(len(candidate) - 1, -1, -1):
-                if candidate[j] in (',', '[', '{'):
-                    candidate = candidate[:j + 1]
-                    break
-            else:
-                candidate = ""
-
-        # 去掉末尾的不完整键值（如 "key": 或 "key": "val）
-        candidate = candidate.rstrip(", \t\n\r")
-        if candidate.endswith(':'):
-            candidate = candidate[:-1].rstrip(", \t\n\r")
-
-        # 补全所有未闭合的括号
-        closing = ''.join(reversed(stack))
-        repaired = candidate + closing
-
-        try:
-            json.loads(repaired)
-            return repaired
-        except json.JSONDecodeError:
-            # 尝试更激进的修复：逐字符回退直到找到合法位置
-            for j in range(len(candidate) - 1, max(0, len(candidate) - 200), -1):
-                if candidate[j] in (',',):
-                    attempt = candidate[:j] + closing
-                    try:
-                        json.loads(attempt)
-                        return attempt
-                    except json.JSONDecodeError:
-                        continue
-
-    return None
-
-
-def _parse_llm_json(text: str):
-    """从 LLM 响应中提取 JSON（容错：markdown 代码块、前后多余文字、截断修复）
-
-    Returns:
-        解析后的对象，或 None 表示解析失败
-    """
-    if not text:
-        return None
-    text = text.strip()
-
-    # 1. 尝试直接解析
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    # 2. 提取 markdown 代码块（```json ... ``` 或 ``` ... ```）
-    m = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
-    if m:
-        try:
-            return json.loads(m.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-
-    # 3. 提取第一个 JSON 数组（从第一个 [ 到最后一个 ]）
-    start = text.find("[")
-    end = text.rfind("]")
-    if start != -1 and end > start:
-        try:
-            return json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
-            pass
-
-    # 4. 提取第一个 JSON 对象
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end > start:
-        try:
-            return json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
-            pass
-
-    # 5. 截断修复：LLM 输出因 token 限制被截断时，尝试补全闭合括号
-    #    优先尝试从 [ 到结尾的修复（数组是 chat_edit 最常见返回类型）
-    if start != -1 and text[start] == '[':
-        repaired = _repair_truncated_json(text[start:])
-        if repaired is not None:
-            return repaired
-    elif start != -1 and text[start] == '{':
-        repaired = _repair_truncated_json(text[start:])
-        if repaired is not None:
-            return repaired
-
-    # 6. 全文修复（兜底）
-    repaired = _repair_truncated_json(text)
-    if repaired is not None:
-        return repaired
-
-    return None
 
 
 @app.task(bind=True, name="ai_chat_edit", soft_time_limit=300)
@@ -1542,11 +1381,17 @@ def ai_chat_edit_task(self, config_path: str, episode: int, message: str, curren
 
     self.update_state(state="PROGRESS", meta={"step": "chat_edit", "progress": 30, "message": "AI 正在理解指令..."})
 
-    # 构建 prompt
-    shots_json = json.dumps(current_shots, ensure_ascii=False, indent=2)
+    # 构建 prompt（限制 shots 数量避免超出 LLM context window）
+    MAX_SHOTS_FOR_EDIT = 50
+    shots_for_prompt = current_shots
+    truncation_note = ""
+    if len(current_shots) > MAX_SHOTS_FOR_EDIT:
+        shots_for_prompt = current_shots[:MAX_SHOTS_FOR_EDIT]
+        truncation_note = f"\n注意：分镜表共 {len(current_shots)} 个镜头，此处只显示前 {MAX_SHOTS_FOR_EDIT} 个。"
+    shots_json = json.dumps(shots_for_prompt, ensure_ascii=False, indent=2)
     prompt = f"""你是一个分镜表编辑助手。用户会用自然语言描述对分镜表的修改需求。
 当前分镜表（JSON 格式）：
-{shots_json}
+{shots_json}{truncation_note}
 
 用户指令：{message}
 
@@ -1556,7 +1401,7 @@ def ai_chat_edit_task(self, config_path: str, episode: int, message: str, curren
 
     try:
         response = llm.chat(prompt)
-        result = _parse_llm_json(response)
+        result = parse_llm_json(response)
 
         if result is None:
             logger.warning(f"chat_edit JSON 解析失败，原始响应: {response[:500]}")
@@ -1879,10 +1724,32 @@ def seko_import_task(
             result["scenes"] += 1
 
     # ── 3. 导入分镜 ──
+    # 先构建 name → id 映射（角色/场景导入后、分镜导入前）
+    _char_id_map: dict[str, str] = {}
+    _scene_id_map: dict[str, str] = {}
+    if import_characters:
+        for c in chars:
+            _char_id_map[c["name"]] = c["id"]
+    if import_scenes:
+        for s in scenes:
+            _scene_id_map[s["name"]] = s["id"]
+
     if import_storyboard:
         self.update_state(state="PROGRESS", meta={"step": "seko_import", "progress": 50, "message": "解析分镜..."})
         shots = _parse_seko_storyboard(steps, episode)
         if shots:
+            # 映射角色名 → 角色 ID，场景名 → 场景 ID
+            for shot in shots:
+                chars_field = shot.get("characters", "")
+                if chars_field:
+                    mapped = []
+                    for cname in [c.strip() for c in chars_field.split("+") if c.strip()]:
+                        mapped.append(_char_id_map.get(cname, cname))
+                    shot["characters"] = "+".join(mapped)
+                scene_field = shot.get("scene", "")
+                if scene_field and scene_field in _scene_id_map:
+                    shot["scene"] = _scene_id_map[scene_field]
+
             sb_path = project_dir / "storyboard" / "episodes.csv"
             from engines.storyboard import save_storyboard
             save_storyboard(sb_path, shots, episode, append=True)
@@ -1902,15 +1769,7 @@ def seko_import_task(
             result["shots"] = len(shots)
 
     # ── 4. 异步下载图片 ──
-    # 构建 elementName → entity_id 映射（复用已解析的角色/场景 ID，避免命名不一致）
-    _char_id_map: dict[str, str] = {}
-    _scene_id_map: dict[str, str] = {}
-    if import_characters:
-        for c in chars:
-            _char_id_map[c["name"]] = c["id"]
-    if import_scenes:
-        for s in scenes:
-            _scene_id_map[s["name"]] = s["id"]
+    # _char_id_map 和 _scene_id_map 已在上方构建
 
     if download_images and elements:
         self.update_state(state="PROGRESS", meta={"step": "seko_import", "progress": 70, "message": "下载图片..."})

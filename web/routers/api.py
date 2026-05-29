@@ -399,6 +399,8 @@ def _test_llm(cfg: dict, result: dict) -> dict:
             models = [m.get("name", "") for m in r.json().get("models", [])]
             return {"ok": True, "name": name, "message": f"Ollama 连接成功 · {len(models)} 模型", "models": models, **result}
         else:
+            # 确保 URL 以 /v1 结尾（OpenAI 兼容 API 标准路径）
+            # rstrip("/") 先去尾斜杠，再检查是否已有 /v1，避免重复拼接
             check_url = base_url.rstrip("/")
             if not check_url.endswith("/v1"):
                 check_url += "/v1"
@@ -1329,11 +1331,14 @@ def copy_asset_to_project(entity_type: str, entity_id: str):
     # 同步数据库
     try:
         data = yaml.safe_load(dst.read_text(encoding="utf-8")) or {}
-        entity = data.get(entity_type.rstrip("s"), {})
+        entity_key = "character" if entity_type == "characters" else "scene"
+        entity = data.get(entity_key, {})
         if entity_type == "characters":
             from infra.database.characters import upsert as db_up
-        else:
+        elif entity_type == "scenes":
             from infra.database.scenes import upsert as db_up
+        else:
+            raise HTTPException(400, f"不支持的 entity_type: {entity_type}")
         from infra.database.pool import get_pool
         db_up(get_pool(), entity_id, entity)
     except Exception as e:

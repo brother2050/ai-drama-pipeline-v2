@@ -276,14 +276,18 @@ class Config:
         return val
 
     def _validate(self) -> None:
-        """校验配置合法性（不阻断，仅记录警告）"""
+        """校验配置合法性 — 必填字段缺失时抛异常，范围超限仅警告"""
         # 必填字段（直接访问 _data，避免触发 _check_reload 递归）
+        missing = []
         for field, desc in self.REQUIRED_FIELDS:
             val = self._get_raw(field)
             if val is None or val == "":
-                self._warnings.append(f"缺少必填配置: {desc} ({field})")
+                missing.append(f"{desc} ({field})")
 
-        # 数值范围
+        if missing:
+            raise ValueError(f"缺少必填配置: {', '.join(missing)}")
+
+        # 数值范围（不阻断，仅警告）
         for field, (lo, hi) in self.VALID_RANGES.items():
             val = self._get_raw(field)
             if val is not None:
@@ -307,3 +311,61 @@ class Config:
 
     def __repr__(self) -> str:
         return f"Config({self._path})"
+
+
+def resolve_project_config(root: Path | None = None) -> str:
+    """统一的项目配置路径解析（CLI 和 Web 共用）
+
+    查找顺序：
+    1. .active 文件指向的项目
+    2. projects/default/ 回退
+    3. 根目录 config/ 兼容旧结构
+
+    Returns:
+        配置文件绝对路径
+    """
+    if root is None:
+        root = Path(__file__).resolve().parent.parent
+
+    # 1. 检查 .active 指向的项目
+    active_file = root / "projects" / ".active"
+    if active_file.exists():
+        try:
+            d = active_file.read_text().strip()
+            if d:
+                cfg = Path(d) / "config" / "project.yaml"
+                if cfg.exists():
+                    return str(cfg)
+        except (OSError, ValueError):
+            pass
+
+    # 2. 回退到默认项目
+    cfg = root / "projects" / "default" / "config" / "project.yaml"
+    if cfg.exists():
+        return str(cfg)
+
+    # 3. 兼容旧结构（根目录 config/）
+    cfg = root / "config" / "project.yaml"
+    if cfg.exists():
+        return str(cfg)
+
+    raise FileNotFoundError("未找到 config/project.yaml，请先初始化默认项目")
+
+
+def get_active_project_dir(root: Path | None = None) -> Path:
+    """获取当前活动项目目录"""
+    if root is None:
+        root = Path(__file__).resolve().parent.parent
+
+    active_file = root / "projects" / ".active"
+    if active_file.exists():
+        try:
+            d = active_file.read_text().strip()
+            if d:
+                p = Path(d)
+                if p.exists():
+                    return p
+        except (OSError, ValueError):
+            pass
+
+    return root / "projects" / "default"

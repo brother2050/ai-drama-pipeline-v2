@@ -54,18 +54,12 @@ def _load_env():
 def _resolve_config(config_path: str | None = None) -> str:
     if config_path:
         return str(Path(config_path).resolve())
-    active = ROOT / "projects" / ".active"
-    if active.exists():
-        d = active.read_text().strip()
-        cfg = Path(d) / "config" / "project.yaml"
-        if cfg.exists():
-            return str(cfg)
-    # 回退到默认项目
-    cfg = ROOT / "projects" / "default" / "config" / "project.yaml"
-    if cfg.exists():
-        return str(cfg)
-    console.print("[red]❌ 未找到 config/project.yaml，请先初始化默认项目[/red]")
-    sys.exit(1)
+    from infra.config import resolve_project_config
+    try:
+        return resolve_project_config(ROOT)
+    except FileNotFoundError:
+        console.print("[red]❌ 未找到 config/project.yaml，请先初始化默认项目[/red]")
+        sys.exit(1)
 
 
 def _ensure_redis():

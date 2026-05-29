@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -64,6 +65,23 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
     # 拼接
     transition = cfg.get("post_production.transition", "crossfade")
     transition_duration = cfg.get("post_production.transition_duration", 0.5)
+
+    # 确保 SRT 基于最新分镜生成（用户可能在 produce 后修改了分镜）
+    srt_path = out_dir / f"episode_{episode:02d}.srt"
+    try:
+        sb_path = Path(cfg.project_dir) / "storyboard" / "episodes.csv"
+        if sb_path.exists():
+            import csv as _csv
+            with open(sb_path, encoding="utf-8") as f:
+                shots = [dict(r) for r in _csv.DictReader(f)
+                         if int(r.get("episode", 0) or 0) == episode]
+            if shots:
+                from post.subtitle import generate_srt
+                generate_srt(shots, str(srt_path), transition_duration=transition_duration)
+                logger.info(f"SRT 已从最新分镜重新生成: {srt_path}")
+    except Exception as e:
+        logger.warning(f"SRT 重新生成失败（使用已有文件）: {e}")
+
     concat_out = out_dir / f"episode_{episode:02d}_concat.mp4"
 
     try:
@@ -119,11 +137,18 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
     final_out = out_dir / f"episode_{episode:02d}_final.mp4"
     final_copied = False
     try:
-        shutil.copy2(str(concat_out), str(final_out))
+        # 同 filesystem 下 os.replace 是原子操作，比 shutil.copy2 快得多
+        os.replace(str(concat_out), str(final_out))
         logger.info(f"最终输出: {final_out}")
         final_copied = True
-    except Exception as e:
-        logger.warning(f"复制到 final 失败: {e}")
+    except OSError:
+        # 跨 filesystem 时 replace 会失败，回退到 copy2
+        try:
+            shutil.copy2(str(concat_out), str(final_out))
+            logger.info(f"最终输出: {final_out}")
+            final_copied = True
+        except Exception as e:
+            logger.warning(f"复制到 final 失败: {e}")
 
     # 仅当 final 成功复制后才清理中间文件（保留 final 和原始镜头视频）
     if final_copied:
