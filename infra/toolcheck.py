@@ -168,10 +168,10 @@ def _check_tool_inner(name: str, cfg: dict) -> dict:
         training_cfg = cfg.get("training", {})
         api_url = training_cfg.get("api_url", "")
         if not api_url:
-            return {"available": False, "backend": "kohya-ss", "type": "gpu",
+            return {"available": False, "backend": "ai-toolkit", "type": "gpu",
                     "reason": "训练服务地址未配置"}
         ok = _url_ok(api_url)
-        return {"available": ok, "backend": "kohya-ss", "type": "gpu",
-                "url": api_url, "reason": "" if ok else f"kohya-ss 服务不可达 ({api_url})"}
+        return {"available": ok, "backend": "ai-toolkit", "type": "gpu",
+                "url": api_url, "reason": "" if ok else f"AI Toolkit 服务不可达 ({api_url})"}
 
     return {"available": False, "backend": "unknown", "type": "unknown", "reason": "未知工具"}

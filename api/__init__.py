@@ -24,7 +24,7 @@ _BACKEND_MODULES = [
     ("video", "api.backends.video.animatediff", 10),
     ("llm", "api.backends.llm.ollama", 10),
     ("music", "api.backends.music.template", 10),
-    ("training", "api.backends.training.kohya_ss", 10),
+    ("training", "api.backends.training.ai_toolkit", 10),
     ("seko", "api.backends.seko", 10),
 ]
 

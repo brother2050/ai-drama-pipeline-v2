@@ -354,7 +354,7 @@ def test_tool(name: str):
                 return {"ok": False, "name": name, "message": "训练服务地址未配置", **result}
             import httpx
             r = httpx.get(api_url, timeout=5)
-            return {"ok": True, "name": name, "message": f"kohya-ss 连接成功 (HTTP {r.status_code})", **result}
+            return {"ok": True, "name": name, "message": f"AI Toolkit 连接成功 (HTTP {r.status_code})", **result}
 
         return {"ok": True, "name": name, "message": "可用", **result}
 

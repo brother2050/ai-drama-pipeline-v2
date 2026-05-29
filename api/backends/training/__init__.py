@@ -1,1 +1,1 @@
-"""训练后端 — kohya-ss 远程 LoRA 训练"""
+"""训练后端 — AI Toolkit 远程 LoRA 训练"""

@@ -1,13 +1,19 @@
-"""kohya-ss 训练后端 — 通过 REST API 远程调用 kohya-ss sd-scripts 训练 LoRA
+"""AI Toolkit 训练后端 — 通过 REST API 远程调用 ostris/ai-toolkit 训练 LoRA
 
-支持两种部署方式:
-  1. 用户自建 REST API 包装 kohya-ss sd-scripts（推荐）
-  2. 直接调用 kohya-ss Gradio Web UI（需 gradio_client）
+AI Toolkit 是 Flux LoRA 训练质量最好的开源工具，原生支持量化训练（12GB 可跑）。
 
-REST API 约定:
-  POST /train         — 启动训练（multipart: images + json params）
-  GET  /status/{id}   — 查询训练状态
-  GET  /result/{id}   — 下载训练结果（.safetensors）
+部署方式:
+  1. 在 GPU 服务器上安装 AI Toolkit:
+     git clone https://github.com/ostris/ai-toolkit.git
+     cd ai-toolkit && pip install -r requirements.txt
+
+  2. 启动 REST API 包装（项目自带）:
+     python scripts/ai_toolkit_api.py --port 7860 --ai-toolkit-path /path/to/ai-toolkit
+
+  3. 配置 config/system.yaml:
+     training:
+       backend: ai-toolkit
+       api_url: http://<gpu-server>:7860
 
 LoRA 文件命名规范:
   训练完成后，将 .safetensors 文件放入项目的 assets/loras/ 目录，
@@ -16,8 +22,9 @@ LoRA 文件命名规范:
 
   项目查找 LoRA 的优先级:
     1. proj_{hash8}_{char_id}_{char_id}_lora.safetensors  （comfyui_asset_name 生成）
-    2. {char_id}.safetensors
-    3. assets/characters/{char_id}/lora/*.safetensors
+    2. {char_id}_lora.safetensors
+    3. {char_id}.safetensors
+    4. assets/characters/{char_id}/lora/*.safetensors
 """
 
 from __future__ import annotations
@@ -31,13 +38,13 @@ from api.registry import BackendMeta, registry
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["KohyaSSTrainer"]
+__all__ = ["AIToolkitTrainer"]
 
 MAX_IMAGES = 150
 
 
-class KohyaSSTrainer:
-    """kohya-ss 远程 LoRA 训练后端"""
+class AIToolkitTrainer:
+    """AI Toolkit 远程 LoRA 训练后端"""
 
     def __init__(self, config: dict):
         self._api_url = (config.get("api_url")
@@ -50,23 +57,23 @@ class KohyaSSTrainer:
         self._project_dir = (config.get("project_dir")
                              or config.get("_project_dir") or "")
         if not self._project_dir:
-            logger.warning("KohyaSSTrainer: project_dir 为空，下载结果可能失败")
+            logger.warning("AIToolkitTrainer: project_dir 为空，下载结果可能失败")
 
         # 训练参数默认值
         defaults = config.get("defaults", {})
         self._default_resolution = self._parse_resolution(
             defaults.get("resolution", 512))
-        self._default_learning_rate = str(defaults.get("learning_rate", "8e-4"))
-        self._default_network_dim = int(defaults.get("network_dim", 4))
-        self._default_max_train_epochs = int(defaults.get("max_train_epochs", 16))
-        self._default_num_repeats = int(defaults.get("num_repeats", 10))
+        self._default_learning_rate = str(defaults.get("learning_rate", "1e-4"))
+        self._default_network_dim = int(defaults.get("network_dim", 16))
+        self._default_steps = int(defaults.get("steps", 1000))
+        self._base_model = str(defaults.get("base_model", "black-forest-labs/FLUX.1-dev"))
 
     @property
     def name(self) -> str:
-        return "kohya-ss"
+        return "ai-toolkit"
 
     def _headers(self) -> dict:
-        headers = {"Content-Type": "application/json"}
+        headers = {}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
         return headers
@@ -79,6 +86,11 @@ class KohyaSSTrainer:
         paths = []
         for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
             paths.extend(str(p) for p in img_dir.glob(ext))
+        # 也收集子目录（如 outfit 子目录）
+        for sub in img_dir.iterdir():
+            if sub.is_dir():
+                for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
+                    paths.extend(str(p) for p in sub.glob(ext))
         paths.sort()
         return paths[:MAX_IMAGES]
 
@@ -114,11 +126,7 @@ class KohyaSSTrainer:
     def _api_post_train(self, img_paths: list[str], trigger_word: str,
                         lora_name: str, steps: int, learning_rate: str,
                         rank: int, resolution: int) -> str:
-        """POST /train — 启动训练
-
-        Returns:
-            task_id
-        """
+        """POST /train — 启动训练"""
         import httpx
 
         url = f"{self._api_url.rstrip('/')}/train"
@@ -135,14 +143,13 @@ class KohyaSSTrainer:
             "learning_rate": learning_rate,
             "network_dim": str(rank),
             "resolution": str(resolution),
-            "max_train_epochs": str(self._default_max_train_epochs),
-            "num_repeats": str(self._default_num_repeats),
+            "base_model": self._base_model,
         }
 
         try:
             resp = httpx.post(url, files=files, data=data,
                               headers=self._headers(),
-                              timeout=60)
+                              timeout=120)
             resp.raise_for_status()
             result = resp.json()
             task_id = result.get("task_id") or result.get("id") or ""
@@ -155,12 +162,7 @@ class KohyaSSTrainer:
             raise TimeoutError(f"连接超时: {url}")
 
     def _api_get_status(self, task_id: str) -> dict:
-        """GET /status/{task_id} — 查询训练状态
-
-        Returns:
-            {"status": "running"|"done"|"error", "progress": 0-100,
-             "message": "...", "result_url": "..."}
-        """
+        """GET /status/{task_id} — 查询训练状态"""
         import httpx
 
         url = f"{self._api_url.rstrip('/')}/status/{task_id}"
@@ -237,6 +239,7 @@ class KohyaSSTrainer:
 
         # 2. 轮询等待完成
         start_time = time.time()
+        last_progress = -1
         while True:
             if time.time() - start_time > self._timeout:
                 raise TimeoutError(f"训练超时（{self._timeout}s）: {task_id}")
@@ -252,67 +255,61 @@ class KohyaSSTrainer:
             elif state == "error":
                 raise RuntimeError(f"训练失败: {message}")
             else:
-                logger.info(f"  训练中... {progress}% {message}")
+                if progress != last_progress:
+                    logger.info(f"  训练中... {progress}% {message}")
+                    last_progress = progress
 
             time.sleep(self._poll_interval)
 
-        # 3. 下载结果
+        # 3. 获取结果
         output_dir = Path(self._project_dir) / "assets" / "loras"
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = str(output_dir / f"{output_name}.safetensors")
 
-        result_url = status.get("result_url", "")
-        if result_url:
-            self._api_download_result(result_url, output_path)
-        else:
-            # 尝试从默认输出目录复制
-            lora_path = self._find_output(output_name)
-            if lora_path:
-                import shutil
-                shutil.copy2(lora_path, output_path)
+        result_path = status.get("result_path", "")
+        if result_path:
+            import shutil
+            src = Path(result_path)
+            if src.exists():
+                shutil.copy2(str(src), output_path)
             else:
-                raise RuntimeError(
-                    f"训练完成但无法获取 .safetensors 文件。\n"
-                    f"请手动将训练产物复制到: {output_path}\n"
-                    f"文件名必须为: {output_name}.safetensors")
+                # 尝试通过 API 下载
+                result_url = status.get("result_url", "")
+                if result_url:
+                    self._api_download_result(result_url, output_path)
+                else:
+                    raise RuntimeError(
+                        f"训练完成但结果文件不存在: {result_path}\n"
+                        f"请手动将 .safetensors 复制到: {output_path}")
+        else:
+            raise RuntimeError(
+                f"训练完成但无法获取结果文件。\n"
+                f"请手动将训练产物复制到: {output_path}\n"
+                f"文件名必须为: {output_name}.safetensors")
 
         logger.info(f"LoRA 已保存: {output_path}")
         return output_path
-
-    def _find_output(self, lora_name: str) -> str | None:
-        """在常见输出目录中查找 .safetensors 文件"""
-        candidates = [
-            Path(f"/workspace/kohya_ss/output/{lora_name}.safetensors"),
-            Path(f"/workspace/kohya_ss/output/{lora_name}"),
-            Path.home() / "kohya_ss" / "output" / f"{lora_name}.safetensors",
-            Path.home() / "sd-scripts" / "output" / f"{lora_name}.safetensors",
-        ]
-        for p in candidates:
-            if p.exists() and p.suffix == ".safetensors":
-                return str(p)
-            if p.is_dir():
-                for f in p.glob("**/*.safetensors"):
-                    return str(f)
-        return None
 
     # ────────────────────────────────────────────────
     # 状态查询
     # ────────────────────────────────────────────────
 
     def check_status(self) -> dict:
-        """检查 kohya-ss 服务状态"""
+        """检查 AI Toolkit 服务状态"""
         import httpx
         try:
             url = f"{self._api_url.rstrip('/')}/health"
             resp = httpx.get(url, headers=self._headers(), timeout=5)
+            data = resp.json() if resp.status_code == 200 else {}
             return {
                 "status": "connected",
                 "url": self._api_url,
-                "message": f"HTTP {resp.status_code}",
+                "message": f"AI Toolkit 就绪",
+                "ai_toolkit_path": data.get("ai_toolkit_path", ""),
             }
         except httpx.ConnectError:
             return {"status": "disconnected", "url": self._api_url,
-                    "error": f"连接被拒绝"}
+                    "error": "连接被拒绝"}
         except httpx.TimeoutException:
             return {"status": "disconnected", "url": self._api_url,
                     "error": "连接超时"}
@@ -327,10 +324,10 @@ class KohyaSSTrainer:
 # ── 注册 ──
 
 registry.register(BackendMeta(
-    name="kohya-ss",
+    name="ai-toolkit",
     service_type="training",
-    factory=lambda cfg: KohyaSSTrainer(cfg),
-    description="kohya-ss sd-scripts 远程 LoRA 训练（REST API）",
+    factory=lambda cfg: AIToolkitTrainer(cfg),
+    description="AI Toolkit 远程 LoRA 训练（REST API，Flux 原生优化）",
     priority=10,
-    tags=["lora", "training", "kohya", "flux", "sd"],
+    tags=["lora", "training", "ai-toolkit", "flux", "ostris"],
 ))
