@@ -160,12 +160,14 @@ def _try_mark_running_atomic(config_path: str, episode: int, shot_id: str, step:
 #  公共前置检查
 # ══════════════════════════════════════════════════════════
 
-def _prepare(config_path: str, episode: int, shot_id: str, step: str, tool: str, *, need_shot: bool = True):
+def _prepare(config_path: str, episode: int, shot_id: str, step: str, tool: str, *, need_shot: bool = True, force: bool = False):
     """防重复 → 工具可用 → 查镜头 → 标记运行 → 返回 (cfg, cont, shot, err)"""
     _ensure_path()
-    # 使用原子操作检查+标记，避免竞态条件
-    if not _try_mark_running_atomic(config_path, episode, shot_id, step):
+    # force=True 时跳过 running 状态检查，允许强制覆盖
+    if not force and not _try_mark_running_atomic(config_path, episode, shot_id, step):
         return None, None, None, _skip(shot_id, step, "该步骤正在执行中")
+    if force:
+        _db_mark_running(config_path, episode, shot_id, step)
     ok, reason = _check_available(tool, config_path)
     if not ok:
         # 回滚 running 状态，否则该步骤 10 分钟内无法重试
@@ -546,28 +548,28 @@ def lipsync_core(shot_id: str, cont, out_dir: Path, *, force: bool = False) -> d
 # ── Celery 任务包装（_prepare 防重复 + 核心逻辑）──
 
 def _run_tts(config_path: str, episode: int, shot_id: str, *, force: bool = False) -> dict:
-    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "tts", "tts")
+    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "tts", "tts", force=force)
     if err:
         return err
     return tts_core(shot_id, shot, cfg, cont, _shot_dir(config_path, episode, shot_id), force=force)
 
 
 def _run_first_frame(config_path: str, episode: int, shot_id: str, *, force: bool = False) -> dict:
-    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "first_frame", "comfyui")
+    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "first_frame", "comfyui", force=force)
     if err:
         return err
     return first_frame_core(shot_id, shot, cfg, cont, _shot_dir(config_path, episode, shot_id), force=force)
 
 
 def _run_video(config_path: str, episode: int, shot_id: str, *, force: bool = False) -> dict:
-    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "video", "comfyui", need_shot=True)
+    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "video", "comfyui", need_shot=True, force=force)
     if err:
         return err
     return video_core(shot_id, cfg, cont, _shot_dir(config_path, episode, shot_id), shot=shot, force=force)
 
 
 def _run_lipsync(config_path: str, episode: int, shot_id: str, *, force: bool = False) -> dict:
-    cfg, cont, _, err = _prepare(config_path, episode, shot_id, "lipsync", "lipsync", need_shot=False)
+    cfg, cont, _, err = _prepare(config_path, episode, shot_id, "lipsync", "lipsync", need_shot=False, force=force)
     if err:
         return err
     return lipsync_core(shot_id, cont, _shot_dir(config_path, episode, shot_id), force=force)

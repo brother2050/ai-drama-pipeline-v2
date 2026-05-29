@@ -344,8 +344,9 @@ async function sendChatMsg() {
   } catch (e) {
     _chatHistory.pop();
     _chatHistory.push({ role: 'err', text: `❌ ${e.message}` });
+  } finally {
+    _chatSending = false;
   }
-  _chatSending = false;
   _renderChatHistory();
 }
 

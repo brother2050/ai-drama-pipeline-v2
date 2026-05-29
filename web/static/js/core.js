@@ -44,7 +44,8 @@ const MAX_POLL = 300;
 
 let ep = 1, shots = [], batchCancelled = false;
 const _undoStack = [], _redoStack = [];
-let _currentTaskId = null; // 当前正在执行的任务 ID
+let _currentTaskId = null; // 当前正在执行的任务 ID（单任务）
+const _activeTaskIds = new Set(); // 所有活跃任务 ID（批量并发用）
 
 // ── ID→名字显示映射 ──
 const _charNameMap = {};  // { 'ch_8a3f2b1c': '林夏', ... }

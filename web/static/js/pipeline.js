@@ -320,6 +320,15 @@ async function runOne(step, idx) {
 }
 
 async function cancelCurrentTask() {
+  // 批量模式：取消所有活跃任务
+  if (_activeTaskIds.size > 0) {
+    const ids = [..._activeTaskIds];
+    _activeTaskIds.clear();
+    await Promise.allSettled(ids.map(id => api(`/tasks/${id}/cancel`, { method: 'POST' })));
+    toast(t('toast.cancelled'));
+    return;
+  }
+  // 单任务模式
   if (!_currentTaskId) return;
   try { await api(`/tasks/${_currentTaskId}/cancel`, { method: 'POST' }); toast(t('toast.cancelled')); } catch (e) { toast(e.message, 'error'); }
 }
@@ -353,7 +362,9 @@ async function batchRun(step) {
       const force = _isForce();
       const { task_id } = await api(`/steps/${step}`, { method: 'POST', body: { episode: ep, shot_id: sid, force } });
       _currentTaskId = task_id;
+      _activeTaskIds.add(task_id);
       const result = await pollTask(task_id);
+      _activeTaskIds.delete(task_id);
       _currentTaskId = null;
       if (result.status === 'success') {
         const sub = result.result;
@@ -361,7 +372,7 @@ async function batchRun(step) {
         else if (sub?.status === 'skipped') skip++;
         else { done++; invalidateCache(`res/${ep}/${sid}`); loadResources(i); }
       } else fail++;
-    } catch { _currentTaskId = null; fail++; }
+    } catch { _activeTaskIds.delete(task_id); _currentTaskId = null; fail++; }
   }
 
   if (concurrency <= 1) {

@@ -61,7 +61,7 @@ async function loadDashboard() {
     const totalCount = Object.keys(tools).length;
     const shots = sbData.shots || [];
     const projects = projData.projects || [];
-    const currentProj = projects.find(p => p.active) || projects[0];
+    const currentProj = projects.find(p => p.active) || projects[0] || { name: '' };
 
     // 工具状态分组
     const groups = [

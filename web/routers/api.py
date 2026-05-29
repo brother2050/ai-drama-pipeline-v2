@@ -612,15 +612,35 @@ def _sys_cfg_path() -> str:
     return str(ROOT / "config" / "system.yaml")
 
 
+_SENSITIVE_KEYS = {"api_key", "apikey", "api_secret", "token", "password", "secret"}
+
+def _mask_sensitive(obj, _parent_key=""):
+    """递归遮蔽敏感字段值"""
+    if isinstance(obj, dict):
+        masked = {}
+        for k, v in obj.items():
+            if isinstance(v, (dict, list)):
+                masked[k] = _mask_sensitive(v, k)
+            elif any(s in k.lower() for s in _SENSITIVE_KEYS) and v:
+                masked[k] = "***"
+            else:
+                masked[k] = v
+        return masked
+    if isinstance(obj, list):
+        return [_mask_sensitive(item, _parent_key) for item in obj]
+    return obj
+
+
 @router.get("/system/config")
 def get_system_config():
-    """读取系统全局配置"""
+    """读取系统全局配置（敏感字段已遮蔽）"""
     path = _sys_cfg_path()
     if not os.path.isfile(path):
         return {}
     try:
         with open(path, encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+            data = yaml.safe_load(f) or {}
+        return _mask_sensitive(data)
     except yaml.YAMLError as e:
         logger.warning(f"系统配置 YAML 格式错误: {e}")
         return {}

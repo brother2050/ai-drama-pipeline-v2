@@ -498,7 +498,7 @@ function t(key, params = {}) {
   let text = entry ? (entry[_lang] || entry.zh || key) : key;
   // 替换参数 {name} → value
   for (const [k, v] of Object.entries(params)) {
-    text = text.replace(`{${k}}`, v);
+    text = text.replaceAll(`{${k}}`, v);
   }
   return text;
 }
