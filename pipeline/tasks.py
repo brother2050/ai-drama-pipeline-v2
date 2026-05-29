@@ -751,12 +751,14 @@ def portraits_task(self, config_path: str, force: bool = False) -> dict:
 def scene_images_task(self, config_path: str, force: bool = False) -> dict:
     """为所有场景批量生成参考图"""
     _ensure_path()
-    self.update_state(state="PROGRESS", meta={"step": "scene_images", "progress": 10, "message": "加载场景..."})
+    update = self.update_state  # 局部变量，避免闭包持有 self
+
+    update(state="PROGRESS", meta={"step": "scene_images", "progress": 10, "message": "加载场景..."})
     try:
         from pipeline.scene_images import run_scene_images
 
         def on_progress(current, total, msg):
-            self.update_state(state="PROGRESS", meta={
+            update(state="PROGRESS", meta={
                 "step": "scene_images",
                 "progress": int(10 + current / max(total, 1) * 80),
                 "message": f"[{current}/{total}] {msg}",
@@ -930,10 +932,12 @@ def scene_image_single_task(self, config_path: str, scene_id: str) -> dict:
     """为单个场景 AI 生成参考图（异步）"""
     _ensure_path()
 
-    self.update_state(state="PROGRESS", meta={"step": "scene_image", "progress": 10, "message": f"生成场景 {scene_id} 参考图..."})
+    update = self.update_state  # 局部变量，避免闭包持有 self
+
+    update(state="PROGRESS", meta={"step": "scene_image", "progress": 10, "message": f"生成场景 {scene_id} 参考图..."})
 
     def on_progress(current, total, msg):
-        self.update_state(state="PROGRESS", meta={
+        update(state="PROGRESS", meta={
             "step": "scene_image", "progress": int(10 + current / max(total, 1) * 80),
             "message": f"生成场景 {msg}..."})
 

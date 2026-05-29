@@ -12,6 +12,8 @@ import logging
 import sys
 from pathlib import Path
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from infra.config import Config
@@ -97,8 +99,6 @@ def run_portraits(
             logger.info(f"LLM 后端: {type(llm).__name__}")
         except Exception as e:
             logger.warning(f"无 LLM 可用，中文角色描述将无法翻译: {e}")
-
-    import yaml
 
     # 确定要处理的角色文件列表
     if char_ids is not None:
@@ -234,6 +234,7 @@ def run_portraits(
             logger.error(f"    ❌ 失败: {e}")
 
     logger.info(f"定妆照生成完成 ({generated} 个角色)")
+    return {"status": "done", "generated": generated, "total": len(char_files)}
 
 
 def main():
