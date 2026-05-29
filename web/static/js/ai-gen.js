@@ -9,6 +9,7 @@ async function _runAIGen(apiPath, body, statusId, overlayId, label, cacheKey, re
   _html(statusEl, `⏳ ${label}...`);
   try {
     const { task_id } = await api(apiPath, { method: 'POST', body });
+    if (typeof TaskPanel !== "undefined") TaskPanel.trackTask(task_id, label);
     const result = await pollTask(task_id, info => _html(statusEl, `⏳ ${info.message || 'AI 生成中...'} (${info.progress || 0}%)`));
     if (result.status === 'success' && result.result?.status === 'done') {
       const r = result.result;

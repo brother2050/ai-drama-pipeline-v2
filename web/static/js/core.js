@@ -196,6 +196,8 @@ async function pollTask(taskId, onProgress) {
   let delay = 500;
   for (let i = 0; i < MAX_POLL; i++) {
     const info = await api(`/tasks/${taskId}`);
+    // 同步更新到全局任务面板
+    if (typeof TaskPanel !== 'undefined') TaskPanel.updateTask(taskId, info);
     if (onProgress) onProgress(info);
     if (['success', 'failed', 'cancelled'].includes(info.status)) return info;
     await new Promise(r => setTimeout(r, delay));

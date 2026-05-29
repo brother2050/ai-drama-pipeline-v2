@@ -306,6 +306,7 @@ async function runOne(step, idx) {
     const force = _isForce();
     const { task_id } = await api(`/steps/${step}`, { method: 'POST', body: { episode: ep, shot_id: sid, force } });
     _currentTaskId = task_id;
+    if (typeof TaskPanel !== 'undefined') TaskPanel.trackTask(task_id, `${step} ${sid}`);
     const result = await pollTask(task_id, info => _html(act, `<span class="run-indicator">⏳ ${info.message || step} (${info.progress || 0}%)</span> <button class="btn btn-xs btn-danger" onclick="cancelCurrentTask()">⏹</button>`));
     _currentTaskId = null;
     const sub = result.result;
@@ -366,6 +367,7 @@ async function batchRun(step) {
       const { task_id } = await api(`/steps/${step}`, { method: 'POST', body: { episode: ep, shot_id: sid, force } });
       _currentTaskId = task_id;
       _activeTaskIds.add(task_id);
+      if (typeof TaskPanel !== 'undefined') TaskPanel.trackTask(task_id, `${names[step]} ${sid}`);
       const result = await pollTask(task_id);
       _activeTaskIds.delete(task_id);
       _currentTaskId = null;
@@ -414,6 +416,7 @@ async function _runTool(apiPath, body, label) {
   try {
     toast('⏳ ' + label);
     const { task_id } = await api(apiPath, { method: 'POST', body });
+    if (typeof TaskPanel !== 'undefined') TaskPanel.trackTask(task_id, label);
     const result = await pollTask(task_id);
     if (result.status === 'success' && result.result?.status !== 'error') toast('✅ ' + label);
     else toast('❌ ' + (result.result?.reason || result.error || t('wb.shot_fail')), 'error');
@@ -433,6 +436,7 @@ async function runPrepare() {
   try {
     const force = _isForce();
     const { task_id } = await api('/prepare', { method: 'POST', body: { episode: ep, force } });
+    if (typeof TaskPanel !== 'undefined') TaskPanel.trackTask(task_id, t('wb.prepare'));
     const result = await pollTask(task_id, info => {
       statusEl.innerHTML = `<div class="batch-progress"><div class="batch-bar"><div class="batch-fill" style="width:${info.progress || 10}%"></div></div>
         <div class="batch-text">⏳ ${info.message || t('wb.prepare')} (${info.progress || 0}%)</div></div>`;
@@ -471,6 +475,7 @@ async function runAll() {
       <div class="batch-text">[${i + 1}/${stages.length}] ${cmd}...</div></div>`;
     try {
       const { task_id } = await api('/pipeline/run', { method: 'POST', body: { episode: ep, command: cmd } });
+      if (typeof TaskPanel !== 'undefined') TaskPanel.trackTask(task_id, `全流程 ${cmd}`);
       const result = await pollTask(task_id);
       if (result.status !== 'success') { statusEl.innerHTML = `<div class="batch-done">❌ ${cmd}: ${esc(result.error || t('wb.shot_fail'))}</div>`; return; }
       // 检查子任务返回的实际状态（Celery SUCCESS 不代表业务成功）

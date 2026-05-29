@@ -286,6 +286,7 @@ async function generatePortrait(charId) {
   _html(status, '⏳ AI 正在生成定妆照...');
   try {
     const { task_id } = await api(`/characters/${charId}/generate-portrait`, { method: 'POST' });
+    if (typeof TaskPanel !== "undefined") TaskPanel.trackTask(task_id, "定妆照");
     const result = await pollTask(task_id, info => _html(status, `⏳ ${info.message || '生成中...'} (${info.progress || 0}%)`));
     if (result.status === 'success' && result.result?.status === 'done') {
       const r = result.result;
@@ -322,6 +323,7 @@ async function generateSceneImage(sceneId) {
   _html(status, '⏳ AI 正在生成场景图...');
   try {
     const { task_id } = await api(`/scenes/${sceneId}/generate-image`, { method: 'POST' });
+    if (typeof TaskPanel !== "undefined") TaskPanel.trackTask(task_id, "场景图");
     const result = await pollTask(task_id, info => _html(status, `⏳ ${info.message || '生成中...'} (${info.progress || 0}%)`));
     if (result.status === 'success' && result.result?.status === 'done') {
       const r = result.result;
@@ -418,6 +420,7 @@ async function generateOutfit(charId, btnEl) {
   const reset = _btnLoad(btnEl, '⏳');
   try {
     const { task_id } = await api(`/characters/${charId}/generate-outfit?outfit_key=${encodeURIComponent(key)}`, { method: 'POST' });
+    if (typeof TaskPanel !== "undefined") TaskPanel.trackTask(task_id, "服装 " + key);
     const result = await pollTask(task_id, info => { if (statusEl) _html(statusEl, `⏳ ${key}: ${info.message || '生成中...'} (${info.progress || 0}%)`); });
     if (result.status === 'success' && result.result?.status === 'done') {
       toast(`✅ 服装「${key}」参考图已生成`);
@@ -444,6 +447,7 @@ async function generateAllOutfits(charId) {
   _html(status, '⏳ 提交批量任务...');
   try {
     const { task_id } = await api(`/characters/${charId}/generate-outfits`, { method: 'POST' });
+    if (typeof TaskPanel !== "undefined") TaskPanel.trackTask(task_id, "批量服装");
     const result = await pollTask(task_id, info => _html(status, `⏳ ${info.message || '生成中...'} (${info.progress || 0}%)`));
     if (result.status === 'success' && result.result?.status === 'done') {
       const r = result.result;
@@ -544,6 +548,7 @@ async function startLoraTraining(charId) {
       force: document.getElementById('train-force')?.checked || false,
     };
     const { task_id } = await api('/training/lora', { method: 'POST', body });
+    if (typeof TaskPanel !== "undefined") TaskPanel.trackTask(task_id, "LoRA 训练");
     const result = await pollTask(task_id, info => {
       _html(progressEl, `<div style="background:var(--bg2);border-radius:6px;padding:.4rem .6rem;font-size:.8rem">
         <div style="display:flex;justify-content:space-between;margin-bottom:.3rem"><span>${esc(info.message || '训练中...')}</span><span>${info.progress || 0}%</span></div>
@@ -641,6 +646,7 @@ async function _doBatchTrain() {
         method: 'POST',
         body: { char_id: cid, steps, learning_rate: lr, rank, resolution, force }
       });
+      if (typeof TaskPanel !== "undefined") TaskPanel.trackTask(task_id, "批量 LoRA " + cid);
       const result = await pollTask(task_id, info => {
         const statusLine = document.querySelector('#batch-train-status');
         if (statusLine) _html(statusLine, `⏳ [${i+1}/${total}] ${esc(cid)}: ${info.message || '训练中...'} ${info.progress || 0}%`);

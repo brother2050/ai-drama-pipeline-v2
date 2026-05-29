@@ -315,6 +315,7 @@ async function sendChatMsg() {
 
   try {
     const { task_id } = await api('/llm/chat-edit', { method: 'POST', body: { episode: ep, message: text, shots } });
+    if (typeof TaskPanel !== "undefined") TaskPanel.trackTask(task_id, "AI 编辑");
     const result = await pollTask(task_id);
     _chatHistory.pop(); // remove thinking
 
