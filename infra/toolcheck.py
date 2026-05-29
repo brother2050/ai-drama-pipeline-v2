@@ -170,7 +170,7 @@ def _check_tool_inner(name: str, cfg: dict) -> dict:
         if not api_url:
             return {"available": False, "backend": "ai-toolkit", "type": "gpu",
                     "reason": "训练服务地址未配置"}
-        ok = _url_ok(api_url)
+        ok = _url_ok(api_url, "/api/gpu")
         return {"available": ok, "backend": "ai-toolkit", "type": "gpu",
                 "url": api_url, "reason": "" if ok else f"AI Toolkit 服务不可达 ({api_url})"}
 

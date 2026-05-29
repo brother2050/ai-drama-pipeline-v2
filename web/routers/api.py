@@ -352,9 +352,18 @@ def test_tool(name: str):
             api_url = training_cfg.get("api_url", "")
             if not api_url:
                 return {"ok": False, "name": name, "message": "训练服务地址未配置", **result}
-            import httpx
-            r = httpx.get(api_url, timeout=5)
-            return {"ok": True, "name": name, "message": f"AI Toolkit 连接成功 (HTTP {r.status_code})", **result}
+            from api.registry import Container
+            from api import _ensure_registered; _ensure_registered()
+            cont = Container(cfg)
+            try:
+                trainer = cont.get("training")
+                status = trainer.check_status()
+                if status.get("status") == "connected":
+                    return {"ok": True, "name": name, "message": status.get("message", "AI Toolkit 就绪"), **result}
+                else:
+                    return {"ok": False, "name": name, "message": status.get("error", "连接失败"), **result}
+            except Exception as e:
+                return {"ok": False, "name": name, "message": f"训练后端不可用: {e}", **result}
 
         return {"ok": True, "name": name, "message": "可用", **result}
 

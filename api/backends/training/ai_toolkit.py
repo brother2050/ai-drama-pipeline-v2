@@ -1,19 +1,30 @@
-"""AI Toolkit 训练后端 — 通过 REST API 远程调用 ostris/ai-toolkit 训练 LoRA
+"""AI Toolkit 训练后端 — 通过原生 Web UI API 远程调用 ostris/ai-toolkit 训练 LoRA
 
 AI Toolkit 是 Flux LoRA 训练质量最好的开源工具，原生支持量化训练（12GB 可跑）。
 
 部署方式:
   1. 在 GPU 服务器上安装 AI Toolkit:
      git clone https://github.com/ostris/ai-toolkit.git
-     cd ai-toolkit && pip install -r requirements.txt
+     cd ai-toolkit && git checkout next && pip install -r requirements.txt
 
-  2. 启动 REST API 包装（项目自带）:
-     python scripts/ai_toolkit_api.py --port 7860 --ai-toolkit-path /path/to/ai-toolkit
+  2. 启动 Web UI:
+     python run.py --ui
+     （默认运行在 http://localhost:8675）
 
   3. 配置 config/system.yaml:
      training:
        backend: ai-toolkit
-       api_url: http://<gpu-server>:7860
+       api_url: http://<gpu-server>:8675
+
+API 使用 AI Toolkit 原生 Next.js API（v0.9.14+）:
+  POST /api/datasets/create   — 创建数据集
+  POST /api/datasets/upload   — 上传图片到数据集
+  POST /api/jobs              — 创建训练作业
+  GET  /api/jobs/<id>/start   — 启动作业
+  GET  /api/jobs?id=<id>      — 查询作业状态
+  GET  /api/jobs/<id>/log     — 查看作业日志
+  GET  /api/settings          — 获取服务端设置
+  GET  /api/gpu               — GPU 状态
 
 LoRA 文件命名规范:
   训练完成后，将 .safetensors 文件放入项目的 assets/loras/ 目录，
@@ -44,14 +55,16 @@ MAX_IMAGES = 150
 
 
 class AIToolkitTrainer:
-    """AI Toolkit 远程 LoRA 训练后端"""
+    """AI Toolkit 远程 LoRA 训练后端（原生 API）"""
 
     def __init__(self, config: dict):
         self._api_url = (config.get("api_url")
                          or config.get("training", {}).get("api_url", "")
-                         or "http://127.0.0.1:7860")
+                         or "http://127.0.0.1:8675")
         self._api_key = (config.get("api_key")
                          or config.get("training", {}).get("api_key", ""))
+        self._gpu_ids = str(config.get("gpu_ids")
+                            or config.get("training", {}).get("gpu_ids", "0"))
         self._timeout = config.get("timeout", 3600)
         self._poll_interval = config.get("poll_interval", 10)
         self._project_dir = (config.get("project_dir")
@@ -73,10 +86,17 @@ class AIToolkitTrainer:
         return "ai-toolkit"
 
     def _headers(self) -> dict:
-        headers = {}
+        """JSON 请求 headers"""
+        headers = {"Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
         return headers
+
+    def _auth_headers(self) -> dict:
+        """仅含认证的 headers（用于 multipart 等非 JSON 请求）"""
+        if self._api_key:
+            return {"Authorization": f"Bearer {self._api_key}"}
+        return {}
 
     def _collect_images(self, images_dir: str) -> list[str]:
         """收集目录中的图片文件路径，最多 MAX_IMAGES 张"""
@@ -120,72 +140,220 @@ class AIToolkitTrainer:
             return 512
 
     # ────────────────────────────────────────────────
-    # REST API 调用
+    # 原生 API 调用
     # ────────────────────────────────────────────────
 
-    def _api_post_train(self, img_paths: list[str], trigger_word: str,
-                        lora_name: str, steps: int, learning_rate: str,
-                        rank: int, resolution: int) -> str:
-        """POST /train — 启动训练"""
+    def _api_get_settings(self) -> dict:
+        """GET /api/settings — 获取服务端设置（训练目录、数据集目录）"""
         import httpx
-
-        url = f"{self._api_url.rstrip('/')}/train"
-
-        # 构建 multipart 请求
-        files = []
-        for p in img_paths:
-            files.append(("images", (Path(p).name, open(p, "rb"), "image/png")))
-
-        data = {
-            "trigger_word": trigger_word,
-            "lora_name": lora_name,
-            "steps": str(steps),
-            "learning_rate": learning_rate,
-            "network_dim": str(rank),
-            "resolution": str(resolution),
-            "base_model": self._base_model,
-        }
-
-        try:
-            resp = httpx.post(url, files=files, data=data,
-                              headers=self._headers(),
-                              timeout=120)
-            resp.raise_for_status()
-            result = resp.json()
-            task_id = result.get("task_id") or result.get("id") or ""
-            if not task_id:
-                raise RuntimeError(f"API 未返回 task_id: {result}")
-            return task_id
-        except httpx.ConnectError:
-            raise ConnectionError(f"连接被拒绝: {url}")
-        except httpx.TimeoutException:
-            raise TimeoutError(f"连接超时: {url}")
-
-    def _api_get_status(self, task_id: str) -> dict:
-        """GET /status/{task_id} — 查询训练状态"""
-        import httpx
-
-        url = f"{self._api_url.rstrip('/')}/status/{task_id}"
+        url = f"{self._api_url.rstrip('/')}/api/settings"
         resp = httpx.get(url, headers=self._headers(), timeout=10)
         resp.raise_for_status()
         return resp.json()
 
-    def _api_download_result(self, result_url: str, output_path: str) -> str:
-        """下载训练结果（.safetensors）"""
+    def _api_get_gpu(self) -> dict:
+        """GET /api/gpu — 获取 GPU 状态"""
+        import httpx
+        url = f"{self._api_url.rstrip('/')}/api/gpu"
+        resp = httpx.get(url, headers=self._headers(), timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    def _api_create_dataset(self, name: str) -> str:
+        """POST /api/datasets/create — 创建数据集，返回清理后的名称"""
+        import httpx
+        url = f"{self._api_url.rstrip('/')}/api/datasets/create"
+        resp = httpx.post(url, json={"name": name},
+                          headers=self._headers(), timeout=30)
+        resp.raise_for_status()
+        result = resp.json()
+        if result.get("error"):
+            raise RuntimeError(f"创建数据集失败: {result['error']}")
+        return result.get("name", name)
+
+    def _api_upload_images(self, dataset_name: str, img_paths: list[str]) -> list[str]:
+        """POST /api/datasets/upload — 上传图片到数据集
+
+        Args:
+            dataset_name: 数据集名称（已清理）
+            img_paths: 图片文件路径列表
+
+        Returns:
+            上传成功的文件名列表
+        """
         import httpx
 
-        if result_url.startswith("/"):
-            result_url = f"{self._api_url.rstrip('/')}{result_url}"
+        url = f"{self._api_url.rstrip('/')}/api/datasets/upload"
 
-        resp = httpx.get(result_url, headers=self._headers(),
-                         timeout=300, follow_redirects=True)
+        # 构建 multipart 文件
+        files = []
+        for p in img_paths:
+            files.append(("files", (Path(p).name, open(p, "rb"), "image/png")))
+
+        data = {"datasetName": dataset_name}
+
+        try:
+            resp = httpx.post(url, files=files, data=data,
+                              headers=self._auth_headers(),
+                              timeout=120)
+            resp.raise_for_status()
+            result = resp.json()
+            if result.get("error"):
+                raise RuntimeError(f"上传图片失败: {result['error']}")
+            return result.get("files", [])
+        finally:
+            # 确保文件句柄关闭
+            for _, (_, fh, _) in files:
+                if hasattr(fh, "close"):
+                    fh.close()
+
+    def _api_create_job(self, name: str, job_config: dict) -> dict:
+        """POST /api/jobs — 创建训练作业
+
+        Args:
+            name: 作业名称
+            job_config: AI Toolkit 配置（YAML 结构转为 dict）
+
+        Returns:
+            作业对象（含 id 字段）
+        """
+        import httpx
+        url = f"{self._api_url.rstrip('/')}/api/jobs"
+        body = {
+            "name": name,
+            "gpu_ids": self._gpu_ids,
+            "job_config": job_config,
+            "job_type": "train",
+        }
+        resp = httpx.post(url, json=body,
+                          headers=self._headers(), timeout=30)
         resp.raise_for_status()
+        result = resp.json()
+        if result.get("error"):
+            raise RuntimeError(f"创建作业失败: {result['error']}")
+        return result
 
-        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "wb") as f:
-            f.write(resp.content)
+    def _api_start_job(self, job_id: str) -> dict:
+        """GET /api/jobs/<id>/start — 启动作业（加入队列）"""
+        import httpx
+        url = f"{self._api_url.rstrip('/')}/api/jobs/{job_id}/start"
+        resp = httpx.get(url, headers=self._headers(), timeout=10)
+        resp.raise_for_status()
+        return resp.json()
 
-        return output_path
+    def _api_get_job(self, job_id: str) -> dict:
+        """GET /api/jobs?id=<id> — 查询单个作业状态"""
+        import httpx
+        url = f"{self._api_url.rstrip('/')}/api/jobs"
+        resp = httpx.get(url, params={"id": job_id},
+                         headers=self._headers(), timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    def _api_get_job_log(self, job_id: str) -> str:
+        """GET /api/jobs/<id>/log — 获取作业日志"""
+        import httpx
+        url = f"{self._api_url.rstrip('/')}/api/jobs/{job_id}/log"
+        resp = httpx.get(url, headers=self._headers(), timeout=10)
+        resp.raise_for_status()
+        result = resp.json()
+        return result.get("log", "")
+
+    def _api_stop_job(self, job_id: str) -> dict:
+        """GET /api/jobs/<id>/stop — 停止作业"""
+        import httpx
+        url = f"{self._api_url.rstrip('/')}/api/jobs/{job_id}/stop"
+        resp = httpx.get(url, headers=self._headers(), timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    def _api_delete_job(self, job_id: str) -> dict:
+        """GET /api/jobs/<id>/delete — 删除作业"""
+        import httpx
+        url = f"{self._api_url.rstrip('/')}/api/jobs/{job_id}/delete"
+        resp = httpx.get(url, headers=self._headers(), timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    def _api_list_datasets(self) -> list:
+        """GET /api/datasets/list — 列出数据集"""
+        import httpx
+        url = f"{self._api_url.rstrip('/')}/api/datasets/list"
+        resp = httpx.get(url, headers=self._headers(), timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    # ────────────────────────────────────────────────
+    # 配置构建
+    # ────────────────────────────────────────────────
+
+    def _build_job_config(self, dataset_name: str, trigger_word: str,
+                          lora_name: str, steps: int, learning_rate: str,
+                          rank: int, resolution: int) -> dict:
+        """构建 AI Toolkit 训练配置（与 Web UI 的 New Job 表单一致）
+
+        Returns:
+            AI Toolkit YAML 配置结构（dict），可直接作为 job_config 提交
+        """
+        return {
+            "job": "extension",
+            "config": {
+                "name": lora_name,
+                "process": [{
+                    "type": "diffusion_trainer",
+                    "training_folder": "output",
+                    "device": "cuda:0",
+                    "trigger_word": trigger_word,
+                    "network": {
+                        "type": "lora",
+                        "linear": rank,
+                        "linear_alpha": rank,
+                    },
+                    "save": {
+                        "dtype": "float16",
+                        "save_every": max(1, steps // 4),
+                        "max_step_saves_to_keep": 2,
+                    },
+                    "datasets": [{
+                        "folder_path": dataset_name,
+                        "caption_ext": "txt",
+                        "caption_dropout_rate": 0.05,
+                        "shuffle_tokens": False,
+                        "cache_latents_to_disk": True,
+                        "resolution": [resolution, resolution, resolution],
+                    }],
+                    "train": {
+                        "batch_size": 1,
+                        "steps": steps,
+                        "gradient_accumulation_steps": 1,
+                        "train_unet": True,
+                        "train_text_encoder": False,
+                        "gradient_checkpointing": True,
+                        "noise_scheduler": "flowmatch",
+                        "optimizer": "adamw8bit",
+                        "lr": float(learning_rate),
+                        "ema_config": {"use_ema": True, "ema_decay": 0.99},
+                        "dtype": "bf16",
+                    },
+                    "model": {
+                        "name_or_path": self._base_model,
+                        "is_flux": True,
+                        "quantize": True,
+                    },
+                    "sample": {
+                        "sampler": "flowmatch",
+                        "sample_every": steps,  # 只在最后采样一次
+                        "width": resolution,
+                        "height": resolution,
+                        "samples": [{"prompt": f"{trigger_word} portrait"}],
+                    },
+                    "logging": {
+                        "log_every": 1,
+                        "use_ui_logger": True,
+                    },
+                }],
+            },
+        }
 
     # ────────────────────────────────────────────────
     # 主入口
@@ -230,65 +398,189 @@ class AIToolkitTrainer:
         logger.info(f"开始训练 LoRA: {char_id}, 图片 {len(img_paths)} 张, "
                     f"steps={steps}, rank={rank}, resolution={res_val}")
 
-        # 1. 启动训练
-        task_id = self._api_post_train(
-            img_paths, trigger_word, output_name,
+        # ── 1. 创建数据集并上传图片 ──
+        dataset_name = f"lora_{char_id}_{int(time.time())}"
+        try:
+            dataset_name = self._api_create_dataset(dataset_name)
+            logger.info(f"  数据集已创建: {dataset_name}")
+        except Exception as e:
+            raise ConnectionError(f"创建数据集失败: {e}")
+
+        try:
+            uploaded = self._api_upload_images(dataset_name, img_paths)
+            logger.info(f"  已上传 {len(uploaded)} 张图片到数据集 {dataset_name}")
+        except Exception as e:
+            raise ConnectionError(f"上传图片失败: {e}")
+
+        # ── 2. 生成 caption 文件（每张图一个 .txt）──
+        # AI Toolkit 数据集需要 caption 文件与图片同目录
+        # 通过上传 caption 文件实现
+        caption_files = []
+        for p in img_paths:
+            cap_path = Path(p).with_suffix(".txt")
+            if not cap_path.exists():
+                cap_path.write_text(trigger_word, encoding="utf-8")
+                caption_files.append(str(cap_path))
+
+        if caption_files:
+            try:
+                self._api_upload_images(dataset_name, caption_files)
+                logger.info(f"  已上传 {len(caption_files)} 个 caption 文件")
+            except Exception as e:
+                logger.warning(f"  caption 文件上传失败: {e}")
+
+        # ── 3. 构建训练配置 ──
+        job_config = self._build_job_config(
+            dataset_name, trigger_word, output_name,
             steps, lr_str, rank, res_val,
         )
-        logger.info(f"  训练任务已提交: {task_id}")
 
-        # 2. 轮询等待完成
+        # ── 4. 创建训练作业 ──
+        job_name = f"lora_{char_id}_{int(time.time())}"
+        try:
+            job = self._api_create_job(job_name, job_config)
+            job_id = job.get("id", "")
+            if not job_id:
+                raise RuntimeError(f"API 未返回作业 ID: {job}")
+            logger.info(f"  训练作业已创建: {job_id}")
+        except Exception as e:
+            raise ConnectionError(f"创建训练作业失败: {e}")
+
+        # ── 5. 启动作业 ──
+        try:
+            self._api_start_job(job_id)
+            logger.info(f"  训练作业已加入队列: {job_id}")
+        except Exception as e:
+            raise ConnectionError(f"启动训练作业失败: {e}")
+
+        # ── 6. 轮询等待完成 ──
         start_time = time.time()
-        last_progress = -1
+        last_status = ""
+        last_step = 0
         while True:
             if time.time() - start_time > self._timeout:
-                raise TimeoutError(f"训练超时（{self._timeout}s）: {task_id}")
+                raise TimeoutError(f"训练超时（{self._timeout}s）: {job_id}")
 
-            status = self._api_get_status(task_id)
-            state = status.get("status", "unknown")
-            progress = status.get("progress", 0)
-            message = status.get("message", "")
+            try:
+                job_data = self._api_get_job(job_id)
+            except Exception as e:
+                logger.warning(f"  查询作业状态失败: {e}")
+                time.sleep(self._poll_interval)
+                continue
 
-            if state == "done":
-                logger.info(f"  训练完成: {message}")
+            if not job_data or isinstance(job_data, list):
+                logger.warning(f"  作业数据异常: {job_data}")
+                time.sleep(self._poll_interval)
+                continue
+
+            status = job_data.get("status", "unknown")
+            step = job_data.get("step", 0)
+            info = job_data.get("info", "")
+
+            if status != last_status or step != last_step:
+                logger.info(f"  训练状态: {status}, step={step}, info={info}")
+                last_status = status
+                last_step = step
+
+            if status in ("done", "complete", "finished"):
+                logger.info(f"  训练完成: {info}")
                 break
-            elif state == "error":
-                raise RuntimeError(f"训练失败: {message}")
-            else:
-                if progress != last_progress:
-                    logger.info(f"  训练中... {progress}% {message}")
-                    last_progress = progress
+            elif status in ("error", "failed"):
+                # 获取详细日志
+                try:
+                    log = self._api_get_job_log(job_id)
+                    if log:
+                        logger.error(f"  训练日志:\n{log[-2000:]}")
+                except Exception:
+                    pass
+                raise RuntimeError(f"训练失败: {info}")
+            elif status in ("stopped", "cancelled"):
+                raise RuntimeError(f"训练被取消: {info}")
 
             time.sleep(self._poll_interval)
 
-        # 3. 获取结果
+        # ── 7. 获取结果 ──
+        # 训练完成后，结果文件在服务端的训练目录中
+        # 需要通过 API 获取文件或让用户手动复制
+        settings = {}
+        try:
+            settings = self._api_get_settings()
+        except Exception:
+            pass
+
+        training_folder = settings.get("TRAINING_FOLDER", "/tmp/ai_toolkit_output")
+
+        # 获取作业日志以查找输出文件路径
         output_dir = Path(self._project_dir) / "assets" / "loras"
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = str(output_dir / f"{output_name}.safetensors")
 
-        result_path = status.get("result_path", "")
-        if result_path:
-            import shutil
-            src = Path(result_path)
-            if src.exists():
-                shutil.copy2(str(src), output_path)
-            else:
-                # 尝试通过 API 下载
-                result_url = status.get("result_url", "")
-                if result_url:
-                    self._api_download_result(result_url, output_path)
-                else:
-                    raise RuntimeError(
-                        f"训练完成但结果文件不存在: {result_path}\n"
-                        f"请手动将 .safetensors 复制到: {output_path}")
-        else:
+        # 尝试从作业信息中获取结果路径
+        result_found = False
+        try:
+            log = self._api_get_job_log(job_id)
+            if log:
+                # 解析日志查找 .safetensors 文件路径
+                import re
+                for line in reversed(log.split("\n")):
+                    match = re.search(r"([\w/\\]+\.safetensors)", line)
+                    if match:
+                        remote_path = match.group(1)
+                        logger.info(f"  发现训练产物: {remote_path}")
+                        # 尝试通过 files API 下载
+                        try:
+                            self._download_result(remote_path, output_path)
+                            result_found = True
+                            break
+                        except Exception as e:
+                            logger.warning(f"  下载失败: {e}")
+        except Exception:
+            pass
+
+        if not result_found:
+            # 回退：尝试从标准输出目录查找
+            job_output_dir = Path(training_folder) / job_name / "output"
+            remote_candidates = [
+                str(job_output_dir / f"{output_name}.safetensors"),
+                str(job_output_dir / "lora.safetensors"),
+            ]
+            for candidate in remote_candidates:
+                try:
+                    self._download_result(candidate, output_path)
+                    result_found = True
+                    break
+                except Exception:
+                    continue
+
+        if not result_found:
             raise RuntimeError(
-                f"训练完成但无法获取结果文件。\n"
-                f"请手动将训练产物复制到: {output_path}\n"
+                f"训练完成但无法自动获取结果文件。\n"
+                f"请手动将 .safetensors 从服务器复制到: {output_path}\n"
+                f"服务端训练目录: {training_folder}/{job_name}/output/\n"
                 f"文件名必须为: {output_name}.safetensors")
 
         logger.info(f"LoRA 已保存: {output_path}")
         return output_path
+
+    def _download_result(self, remote_path: str, local_path: str) -> str:
+        """通过 files API 下载训练结果"""
+        import httpx
+
+        url = f"{self._api_url.rstrip('/')}/api/files/{remote_path}"
+        resp = httpx.get(url, headers=self._auth_headers(),
+                         timeout=300, follow_redirects=True)
+        resp.raise_for_status()
+
+        # 检查是否为有效文件（非 HTML 错误页面）
+        content_type = resp.headers.get("content-type", "")
+        if "text/html" in content_type:
+            raise RuntimeError(f"服务端返回 HTML 而非文件: {remote_path}")
+
+        Path(local_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(local_path, "wb") as f:
+            f.write(resp.content)
+
+        return local_path
 
     # ────────────────────────────────────────────────
     # 状态查询
@@ -298,14 +590,22 @@ class AIToolkitTrainer:
         """检查 AI Toolkit 服务状态"""
         import httpx
         try:
-            url = f"{self._api_url.rstrip('/')}/health"
+            # 尝试获取 GPU 信息来验证连接
+            url = f"{self._api_url.rstrip('/')}/api/gpu"
             resp = httpx.get(url, headers=self._headers(), timeout=5)
             data = resp.json() if resp.status_code == 200 else {}
+
+            gpus = data.get("gpus", [])
+            gpu_info = ""
+            if gpus:
+                gpu = gpus[0]
+                gpu_info = f"{gpu.get('name', '?')} ({gpu.get('memory', {}).get('total', 0)}MB)"
+
             return {
                 "status": "connected",
                 "url": self._api_url,
-                "message": f"AI Toolkit 就绪",
-                "ai_toolkit_path": data.get("ai_toolkit_path", ""),
+                "message": f"AI Toolkit 就绪 — {gpu_info}",
+                "gpu": gpu_info,
             }
         except httpx.ConnectError:
             return {"status": "disconnected", "url": self._api_url,
@@ -327,7 +627,7 @@ registry.register(BackendMeta(
     name="ai-toolkit",
     service_type="training",
     factory=lambda cfg: AIToolkitTrainer(cfg),
-    description="AI Toolkit 远程 LoRA 训练（REST API，Flux 原生优化）",
+    description="AI Toolkit 远程 LoRA 训练（原生 Web API，Flux 原生优化）",
     priority=10,
     tags=["lora", "training", "ai-toolkit", "flux", "ostris"],
 ))
