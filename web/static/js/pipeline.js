@@ -135,20 +135,20 @@ async function loadResources(idx) {
 }
 
 function previewRes(sid, type) {
-  const types = ['audio', 'frame', 'video', 'synced'].filter(t => {
-    const cls = t === 'frame' ? 'img' : t === 'audio' ? 'audio' : t === 'synced' ? 'synced' : 'video';
+  const types = ['audio', 'frame', 'video', 'synced'].filter(typ => {
+    const cls = typ === 'frame' ? 'img' : typ === 'audio' ? 'audio' : typ === 'synced' ? 'synced' : 'video';
     return !!document.querySelector(`#res-${sid} .res-${cls}`);
   });
   let currentType = type;
 
-  function renderOverlay(t) {
-    const src = t === 'audio' ? `/api/files/${ep}/${sid}/audio.wav`
-      : t === 'frame' ? `/api/files/${ep}/${sid}/frame.png`
-      : `/api/files/${ep}/${sid}/${t === 'synced' ? 'synced.mp4' : 'video.mp4'}`;
-    const tag = t === 'audio' ? `audio controls src="${src}" style="width:400px"`
-      : t === 'frame' ? `img src="${src}" style="max-width:90vw;max-height:80vh;border-radius:8px"`
+  function renderOverlay(resType) {
+    const src = resType === 'audio' ? `/api/files/${ep}/${sid}/audio.wav`
+      : resType === 'frame' ? `/api/files/${ep}/${sid}/frame.png`
+      : `/api/files/${ep}/${sid}/${resType === 'synced' ? 'synced.mp4' : 'video.mp4'}`;
+    const tag = resType === 'audio' ? `audio controls src="${src}" style="width:400px"`
+      : resType === 'frame' ? `img src="${src}" style="max-width:90vw;max-height:80vh;border-radius:8px"`
       : `video controls src="${src}" style="max-width:90vw;max-height:80vh;border-radius:8px"`;
-    const idx = types.indexOf(t);
+    const idx = types.indexOf(resType);
     const nav = types.length > 1 ? `<div style="display:flex;gap:1rem;justify-content:center;margin-top:.6rem">
       ${idx > 0 ? `<button class="btn btn-outline" id="_pr-prev">◀ ${types[idx-1]}</button>` : ''}
       <span class="dim">${idx+1}/${types.length}</span>
@@ -162,7 +162,7 @@ function previewRes(sid, type) {
   o.onclick = (e) => { if (e.target === o) o.remove(); };
   document.body.appendChild(o);
 
-  function switchTo(t) { currentType = t; o.innerHTML = renderOverlay(t); bindNav(); }
+  function switchTo(resType) { currentType = resType; o.innerHTML = renderOverlay(resType); bindNav(); }
   function bindNav() {
     o.querySelector('#_pr-prev')?.addEventListener('click', (e) => { e.stopPropagation(); switchTo(types[types.indexOf(currentType)-1]); });
     o.querySelector('#_pr-next')?.addEventListener('click', (e) => { e.stopPropagation(); switchTo(types[types.indexOf(currentType)+1]); });
