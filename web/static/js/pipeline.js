@@ -119,7 +119,7 @@ async function loadResources(idx) {
     const r = (await cachedFetch(`res/${ep}/${sid}`, () => api(`/shots/${ep}/${sid}/resources`))).resources || {};
     const chips = [
       r.audio && `<div class="res-chip res-audio" onclick="previewRes('${sid}','audio')">🎤</div>`,
-      r.frame && `<div class="res-chip res-img" onclick="previewRes('${sid}','frame')"><img src="/api/files/${ep}/${sid}/frame.png" loading="lazy"></div>`,
+      r.frame && `<div class="res-chip res-img" onclick="previewRes('${sid}','frame')"><img src="/api/files/${ep}/${sid}/frame.png" loading="lazy" onerror="this.parentElement.style.display='none'"></div>`,
       r.video && `<div class="res-chip res-video" onclick="previewRes('${sid}','video')">🎬</div>`,
       r.synced && `<div class="res-chip res-synced" onclick="previewRes('${sid}','synced')">👄</div>`,
     ].filter(Boolean).join('');
@@ -145,9 +145,10 @@ function previewRes(sid, type) {
     const src = resType === 'audio' ? `/api/files/${ep}/${sid}/audio.wav`
       : resType === 'frame' ? `/api/files/${ep}/${sid}/frame.png`
       : `/api/files/${ep}/${sid}/${resType === 'synced' ? 'synced.mp4' : 'video.mp4'}`;
-    const tag = resType === 'audio' ? `audio controls src="${src}" style="width:400px"`
-      : resType === 'frame' ? `img src="${src}" style="max-width:90vw;max-height:80vh;border-radius:8px"`
-      : `video controls src="${src}" style="max-width:90vw;max-height:80vh;border-radius:8px"`;
+    const onErr = ` onerror="this.style.display='none';this.nextElementSibling&&this.nextElementSibling.style.display='block'"`;
+    const tag = resType === 'audio' ? `audio controls src="${src}" style="width:400px"${onErr}`
+      : resType === 'frame' ? `img src="${src}" style="max-width:90vw;max-height:80vh;border-radius:8px"${onErr}`
+      : `video controls src="${src}" style="max-width:90vw;max-height:80vh;border-radius:8px"${onErr}`;
     const idx = types.indexOf(resType);
     const nav = types.length > 1 ? `<div style="display:flex;gap:1rem;justify-content:center;margin-top:.6rem">
       ${idx > 0 ? `<button class="btn btn-outline" id="_pr-prev">◀ ${types[idx-1]}</button>` : ''}

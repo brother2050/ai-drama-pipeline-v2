@@ -149,7 +149,7 @@ async function _loadTimelineThumb(idx) {
     const r = (await cachedFetch(`res/${ep}/${sid}`, () => api(`/shots/${ep}/${sid}/resources`))).resources || {};
     const item = document.getElementById(`tl-${sid}`);
     if (r.frame) {
-      el.innerHTML = `<img src="/api/files/${ep}/${sid}/frame.png" loading="lazy" onclick="previewRes('${sid}','frame')" style="cursor:pointer" title="点击放大">`;
+      el.innerHTML = `<img src="/api/files/${ep}/${sid}/frame.png" loading="lazy" onclick="previewRes('${sid}','frame')" style="cursor:pointer" title="点击放大" onerror="this.outerHTML='🎬'">`;
       if (item) item.classList.add('has-frame');
     } else {
       el.innerHTML = '🎬';

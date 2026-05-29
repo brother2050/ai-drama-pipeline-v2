@@ -254,7 +254,7 @@ async function _loadFinalPreview() {
     if (r.resources?.final) {
       const fname = r.resources.final;
       el.innerHTML = `<div class="final-preview-wrap">
-        <video controls src="/api/files/${ep}/final/${fname}" style="max-width:100%;max-height:400px;border-radius:8px;background:#000"></video>
+        <video controls src="/api/files/${ep}/final/${fname}" style="max-width:100%;max-height:400px;border-radius:8px;background:#000" onerror="this.outerHTML='<p class=\\'dim\\'>视频加载失败</p>'"></video>
         <div style="margin-top:.5rem"><a href="/api/files/${ep}/final/${fname}" download class="btn btn-outline">⬇ ${t('wb.download')}</a></div></div>`;
     } else {
       el.innerHTML = `<div class="final-preview-wrap"><div style="font-size:2rem;opacity:.3">🎬</div><p class="dim">${t('wb.no_final')}</p><p class="dim" style="font-size:.76rem">${t('wb.no_final_hint')}</p></div>`;
