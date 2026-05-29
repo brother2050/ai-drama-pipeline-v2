@@ -42,7 +42,7 @@ class FluxGymTrainer:
         # 训练参数默认值（YAML 配置可能读成 str，强制转类型）
         defaults = config.get("defaults", {})
         self._base_model = str(defaults.get("base_model", "flux-dev"))
-        self._default_resolution = int(defaults.get("resolution", 512))
+        self._default_resolution = self._parse_resolution(defaults.get("resolution", 512))
         self._default_learning_rate = str(defaults.get("learning_rate", "8e-4"))
         self._default_network_dim = int(defaults.get("network_dim", 4))
         self._default_max_train_epochs = int(defaults.get("max_train_epochs", 16))
@@ -472,14 +472,19 @@ class FluxGymTrainer:
             logger.debug(f"API 端点发现失败: {e}")
         return fallback
 
-    def _resolve_resolution(self, resolution: str | int) -> int:
-        """解析分辨率字符串为整数"""
+    @staticmethod
+    def _parse_resolution(resolution: str | int) -> int:
+        """解析分辨率: 512, "512", "512x768" → 512"""
         if isinstance(resolution, int):
             return resolution
         try:
             return int(str(resolution).split("x")[0])
         except (ValueError, AttributeError):
-            return int(self._default_resolution)
+            return 512
+
+    def _resolve_resolution(self, resolution: str | int) -> int:
+        """解析分辨率字符串为整数"""
+        return self._parse_resolution(resolution)
 
     # ────────────────────────────────────────────────
     # 主入口
