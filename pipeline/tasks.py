@@ -858,7 +858,8 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
 
     # 确定性 seed + cover 参考图（保持角色面部一致性）
     import hashlib
-    h = hashlib.md5(char_id.encode("utf-8")).hexdigest()
+    generation = char.get("portrait_generation", 0)
+    h = hashlib.md5(f"{char_id}:gen{generation}".encode("utf-8")).hexdigest()
     base_seed = int(h[:16], 16)
     outfit_keys = list(outfits.keys())
     outfit_idx = outfit_keys.index(outfit_key) if outfit_key in outfit_keys else 0

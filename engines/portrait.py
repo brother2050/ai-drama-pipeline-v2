@@ -21,9 +21,13 @@ _THREE_VIEWS = [
 ]
 
 
-def _char_seed(char_id: str) -> int:
-    """为角色生成确定性 seed，保证同一角色的所有视图/服装使用相同基础 seed"""
-    h = hashlib.md5(char_id.encode("utf-8")).hexdigest()
+def _char_seed(char_id: str, generation: int = 0) -> int:
+    """为角色生成 seed，generation 控制重新生成时的变化
+
+    generation=0: 首次生成（确定性）
+    generation=1,2,3...: 重新生成时递增，得到不同结果
+    """
+    h = hashlib.md5(f"{char_id}:gen{generation}".encode("utf-8")).hexdigest()
     return int(h[:16], 16)
 
 
@@ -117,8 +121,18 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None) -> str
         wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui, llm=llm)
         wb.load_workflows()
 
-        # 确定性 seed：同一角色的所有视图/服装共享同一基础 seed
-        base_seed = _char_seed(char_id)
+        # 读取代数计数器（force 时递增，得到不同的生成结果）
+        generation = char.get("portrait_generation", 0)
+        if force and all_views_exist:
+            generation += 1
+            char["portrait_generation"] = generation
+            data["character"] = char
+            from infra.config import save_yaml
+            save_yaml(char_file, data)
+            logger.info(f"  🔄 重新生成，代数: {generation}")
+
+        # 确定性 seed：同一角色+同一代 → 所有视图/服装共享基础 seed
+        base_seed = _char_seed(char_id, generation)
         cover_path = portrait_dir / "cover.png"
 
         generated_urls = []

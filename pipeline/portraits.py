@@ -28,10 +28,10 @@ _THREE_VIEWS = [
 ]
 
 
-def _char_seed(char_id: str) -> int:
-    """为角色生成确定性 seed"""
+def _char_seed(char_id: str, generation: int = 0) -> int:
+    """为角色生成 seed，generation 控制重新生成时的变化"""
     import hashlib
-    h = hashlib.md5(char_id.encode("utf-8")).hexdigest()
+    h = hashlib.md5(f"{char_id}:gen{generation}".encode("utf-8")).hexdigest()
     return int(h[:16], 16)
 
 
@@ -196,7 +196,17 @@ def run_portraits(
             wb.load_workflows()
 
             # ── 1. 生成三视图 ──
-            base_seed = _char_seed(char_id)
+            # 读取代数计数器（force 时递增，得到不同的生成结果）
+            generation = char.get("portrait_generation", 0)
+            if force and any((portrait_dir / fn).exists() for fn, *_ in _THREE_VIEWS):
+                generation += 1
+                char["portrait_generation"] = generation
+                data["character"] = char
+                from infra.config import save_yaml
+                save_yaml(f, data)
+                logger.info(f"    🔄 重新生成，代数: {generation}")
+
+            base_seed = _char_seed(char_id, generation)
             cover_path = portrait_dir / "cover.png"
             char_generated = 0
             for i, (filename, shot_type, label) in enumerate(_THREE_VIEWS):
