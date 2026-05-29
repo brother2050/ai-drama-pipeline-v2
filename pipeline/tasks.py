@@ -2033,21 +2033,35 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
         if translate:
             logger.warning(f"LLM 不可用，跳过翻译: {e}")
 
-    from engines.prompt import translate_to_english
+    from engines.prompt import translate_to_english, batch_translate_to_english
     from infra.config import save_yaml
+
+    # 批量翻译开关（config: llm.batch_translate，默认 True）
+    use_batch = cfg.get("llm.batch_translate", True)
+    if use_batch:
+        logger.info("  批量翻译模式: ON")
+    else:
+        logger.info("  批量翻译模式: OFF")
 
     result = {
         "translated_chars": 0, "translated_scenes": 0, "translated_shots": 0,
         "view_split_chars": 0,
     }
 
-    # ── 1. 批量翻译角色描述 ──
+    def _single(text: str) -> str:
+        return translate_to_english(text, llm=llm)
+
+    # ── 1. 翻译角色描述 ──
     if translate and llm:
         self.update_state(state="PROGRESS", meta={
             "step": "prepare", "progress": 10, "message": "翻译角色描述..."})
 
         char_dir = project_dir / "config" / "characters"
         if char_dir.exists():
+            # 收集待翻译: [(file, data, field_path, text)]
+            pending: list[tuple[Path, dict, list[str], str]] = []
+            all_char_files: list[tuple[Path, dict]] = []
+
             for f in char_dir.glob("*.yaml"):
                 if f.stem.endswith(".example"):
                     continue
@@ -2059,43 +2073,52 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                 char = data.get("character", {})
                 if not char.get("id"):
                     continue
+                all_char_files.append((f, data))
 
-                # 翻译 appearance
                 appearance = char.get("appearance", "")
-                appearance_en = char.get("appearance_en", "")
-                if appearance and (not appearance_en or force):
+                if appearance and (not char.get("appearance_en") or force):
                     if any(ord(c) > 127 for c in appearance):
-                        appearance_en = translate_to_english(appearance, llm=llm)
-                        char["appearance_en"] = appearance_en
-                        result["translated_chars"] += 1
-                        logger.info(f"  翻译角色 {char.get('id')}: appearance → en")
+                        pending.append((f, data, ["appearance_en"], appearance))
 
-                # 翻译 voice.voice_description
                 voice = char.get("voice", {})
                 if isinstance(voice, dict):
                     vd = voice.get("voice_description", "")
-                    vd_en = voice.get("voice_description_en", "")
-                    if vd and (not vd_en or force):
+                    if vd and (not voice.get("voice_description_en") or force):
                         if any(ord(c) > 127 for c in vd):
-                            voice["voice_description_en"] = translate_to_english(vd, llm=llm)
-                            result["translated_chars"] += 1
+                            pending.append((f, data, ["voice", "voice_description_en"], vd))
 
-                # 翻译 outfit descriptions
                 outfits = char.get("outfits", {})
                 if isinstance(outfits, dict):
                     for ok, ov in outfits.items():
                         if isinstance(ov, dict):
                             od = ov.get("description", "")
-                            od_en = ov.get("description_en", "")
-                            if od and (not od_en or force):
+                            if od and (not ov.get("description_en") or force):
                                 if any(ord(c) > 127 for c in od):
-                                    ov["description_en"] = translate_to_english(od, llm=llm)
-                                    result["translated_chars"] += 1
+                                    pending.append((f, data, ["outfits", ok, "description_en"], od))
 
-                data["character"] = char
-                save_yaml(f, data)
+            if pending:
+                texts = [p[3] for p in pending]
+                translations = batch_translate_to_english(texts, llm=llm) if use_batch else [_single(t) for t in texts]
 
-    # ── 1b. 批量生成视角专属外貌描述 ──
+                for (_, file_data, field_path, _), translated in zip(pending, translations):
+                    if not translated:
+                        continue
+                    obj = file_data.get("character", file_data)
+                    for key in field_path[:-1]:
+                        obj = obj.setdefault(key, {}) if isinstance(obj, dict) else obj
+                    if isinstance(obj, dict):
+                        obj[field_path[-1]] = translated
+                    result["translated_chars"] += 1
+
+                seen: set[str] = set()
+                for f, data in all_char_files:
+                    sp = str(f)
+                    if sp not in seen:
+                        seen.add(sp)
+                        save_yaml(f, data)
+                logger.info(f"  翻译角色: {result['translated_chars']} 条")
+
+    # ── 1b. 生成视角专属外貌描述（逐条，不批量） ──
     if translate and llm:
         self.update_state(state="PROGRESS", meta={
             "step": "prepare", "progress": 20, "message": "生成视角专属描述..."})
@@ -2131,13 +2154,16 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                             result["view_split_chars"] += 1
                             logger.info(f"  视角拆分 {char.get('id')}: front/side/back")
 
-    # ── 2. 批量翻译场景描述 ──
+    # ── 2. 翻译场景描述 ──
     if translate and llm:
         self.update_state(state="PROGRESS", meta={
             "step": "prepare", "progress": 30, "message": "翻译场景描述..."})
 
         scene_dir = project_dir / "config" / "scenes"
         if scene_dir.exists():
+            pending: list[tuple[Path, dict, list[str], str]] = []
+            all_scene_files: list[tuple[Path, dict]] = []
+
             for f in scene_dir.glob("*.yaml"):
                 if f.stem.endswith(".example"):
                     continue
@@ -2149,25 +2175,38 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                 scene = data.get("scene", {})
                 if not scene.get("id"):
                     continue
+                all_scene_files.append((f, data))
 
                 desc = scene.get("description", "")
-                desc_en = scene.get("description_en", "")
-                if desc and (not desc_en or force):
+                if desc and (not scene.get("description_en") or force):
                     if any(ord(c) > 127 for c in desc):
-                        scene["description_en"] = translate_to_english(desc, llm=llm)
-                        result["translated_scenes"] += 1
-                        logger.info(f"  翻译场景 {scene.get('id')}: description → en")
+                        pending.append((f, data, ["description_en"], desc))
 
                 lighting = scene.get("lighting", "")
-                lighting_en = scene.get("lighting_en", "")
-                if lighting and (not lighting_en or force):
+                if lighting and (not scene.get("lighting_en") or force):
                     if any(ord(c) > 127 for c in lighting):
-                        scene["lighting_en"] = translate_to_english(lighting, llm=llm)
+                        pending.append((f, data, ["lighting_en"], lighting))
 
-                data["scene"] = scene
-                save_yaml(f, data)
+            if pending:
+                texts = [p[3] for p in pending]
+                translations = batch_translate_to_english(texts, llm=llm) if use_batch else [_single(t) for t in texts]
 
-    # ── 3. 批量翻译分镜动作/台词 ──
+                for (_, file_data, field_path, _), translated in zip(pending, translations):
+                    if not translated:
+                        continue
+                    scene_obj = file_data.get("scene", file_data)
+                    scene_obj[field_path[-1]] = translated
+                    result["translated_scenes"] += 1
+
+                seen: set[str] = set()
+                for f, data in all_scene_files:
+                    sp = str(f)
+                    if sp not in seen:
+                        seen.add(sp)
+                        save_yaml(f, data)
+                logger.info(f"  翻译场景: {result['translated_scenes']} 条")
+
+    # ── 3. 翻译分镜动作/台词 ──
     if translate and llm:
         self.update_state(state="PROGRESS", meta={
             "step": "prepare", "progress": 50, "message": "翻译分镜..."})
@@ -2179,35 +2218,37 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
             with open(sb_path, encoding="utf-8") as fh:
                 shots = [dict(r) for r in _csv.DictReader(fh)]
 
-            changed = False
-            for shot in shots:
+            # 收集本集待翻译
+            shot_pending: list[tuple[int, str, str]] = []  # (shot_idx, field, text)
+            for si, shot in enumerate(shots):
                 ep = int(shot.get("episode", 0) or 0)
                 if ep != episode:
                     continue
-
-                # 翻译 action
                 action = shot.get("action", "")
-                action_en = shot.get("action_en", "")
-                if action and (not action_en or force):
+                if action and (not shot.get("action_en") or force):
                     if any(ord(c) > 127 for c in action):
                         from engines.prompt import _strip_dialogue
-                        cleaned = _strip_dialogue(action)
-                        shot["action_en"] = translate_to_english(cleaned, llm=llm)
+                        shot_pending.append((si, "action_en", _strip_dialogue(action)))
+                dialogue = shot.get("dialogue", "")
+                if dialogue and dialogue != "......" and (not shot.get("dialogue_en") or force):
+                    if any(ord(c) > 127 for c in dialogue):
+                        shot_pending.append((si, "dialogue_en", dialogue))
+
+            if shot_pending:
+                texts = [p[2] for p in shot_pending]
+                translations = batch_translate_to_english(texts, llm=llm) if use_batch else [_single(t) for t in texts]
+
+                changed = False
+                for (si, field, _), translated in zip(shot_pending, translations):
+                    if translated:
+                        shots[si][field] = translated
                         changed = True
                         result["translated_shots"] += 1
 
-                # 翻译 dialogue
-                dialogue = shot.get("dialogue", "")
-                dialogue_en = shot.get("dialogue_en", "")
-                if dialogue and dialogue != "......" and (not dialogue_en or force):
-                    if any(ord(c) > 127 for c in dialogue):
-                        shot["dialogue_en"] = translate_to_english(dialogue, llm=llm)
-                        changed = True
-
-            if changed:
-                from engines.storyboard import save_storyboard
-                save_storyboard(sb_path, shots, episode, append=True)
-                logger.info(f"  已更新分镜翻译 ({result['translated_shots']} 个镜头)")
+                if changed:
+                    from engines.storyboard import save_storyboard
+                    save_storyboard(sb_path, shots, episode, append=True)
+                    logger.info(f"  翻译分镜: {result['translated_shots']} 条")
 
     self.update_state(state="PROGRESS", meta={
         "step": "prepare", "progress": 100, "message": "准备完成"})

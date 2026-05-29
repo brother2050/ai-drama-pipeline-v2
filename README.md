@@ -319,6 +319,7 @@ llm:
   base_url: "http://localhost:11434"
   # model: "qwen3:8b"          # Ollama 模型名
   # api_key: ""                # OpenAI 兼容 API 需要
+  batch_translate: true         # 批量翻译（多条合并一次 LLM 调用，false 则逐条翻译）
 
 portraits:
   auto_outfit: true             # 管线中自动生成 outfit 参考图（默认 true）

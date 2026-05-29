@@ -300,3 +300,97 @@ def translate_to_english(text: str, llm=None) -> str:
     # 3. 都失败了返回原文
     logger.warning(f"翻译全部失败，中文描述将原样传入 ComfyUI（可能无效）: {text[:50]}...")
     return text
+
+
+_BATCH_TRANSLATE_SYSTEM = """You are a professional translator. The user will send numbered Chinese texts.
+Translate each to English. Output ONLY the translations, one per line, keeping the same numbering.
+Do not add explanations. If a line is already English, output it unchanged."""
+
+_BATCH_MAX_CHARS = 4000  # 单批最大字符数，避免超 context
+
+
+def batch_translate_to_english(texts: list[str], llm=None) -> list[str]:
+    """批量中→英翻译（一次 LLM 调用翻译多条文本）
+
+    Args:
+        texts: 待翻译文本列表
+        llm: LLM 后端实例
+
+    Returns:
+        与 texts 等长的翻译结果列表。单条翻译失败时回退到 translate_to_english。
+    """
+    if not llm:
+        return [translate_to_english(t, llm=None) for t in texts]
+
+    # 分离：需要翻译的 vs 已是英文/空的
+    need_idx: list[int] = []
+    need_text: list[str] = []
+    results: list[str] = [""] * len(texts)
+
+    for i, t in enumerate(texts):
+        if not t:
+            results[i] = ""
+        elif all(ord(c) < 128 for c in t):
+            results[i] = t
+        elif t in _translate_cache:
+            results[i] = _translate_cache[t]
+        else:
+            need_idx.append(i)
+            need_text.append(t)
+
+    if not need_text:
+        return results
+
+    # 按字符数分批，避免超 context
+    batches: list[list[tuple[int, str]]] = [[]]
+    batch_chars = 0
+    for idx, text in zip(need_idx, need_text):
+        if batch_chars + len(text) > _BATCH_MAX_CHARS and batches[-1]:
+            batches.append([])
+            batch_chars = 0
+        batches[-1].append((idx, text))
+        batch_chars += len(text)
+
+    for batch in batches:
+        _translate_batch(batch, results, llm)
+
+    return results
+
+
+def _translate_batch(batch: list[tuple[int, str]], results: list[str], llm) -> None:
+    """翻译一批文本，结果写入 results 对应位置"""
+    # 构建编号 prompt
+    lines = [f"{i + 1}. {text}" for i, (_, text) in enumerate(batch)]
+    prompt = "\n".join(lines)
+
+    try:
+        response = llm.chat(prompt, system=_BATCH_TRANSLATE_SYSTEM)
+        if not response or not response.strip():
+            raise ValueError("LLM 返回空")
+
+        # 解析：按行匹配 "数字. 翻译" 或 "数字) 翻译"
+        parsed: dict[int, str] = {}
+        for line in response.strip().splitlines():
+            line = line.strip()
+            m = re.match(r"^(\d+)\s*[.)]\s*(.+)", line)
+            if m:
+                parsed[int(m.group(1))] = m.group(2).strip()
+
+        # 回填结果
+        for i, (orig_idx, orig_text) in enumerate(batch):
+            translated = parsed.get(i + 1, "")
+            if translated:
+                _cache_set(orig_text, translated)
+                results[orig_idx] = translated
+            else:
+                # 解析失败，单条回退
+                logger.debug(f"批量翻译第 {i+1} 条解析失败，回退单条翻译")
+                results[orig_idx] = translate_to_english(orig_text, llm=llm)
+
+        logger.debug(f"批量翻译成功: {len(batch)} 条, 解析到 {len(parsed)} 条")
+
+    except Exception as e:
+        # 整批失败，全部回退到单条翻译
+        logger.warning(f"批量翻译失败，回退单条翻译: {e}")
+        for orig_idx, orig_text in batch:
+            results[orig_idx] = translate_to_english(orig_text, llm=llm)
