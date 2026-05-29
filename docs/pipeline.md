@@ -117,14 +117,11 @@ flowchart TB
 
 | 命令 | 功能 | 依赖 |
 |------|------|------|
-| `drama prepare 1` | 批量翻译（默认仅翻译） | LLM |
-| `drama prepare 1 --portraits` | 翻译 + 定妆照 | LLM + ComfyUI |
-| `drama prepare 1 --scene-images` | 翻译 + 场景图 | LLM + ComfyUI |
-| `drama prepare 1 --portraits --scene-images` | 全量准备 | LLM + ComfyUI |
-| `drama prepare 1 --no-translate` | 只定妆照+场景图 | ComfyUI |
-| `drama prepare 1 --force` | 强制覆盖已有内容 | LLM + ComfyUI |
+| `drama prepare 1` | 批量翻译 | LLM |
+| `drama prepare 1 --no-translate` | 无翻译（空操作） | — |
+| `drama prepare 1 --force` | 强制覆盖已有翻译 | LLM |
 
-> 定妆照和场景图建议通过 Web 工作台「📸 定妆照」「🏔️ 场景图」单独执行，支持单角色/单场景按需生成。
+> 定妆照和场景图通过 Web 工作台「📸 定妆照」「🏔️ 场景图」单独执行，支持单角色/单场景按需生成。
 
 ### 翻译策略
 
@@ -423,8 +420,6 @@ flowchart LR
 # 首次使用
 drama generate all 1 -o outline.txt    # 从大纲生成全部素材
 drama prepare 1                        # 准备阶段（批量翻译）
-drama prepare 1 --portraits            # 翻译 + 定妆照
-drama prepare 1 --scene-images         # 翻译 + 场景图
 
 # 日常生产
 drama produce 1                        # 完整生产

@@ -240,9 +240,7 @@ class TrainingRequest(BaseModel):
 # ── 准备阶段 ──
 
 class PrepareRequest(BaseModel):
-    """准备阶段请求 — 批量预翻译（定妆照/场景图请通过 Web 工作台单独执行）"""
+    """准备阶段请求 — 批量预翻译"""
     episode: int = Field(1, ge=1, description="集数")
-    force: bool = Field(False, description="强制覆盖已有翻译/图片")
+    force: bool = Field(False, description="强制覆盖已有翻译")
     translate: bool = Field(True, description="是否批量翻译")
-    portraits: bool = Field(False, description="是否生成定妆照 + outfit（默认关闭，建议通过 Web 端单独执行）")
-    scene_images: bool = Field(False, description="是否生成场景参考图（默认关闭，建议通过 Web 端单独执行）")

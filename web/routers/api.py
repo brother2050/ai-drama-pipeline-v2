@@ -1158,15 +1158,15 @@ def pipeline_status(episode: int):
 
 @router.post("/prepare")
 def run_prepare(req: PrepareRequest):
-    """准备阶段 — 批量预翻译 + 定妆照 + 场景图（生产前运行一次）
+    """准备阶段 — 批量预翻译（生产前运行一次）
 
     运行完毕后，produce/preview/all 可完全不依赖 LLM 全速运行。
+    定妆照和场景图请通过工作台「📸 定妆照」「🏔️ 场景图」单独执行。
     """
     from pipeline.tasks import ai_prepare_task
     cfg = _cfg_path()
     return _submit_task(ai_prepare_task, cfg, req.episode,
-                        force=req.force, translate=req.translate,
-                        portraits=req.portraits, scene_images=req.scene_images)
+                        force=req.force, translate=req.translate)
 
 
 # ══════════════════════════════════════════════════════════

@@ -180,7 +180,7 @@ const I18N = {
   'wb.gen_portraits': { zh: '定妆照', en: 'Portraits' },
   'wb.gen_scene_images': { zh: '场景图', en: 'Scene Images' },
   'wb.prepare': { zh: '🔧 准备阶段', en: '🔧 Prepare' },
-  'wb.prepare_hint': { zh: '批量翻译 + 定妆照 + 场景图（生产前运行一次）', en: 'Batch translate + portraits + scene images (run once before produce)' },
+  'wb.prepare_hint': { zh: '批量翻译角色/场景/分镜（生产前运行一次）', en: 'Batch translate characters/scenes/storyboard (run once before produce)' },
   'wb.post_process': { zh: '后期合成', en: 'Post' },
   'wb.run_all': { zh: '一键全流程', en: 'Run All' },
   'wb.tools': { zh: '工具', en: 'Tools' },

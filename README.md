@@ -184,9 +184,6 @@ drama produce 1                        # 完整生产
 drama post 1 --vertical                # 后期合成 + 横转竖
 drama all 1                            # 一键全流程（preview → produce → post）
 drama prepare 1                        # 准备阶段（批量翻译）
-drama prepare 1 --portraits            # 翻译 + 定妆照
-drama prepare 1 --scene-images         # 翻译 + 场景图
-drama prepare 1 --portraits --scene-images  # 全量（翻译+定妆照+场景图）
 drama portraits                        # 生成定妆照
 
 # 项目管理

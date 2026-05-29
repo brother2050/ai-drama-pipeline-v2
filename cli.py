@@ -244,15 +244,13 @@ def preview(episode, level, config_path, force):
 @cli.command()
 @click.argument("episode", type=int, default=1)
 @click.option("-c", "--config", "config_path", default=None)
-@click.option("--force", is_flag=True, help="强制覆盖已有翻译/图片")
+@click.option("--force", is_flag=True, help="强制覆盖已有翻译")
 @click.option("--no-translate", is_flag=True, help="跳过翻译")
-@click.option("--portraits", is_flag=True, help="同时生成定妆照（默认仅翻译）")
-@click.option("--scene-images", is_flag=True, help="同时生成场景图（默认仅翻译）")
-def prepare(episode, config_path, force, no_translate, portraits, scene_images):
+def prepare(episode, config_path, force, no_translate):
     """准备阶段 — 批量预翻译（生产前运行一次）
 
     运行完毕后，drama produce/preview/all 可完全不依赖 LLM 全速运行。
-    定妆照和场景图请通过 Web 工作台单独执行，或加 --portraits / --scene-images。
+    定妆照和场景图请通过 Web 工作台单独执行。
     """
     _ensure_deps()
     cfg = _resolve_config(config_path)
@@ -260,9 +258,7 @@ def prepare(episode, config_path, force, no_translate, portraits, scene_images):
     console.print("[dim]  翻译角色/场景/分镜[/dim]\n")
     if not _run_via_celery("pipeline.ai.prepare", cfg, episode,
                            force=force,
-                           translate=not no_translate,
-                           portraits=portraits,
-                           scene_images=scene_images):
+                           translate=not no_translate):
         sys.exit(1)
 
 

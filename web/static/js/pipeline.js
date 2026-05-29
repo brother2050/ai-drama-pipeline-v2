@@ -441,8 +441,7 @@ async function runPrepare() {
       const r = result.result || {};
       statusEl.innerHTML = `<div class="batch-done">✅ ${t('wb.prepare')}
         <span style="margin-left:.5rem;font-size:.85rem;color:var(--fg2)">
-          翻译: ${r.translated_chars || 0}角色 + ${r.translated_scenes || 0}场景 + ${r.translated_shots || 0}镜头 ·
-          定妆照: ${r.portraits_generated || 0} · 场景图: ${r.scene_images_generated || 0}
+          翻译: ${r.translated_chars || 0}角色 + ${r.translated_scenes || 0}场景 + ${r.translated_shots || 0}镜头
         </span></div>`;
       toast('✅ ' + t('wb.prepare'));
       // 刷新资源

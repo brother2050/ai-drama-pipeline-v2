@@ -1957,27 +1957,24 @@ def train_lora_task(self, config_path: str, char_id: str, *,
 
 
 # ══════════════════════════════════════════════════════════
-#  准备阶段 — 批量预翻译 + 定妆照 + 场景图（LLM 密集，一次性）
+#  准备阶段 — 批量预翻译（LLM 密集，一次性）
 # ══════════════════════════════════════════════════════════
 
 @app.task(bind=True, name="pipeline.ai.prepare", soft_time_limit=1800)
 def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                     force: bool = False,
-                    translate: bool = True,
-                    portraits: bool = True,
-                    scene_images: bool = True) -> dict:
-    """准备阶段 — 批量预翻译 + 定妆照 + 场景图
+                    translate: bool = True) -> dict:
+    """准备阶段 — 批量预翻译
 
-    在生产管线之前运行，将所有 LLM 密集操作集中完成。
+    在生产管线之前运行，将所有 LLM 翻译操作集中完成。
     运行完毕后，生产管线可完全不依赖 LLM 全速运行。
+    定妆照和场景图请通过 Web 工作台单独执行。
 
     Args:
         config_path: 项目配置路径
         episode: 集数
-        force: True 时覆盖已有翻译/图片
+        force: True 时覆盖已有翻译
         translate: 是否批量翻译
-        portraits: 是否生成定妆照 + outfit
-        scene_images: 是否生成场景参考图
     """
     _ensure_path()
 
@@ -2001,7 +1998,6 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
 
     result = {
         "translated_chars": 0, "translated_scenes": 0, "translated_shots": 0,
-        "portraits_generated": 0, "scene_images_generated": 0,
     }
 
     # ── 1. 批量翻译角色描述 ──
@@ -2136,45 +2132,9 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                 save_storyboard(sb_path, shots, episode, append=True)
                 logger.info(f"  已更新分镜翻译 ({result['translated_shots']} 个镜头)")
 
-    # ── 4. 生成定妆照 + outfit ──
-    if portraits:
-        self.update_state(state="PROGRESS", meta={
-            "step": "prepare", "progress": 70, "message": "生成定妆照..."})
-
-        try:
-            from pipeline.portraits import run_portraits
-            run_portraits(config_path, force=force, write_db=True)
-            # 统计生成数量
-            char_dir = project_dir / "config" / "characters"
-            if char_dir.exists():
-                for f in char_dir.glob("*.yaml"):
-                    if f.stem.endswith(".example"):
-                        continue
-                    asset_dir = project_dir / "assets" / "characters" / f.stem
-                    if asset_dir.exists():
-                        imgs = list(asset_dir.glob("*.png")) + list(asset_dir.glob("*.jpg"))
-                        if imgs:
-                            result["portraits_generated"] += 1
-        except Exception as e:
-            logger.error(f"定妆照生成失败: {e}")
-
-    # ── 5. 生成场景参考图 ──
-    if scene_images:
-        self.update_state(state="PROGRESS", meta={
-            "step": "prepare", "progress": 85, "message": "生成场景图..."})
-
-        try:
-            from pipeline.scene_images import run_scene_images
-            scene_result = run_scene_images(config_path, force=force)
-            result["scene_images_generated"] = scene_result.get("generated", 0)
-        except Exception as e:
-            logger.error(f"场景图生成失败: {e}")
-
     self.update_state(state="PROGRESS", meta={
         "step": "prepare", "progress": 100, "message": "准备完成"})
 
-    total = (result["translated_chars"] + result["translated_scenes"] +
-             result["translated_shots"] + result["portraits_generated"] +
-             result["scene_images_generated"])
+    total = result["translated_chars"] + result["translated_scenes"] + result["translated_shots"]
     logger.info(f"准备阶段完成: {result}")
     return {"status": "done", **result, "total_operations": total}
