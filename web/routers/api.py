@@ -26,7 +26,7 @@ import threading as _threading
 _rate_limit_store: dict[str, list[float]] = {}
 _rate_limit_lock = _threading.Lock()
 _RATE_LIMIT_WINDOW = 60  # 秒
-_RATE_LIMIT_MAX = 120    # 每窗口最大请求数
+_RATE_LIMIT_MAX = 300    # 每窗口最大请求数（SPA 启动时并发请求多 + 轮询）
 _rate_limit_counter = 0  # 全量清理计数器
 
 

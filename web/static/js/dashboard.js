@@ -53,8 +53,8 @@ async function loadDashboard() {
   try {
     const [s, projData, sbData] = await Promise.all([
       cachedFetch('system/status', () => api('/system/status'), 10000),
-      api('/projects').catch(() => ({ projects: [] })),
-      api(`/storyboard/${ep}`).catch(() => ({ shots: [] })),
+      cachedFetch('projects', () => api('/projects'), 30000).catch(() => ({ projects: [] })),
+      cachedFetch(`storyboard/${ep}`, () => api(`/storyboard/${ep}`), 30000).catch(() => ({ shots: [] })),
     ]);
     const tools = s.tools || {};
     const okCount = Object.values(tools).filter(t => t.available).length;
