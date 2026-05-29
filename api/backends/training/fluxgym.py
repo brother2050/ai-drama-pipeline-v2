@@ -27,10 +27,13 @@ class FluxGymTrainer:
     """FluxGym 远程 LoRA 训练后端"""
 
     def __init__(self, config: dict):
-        self._api_url = config.get("api_url", "http://127.0.0.1:7860")
+        self._api_url = config.get("api_url") or config.get("training", {}).get("api_url", "") or "http://127.0.0.1:7860"
         self._timeout = config.get("timeout", 3600)
         self._poll_interval = config.get("poll_interval", 10)
-        self._project_dir = config.get("project_dir", "")
+        # project_dir 必须非空，否则后续 Path 操作会失败
+        self._project_dir = config.get("project_dir") or config.get("_project_dir") or ""
+        if not self._project_dir:
+            logger.warning("FluxGymTrainer: project_dir 为空，下载结果可能失败")
         self._client = None
 
         # 训练参数默认值（可通过 config 覆盖）
@@ -468,6 +471,20 @@ class FluxGymTrainer:
         if not img_paths:
             raise FileNotFoundError(f"训练图片目录为空: {images_dir}")
 
+        # 验证图片路径有效性（gradio_client handle_file 会 stat 文件）
+        valid_paths = []
+        for p in img_paths:
+            try:
+                if p and Path(p).exists():
+                    valid_paths.append(p)
+                else:
+                    logger.warning(f"  跳过无效图片路径: {p}")
+            except (TypeError, OSError):
+                logger.warning(f"  跳过无效图片路径: {p}")
+        if not valid_paths:
+            raise FileNotFoundError(f"训练图片目录中无有效图片: {images_dir}")
+        img_paths = valid_paths
+
         logger.info(f"开始训练 LoRA: {char_id}, 图片 {len(img_paths)} 张, "
                     f"steps={steps}, rank={rank}")
 
@@ -559,25 +576,27 @@ class FluxGymTrainer:
         """下载训练结果到本地 assets 目录
 
         Args:
-            result: FluxGym 返回的结果（训练日志列表）
+            result: FluxGym 返回的结果（训练日志列表或路径）
             prefix: 文件名前缀
 
         Returns:
             本地 .safetensors 路径
         """
+        import shutil
+
+        if not self._project_dir:
+            raise RuntimeError(
+                "FluxGymTrainer: project_dir 为空，无法下载结果。"
+                "请在 config/system.yaml 中配置 training.api_url"
+            )
+
         output_dir = Path(self._project_dir) / "assets" / "loras"
         output_dir.mkdir(parents=True, exist_ok=True)
-
-        # /start_training 返回 List[Any]（训练日志），实际文件在 FluxGym 输出目录
-        # 需要通过 /get_samples 或直接从 FluxGym 服务器下载
         output_path = output_dir / f"{prefix}.safetensors"
 
-        # 尝试从 FluxGym 输出目录获取
-        # FluxGym 默认输出路径: /workspace/fluxgym/outputs/{lora_name}
-        # 如果是本地部署，可以直接访问
         lora_name = f"{prefix}_lora" if not prefix.endswith("_lora") else prefix
 
-        # 尝试多种可能的路径
+        # ── 1. 尝试从 FluxGym 本地输出目录获取 ──
         possible_paths = [
             Path(f"/workspace/fluxgym/outputs/{lora_name}"),
             Path(f"/workspace/fluxgym/outputs/{prefix}"),
@@ -585,48 +604,49 @@ class FluxGymTrainer:
         ]
 
         for base in possible_paths:
-            if base.exists():
-                # 查找 .safetensors 文件
-                for safetensor in base.glob("**/*.safetensors"):
-                    import shutil
-                    shutil.copy2(safetensor, output_path)
-                    logger.info(f"  从 FluxGym 输出目录复制: {safetensor}")
-                    return str(output_path)
+            try:
+                if base.exists():
+                    for safetensor in base.glob("**/*.safetensors"):
+                        shutil.copy2(str(safetensor), str(output_path))
+                        logger.info(f"  从 FluxGym 输出目录复制: {safetensor}")
+                        return str(output_path)
+            except (TypeError, OSError) as e:
+                logger.debug(f"  检查路径 {base} 失败: {e}")
+                continue
 
-        # 如果 result 包含路径信息，尝试解析
-        if isinstance(result, str):
-            result_path = Path(result)
-            if result_path.exists() and result_path.suffix == ".safetensors":
-                import shutil
-                shutil.copy2(result_path, output_path)
-                return str(output_path)
-            elif result.startswith("http"):
-                import httpx
-                resp = httpx.get(result, timeout=120)
-                resp.raise_for_status()
-                output_path.write_bytes(resp.content)
-                return str(output_path)
-
-        if isinstance(result, (list, tuple)):
+        # ── 2. 从 result 中提取路径或 URL ──
+        candidates = []
+        if isinstance(result, str) and result:
+            candidates.append(result)
+        elif isinstance(result, (list, tuple)):
             for item in result:
-                if isinstance(item, str):
-                    # 可能是路径或 URL
-                    p = Path(item)
-                    if p.exists() and p.suffix == ".safetensors":
-                        import shutil
-                        shutil.copy2(p, output_path)
-                        return str(output_path)
-                    if item.startswith("http") and item.endswith(".safetensors"):
-                        import httpx
-                        resp = httpx.get(item, timeout=120)
-                        resp.raise_for_status()
-                        output_path.write_bytes(resp.content)
-                        return str(output_path)
+                if isinstance(item, str) and item:
+                    candidates.append(item)
 
-        # 无法自动获取，提示用户手动复制
+        for item in candidates:
+            # 本地文件路径
+            try:
+                p = Path(item)
+                if p.exists() and p.suffix == ".safetensors":
+                    shutil.copy2(str(p), str(output_path))
+                    return str(output_path)
+            except (TypeError, OSError):
+                pass
+            # URL
+            if item.startswith("http") and ".safetensors" in item:
+                try:
+                    import httpx
+                    resp = httpx.get(item, timeout=120)
+                    resp.raise_for_status()
+                    output_path.write_bytes(resp.content)
+                    return str(output_path)
+                except Exception as e:
+                    logger.debug(f"  下载 URL 失败: {e}")
+
+        # ── 3. 无法自动获取，返回预期路径（训练可能仍在进行） ──
         logger.warning(
-            f"  无法自动获取 LoRA 文件。训练已在 FluxGym 服务器上启动，"
-            f"请在训练完成后手动将 .safetensors 文件复制到: {output_path}\n"
+            f"  无法自动获取 LoRA 文件。训练已在 FluxGym 服务器上启动。\n"
+            f"  训练完成后，请将 .safetensors 复制到: {output_path}\n"
             f"  FluxGym 输出目录: /workspace/fluxgym/outputs/{lora_name}/"
         )
         return str(output_path)
