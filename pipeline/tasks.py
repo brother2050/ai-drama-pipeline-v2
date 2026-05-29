@@ -1896,6 +1896,13 @@ def train_lora_task(self, config_path: str, char_id: str, *,
     """为角色训练 LoRA 模型（异步）"""
     _ensure_path()
 
+    # ── 防重复：同一角色同一时间只能有一个训练任务 ──
+    # 使用 episode=0 + shot_id=char_id 作为锁键，与其他任务的锁空间隔离
+    if not force and not _try_mark_running_atomic(config_path, 0, char_id, "train_lora"):
+        return {"status": "skipped", "reason": f"角色 {char_id} 的 LoRA 训练已在执行中，请等待完成"}
+    if force:
+        _db_mark_running(config_path, 0, char_id, "train_lora")
+
     self.update_state(state="PROGRESS", meta={
         "step": "train_lora", "progress": 5,
         "message": f"准备训练 {char_id} 的 LoRA..."})
@@ -1907,12 +1914,16 @@ def train_lora_task(self, config_path: str, char_id: str, *,
     # 检查角色是否存在
     char_yaml_path = project_dir / "config" / "characters" / f"{char_id}.yaml"
     if not char_yaml_path.exists():
+        _db_record_step(config_path, 0, char_id, "train_lora",
+                        {"status": "error", "reason": f"角色 {char_id} 不存在"})
         return {"status": "error", "reason": f"角色 {char_id} 不存在"}
 
     # 检查是否已有 LoRA
     lora_filename = comfyui_asset_name(str(project_dir), char_id, f"{char_id}_lora.safetensors")
     lora_path = project_dir / "assets" / "loras" / lora_filename
     if lora_path.exists() and not force:
+        _db_record_step(config_path, 0, char_id, "train_lora",
+                        {"status": "skipped", "reason": f"LoRA 已存在: {lora_path.name}"})
         return {"status": "skipped", "reason": f"LoRA 已存在: {lora_path.name}，使用 force 覆盖"}
 
     # 收集训练图片（角色定妆照 + outfit 图片）
@@ -1930,6 +1941,8 @@ def train_lora_task(self, config_path: str, char_id: str, *,
                 img_count += len(list(outfit_dir.glob(ext)))
 
     if img_count < 3:
+        _db_record_step(config_path, 0, char_id, "train_lora",
+                        {"status": "error", "reason": f"训练图片不足（{img_count} 张），至少需要 3 张"})
         return {"status": "error", "reason": f"训练图片不足（{img_count} 张），至少需要 3 张"}
 
     self.update_state(state="PROGRESS", meta={
@@ -1940,6 +1953,8 @@ def train_lora_task(self, config_path: str, char_id: str, *,
     try:
         trainer = cont.get("training")
     except Exception as e:
+        _db_record_step(config_path, 0, char_id, "train_lora",
+                        {"status": "error", "reason": f"训练后端不可用: {e}"})
         return {"status": "error", "reason": f"训练后端不可用: {e}"}
 
     # 读取角色名作为默认触发词
@@ -1965,6 +1980,8 @@ def train_lora_task(self, config_path: str, char_id: str, *,
         )
     except Exception as e:
         logger.error(f"LoRA 训练失败: {e}")
+        _db_record_step(config_path, 0, char_id, "train_lora",
+                        {"status": "error", "reason": f"训练失败: {e}"})
         return {"status": "error", "reason": f"训练失败: {e}"}
 
     self.update_state(state="PROGRESS", meta={
@@ -1992,6 +2009,8 @@ def train_lora_task(self, config_path: str, char_id: str, *,
     except Exception as e:
         logger.warning(f"更新角色 LoRA 路径失败: {e}")
 
+    _db_record_step(config_path, 0, char_id, "train_lora",
+                    {"status": "done", "path": result_path})
     return {"status": "done", "char_id": char_id, "lora_path": result_path,
             "trigger_word": trigger_word, "steps": steps, "images": img_count}
 
