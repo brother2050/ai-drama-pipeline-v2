@@ -1,6 +1,6 @@
 # 🚀 Trae 导入指南 — 将 LLM 生成的数据导入 AI 短剧管线 v2
 
-> **用途**：将外部 LLM 按 `external-llm-output-spec.md` 规范生成的数据，自动导入到 AI 短剧管线项目中。
+> **用途**：将外部 LLM 按 `external-llm-output-spec.txt` 规范生成的数据，自动导入到 AI 短剧管线项目中。
 >
 > **使用方式**：将本文档作为 Trae 的上下文，然后发送导入指令。
 
@@ -25,7 +25,7 @@ ai-drama-pipeline-v2/
 │       │   └── scenes/<场景id>/      ← 场景参考图
 │       └── output/                   ← 生成产物
 └── docs/
-    ├── external-llm-output-spec.md   ← 给三方 LLM 的规范
+    ├── external-llm-output-spec.txt   ← 给三方 LLM 的规范
     └── trae-import-guide.md          ← 本文档
 ```
 
