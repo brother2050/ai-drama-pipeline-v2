@@ -46,6 +46,33 @@ class FluxGymTrainer:
                 raise ConnectionError(f"连接 FluxGym 失败 ({self._api_url}): {e}")
         return self._client
 
+    def _find_train_api(self, client) -> str | None:
+        """自动发现训练 API 端点
+
+        FluxGym 不同版本的 API 端点名不同，自动探测可用端点。
+        优先级: 包含 train 关键词的端点 > 第一个可用端点
+        """
+        try:
+            info = client.view_api(return_format="dict")
+            endpoints = info.get("named_endpoints", {})
+            # 优先找包含 train 的端点
+            train_candidates = [
+                name for name in endpoints
+                if "train" in name.lower()
+            ]
+            if train_candidates:
+                # 优先 /train，其次 /run_training，最后取第一个
+                for preferred in ("/train", "/run_training"):
+                    if preferred in train_candidates:
+                        return preferred
+                return train_candidates[0]
+            # 没有 train 关键词，返回第一个端点
+            if endpoints:
+                return next(iter(endpoints))
+        except Exception as e:
+            logger.debug(f"API 端点发现失败: {e}")
+        return None
+
     def train_lora(self, char_id: str, images_dir: str, *,
                    trigger_word: str = "",
                    steps: int = 1000,
@@ -80,9 +107,16 @@ class FluxGymTrainer:
 
         client = self._get_client()
 
+        # 自动发现训练 API 端点
+        api_name = self._find_train_api(client)
+        if not api_name:
+            raise RuntimeError(
+                f"FluxGym ({self._api_url}) 未发现可用的训练 API 端点。\n"
+                "请确认 FluxGym 服务已启动且版本受支持。"
+            )
+        logger.info(f"使用 FluxGym 端点: {api_name}")
+
         # 调用 FluxGym 训练接口
-        # FluxGym 典型接口: predict(images, trigger_word, steps, lr, rank, ...)
-        # 具体参数需根据 FluxGym 版本调整
         try:
             result = client.predict(
                 img_paths,           # 训练图片
@@ -92,24 +126,10 @@ class FluxGymTrainer:
                 rank,                # rank
                 resolution,          # 分辨率
                 output_name,         # 输出名
-                api_name="/train",   # FluxGym 的训练 API 端点
+                api_name=api_name,
             )
         except Exception as e:
-            # 尝试备用端点
-            logger.warning(f"/train 端点失败，尝试 /run_training: {e}")
-            try:
-                result = client.predict(
-                    img_paths,
-                    trigger_word or f"ohwx {char_id}",
-                    steps,
-                    learning_rate,
-                    rank,
-                    resolution,
-                    output_name,
-                    api_name="/run_training",
-                )
-            except Exception as e2:
-                raise RuntimeError(f"FluxGym 训练失败: {e2}")
+            raise RuntimeError(f"FluxGym 训练失败 ({api_name}): {e}")
 
         # result 通常是输出文件路径
         lora_path = self._download_result(result, char_id)
@@ -144,6 +164,9 @@ class FluxGymTrainer:
         logger.info(f"开始训练风格 LoRA: {genre}, 图片 {len(img_paths)} 张")
 
         client = self._get_client()
+        api_name = self._find_train_api(client)
+        if not api_name:
+            raise RuntimeError(f"FluxGym ({self._api_url}) 未发现可用的训练 API 端点")
         try:
             result = client.predict(
                 img_paths,
@@ -153,10 +176,10 @@ class FluxGymTrainer:
                 rank,
                 "512x768",
                 output_name,
-                api_name="/train",
+                api_name=api_name,
             )
         except Exception as e:
-            raise RuntimeError(f"FluxGym 风格训练失败: {e}")
+            raise RuntimeError(f"FluxGym 风格训练失败 ({api_name}): {e}")
 
         return self._download_result(result, f"style_{genre}")
 
