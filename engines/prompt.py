@@ -137,21 +137,19 @@ def generate_view_prompts(appearance_zh: str, llm) -> dict[str, str]:
     return {}
 
 
-def get_view_appearance(char: dict, shot_type: str, llm=None) -> str:
-    """获取角色在指定视角的外貌描述
+def get_view_appearance(char: dict, shot_type: str) -> str:
+    """获取角色在指定视角的英文外貌描述
 
-    优先使用预生成的视角专属描述（appearance_{view}_en），
-    无则回退到通用 appearance_en / appearance。
+    仅从 YAML 读取预生成的视角专属描述，无则返回空字符串。
+    新角色必须先运行 prepare 阶段生成视角描述。
 
     Args:
         char: 角色数据 dict
         shot_type: 景别（特写/侧面特写/背面特写/全身 等）
-        llm: LLM 实例（仅在需要实时生成时使用）
 
     Returns:
-        英文外貌描述字符串
+        英文外貌描述字符串，无则返回空字符串
     """
-    # 确定视角类型
     if "背面" in shot_type:
         view_key = "back"
     elif "侧面" in shot_type:
@@ -159,20 +157,7 @@ def get_view_appearance(char: dict, shot_type: str, llm=None) -> str:
     else:
         view_key = "front"
 
-    # 1. 优先用预生成的视角专属描述
-    view_en = char.get(f"appearance_{view_key}_en", "")
-    if view_en:
-        return view_en
-
-    # 2. 回退到通用英文描述
-    appearance_en = char.get("appearance_en", "")
-    if appearance_en:
-        # 通用描述没有视角过滤，对背面/侧面可能包含面部细节
-        # 但如果用户没有运行 prepare 阶段的视角拆分，这是可接受的回退
-        return appearance_en
-
-    # 3. 最后回退到中文原文（会被 build_prompt 翻译）
-    return char.get("appearance", "")
+    return char.get(f"appearance_{view_key}_en", "")
 
 
 def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",

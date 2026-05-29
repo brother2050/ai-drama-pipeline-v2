@@ -46,22 +46,17 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
                    comfyui, wb, filename: str, shot_type: str,
                    seed: int | None = None,
                    ref_image: str | None = None,
-                   char: dict | None = None,
-                   llm=None) -> bool:
+                   char: dict | None = None) -> bool:
     """生成单张视图，成功返回 True
 
     Args:
         seed: 指定 seed 保持一致性
         ref_image: IP-Adapter 参考图路径（side/back 用 cover 做参考）
         char: 角色数据 dict（用于读取视角专属描述）
-        llm: LLM 实例（用于实时生成视角描述）
     """
     # 获取视角专属外貌描述（背面/侧面自动去除面部细节）
     from engines.prompt import get_view_appearance
-    if char:
-        view_desc = get_view_appearance(char, shot_type, llm=llm)
-    else:
-        view_desc = appearance
+    view_desc = get_view_appearance(char, shot_type) if char else appearance
 
     fake_shot = {"characters": char_id, "emotion": "neutral",
                  "shot_type": shot_type, "camera": "固定"}
@@ -243,7 +238,7 @@ def run_portraits(
                 try:
                     ok = _generate_view(char_id, appearance, portrait_dir, comfyui, wb,
                                         filename, shot_type, seed=view_seed, ref_image=ref,
-                                        char=char, llm=llm)
+                                        char=char)
                     if ok:
                         if old_file and force:
                             pass  # os.replace 已覆盖
