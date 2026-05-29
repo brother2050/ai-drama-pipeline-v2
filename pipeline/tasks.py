@@ -325,12 +325,14 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, forc
     except Exception:
         pass
 
-    # 优先读预翻译的 appearance_en，无则回退到翻译
+    # 优先读视角专属描述，回退到通用 appearance_en
+    from engines.prompt import get_view_appearance
+    shot_type = shot.get("shot_type", "")
     char_descs = []
     for cid in char_ids:
         char = sm.get_character(cid)
         if char:
-            desc_en = char.get("appearance_en", "")
+            desc_en = get_view_appearance(char, shot_type) or char.get("appearance_en", "")
             if desc_en:
                 char_descs.append(desc_en)
             else:
@@ -857,12 +859,11 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
     wb.load_workflows()
 
     # 确定性 seed + cover 参考图（保持角色面部一致性）
-    import hashlib
+    from engines.portrait import _outfit_seed
     generation = char.get("portrait_generation", 0)
     outfit_keys = list(outfits.keys())
     outfit_idx = outfit_keys.index(outfit_key) if outfit_key in outfit_keys else 0
-    h = hashlib.md5(f"{char_id}:gen{generation}:outfit{outfit_idx}".encode("utf-8")).hexdigest()
-    outfit_seed = int(h[:16], 16)
+    outfit_seed = _outfit_seed(char_id, generation, outfit_idx)
 
     fake_shot = {"characters": char_id, "emotion": "neutral",
                  "shot_type": "全身", "camera": "固定"}
@@ -2012,6 +2013,7 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
 
     result = {
         "translated_chars": 0, "translated_scenes": 0, "translated_shots": 0,
+        "view_split_chars": 0,
     }
 
     # ── 1. 批量翻译角色描述 ──
@@ -2101,7 +2103,7 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                             char["appearance_back_en"] = view_prompts["back"]
                             data["character"] = char
                             save_yaml(f, data)
-                            result["translated_chars"] += 1
+                            result["view_split_chars"] += 1
                             logger.info(f"  视角拆分 {char.get('id')}: front/side/back")
 
     # ── 2. 批量翻译场景描述 ──
@@ -2185,6 +2187,6 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
     self.update_state(state="PROGRESS", meta={
         "step": "prepare", "progress": 100, "message": "准备完成"})
 
-    total = result["translated_chars"] + result["translated_scenes"] + result["translated_shots"]
+    total = result["translated_chars"] + result["translated_scenes"] + result["translated_shots"] + result["view_split_chars"]
     logger.info(f"准备阶段完成: {result}")
     return {"status": "done", **result, "total_operations": total}

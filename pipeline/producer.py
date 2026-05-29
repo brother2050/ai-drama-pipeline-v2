@@ -131,12 +131,14 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
             except Exception:
                 pass
 
-            # 优先读预翻译的 appearance_en
+            # 优先读视角专属描述，回退到通用 appearance_en
+            from engines.prompt import get_view_appearance
+            shot_type = shot.get("shot_type", "")
             char_descs = []
             for cid in char_ids:
                 char = sm.get_character(cid)
                 if char:
-                    desc_en = char.get("appearance_en", "")
+                    desc_en = get_view_appearance(char, shot_type) or char.get("appearance_en", "")
                     if desc_en:
                         char_descs.append(desc_en)
                     else:

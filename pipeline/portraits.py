@@ -17,6 +17,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from infra.config import Config
+from engines.portrait import _view_seed, _outfit_seed
 
 logger = logging.getLogger(__name__)
 
@@ -26,20 +27,6 @@ _THREE_VIEWS = [
     ("side.png",  "侧面特写", "侧面"),
     ("back.png",  "背面特写", "背面"),
 ]
-
-
-def _view_seed(char_id: str, generation: int, view_index: int) -> int:
-    """三视图 seed：不同角色完全隔离"""
-    import hashlib
-    h = hashlib.md5(f"{char_id}:gen{generation}:view{view_index}".encode("utf-8")).hexdigest()
-    return int(h[:16], 16)
-
-
-def _outfit_seed(char_id: str, generation: int, outfit_index: int) -> int:
-    """服装图 seed：不同角色完全隔离"""
-    import hashlib
-    h = hashlib.md5(f"{char_id}:gen{generation}:outfit{outfit_index}".encode("utf-8")).hexdigest()
-    return int(h[:16], 16)
 
 
 def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
