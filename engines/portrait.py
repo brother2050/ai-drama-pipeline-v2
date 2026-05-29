@@ -103,11 +103,12 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None) -> str
             _ensure_outfit_images(char_id, config, container, llm, project_dir, portrait_dir)
         return str(portrait_dir / "cover.png")
 
-    # 重入保护
+    # 重入保护（检查 + 标记必须在同一把锁内，避免间隙导致重复生成）
     with _generating_lock:
         if char_id in _generating:
             logger.warning(f"角色 '{char_id}' 定妆照正在生成中，跳过重入")
             return ""
+        _generating.add(char_id)
 
     logger.info(f"角色 '{char_id}' 缺少三视图，自动生成...")
     import yaml
@@ -124,8 +125,6 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None) -> str
     if not container:
         return ""
 
-    with _generating_lock:
-        _generating.add(char_id)
     try:
         comfyui = container.get("image")
         from engines.workflow_builder import WorkflowBuilder

@@ -209,9 +209,11 @@ class WorkflowBuilder:
                     chars_without_lora.append(cid)
 
             # 注入所有有 LoRA 的角色
+            from infra.asset_tracker import comfyui_asset_name
             for cid, lora_path in chars_with_lora:
                 lora_strength = self.models.get("character_lora_strength", 0.7)
-                wf = self._inject_lora(wf, lora_path, strength=lora_strength)
+                name = comfyui_asset_name(self.project_dir, Path(lora_path).stem, Path(lora_path).name)
+                wf = self._inject_lora(wf, lora_path, strength=lora_strength, lora_name=name)
                 logger.info(f"使用角色 LoRA: {cid} → {lora_path}")
 
             # 无 LoRA 的角色使用 IP-Adapter 回退
@@ -223,7 +225,9 @@ class WorkflowBuilder:
             style_lora = self._find_style_lora(genre)
             if style_lora:
                 style_strength = self.models.get("style_lora_strength", 0.6)
-                wf = self._inject_lora(wf, style_lora, strength=style_strength)
+                # 风格 LoRA 用原文件名（用户手动放置，不加 project hash）
+                wf = self._inject_lora(wf, style_lora, strength=style_strength,
+                                       lora_name=os.path.basename(style_lora))
                 logger.info(f"使用风格 LoRA: {genre} → {style_lora}")
 
         # Seed 控制：指定则用固定 seed（定妆照一致性），否则随机
@@ -368,10 +372,17 @@ class WorkflowBuilder:
                 return str(p)
         return None
 
-    def _inject_lora(self, wf: dict, lora_path: str, strength: float = 0.7) -> dict:
+    def _inject_lora(self, wf: dict, lora_path: str, strength: float = 0.7,
+                     lora_name: str | None = None) -> dict:
         """向工作流注入 LoRA 加载节点
 
         在 UNETLoader/CheckpointLoader 之后、KSampler 之前插入 LoraLoader 节点。
+
+        Args:
+            lora_name: ComfyUI 服务端的 LoRA 文件名。由调用方决定命名策略：
+                - 字符 LoRA: comfyui_asset_name()（带 project hash 防跨项目碰撞）
+                - 风格 LoRA: os.path.basename()（用户手动放置，保持原名）
+                - None: 回退到 os.path.basename()
         """
         wf = copy.deepcopy(wf)
 
@@ -413,9 +424,9 @@ class WorkflowBuilder:
 
         # 创建 LoraLoader 节点（加随机后缀防冲突，如同一角色多次注入）
         lora_node_id = f"lora_{Path(lora_path).stem}_{random.randint(1000, 9999)}"
-        # 用 project_dir hash 做前缀，避免不同项目同名角色的 LoRA 在 ComfyUI 上互相覆盖
-        from infra.asset_tracker import comfyui_asset_name
-        lora_name = comfyui_asset_name(self.project_dir, Path(lora_path).stem, Path(lora_path).name)
+        # lora_name 由调用方传入（字符 LoRA 用 comfyui_asset_name，风格 LoRA 用 basename）
+        if not lora_name:
+            lora_name = os.path.basename(lora_path)
 
         wf[lora_node_id] = {
             "class_type": "LoraLoader",
@@ -462,7 +473,9 @@ class WorkflowBuilder:
             style_lora = self._find_style_lora(genre)
             if style_lora:
                 style_strength = self.models.get("style_lora_strength", 0.6)
-                wf = self._inject_lora(wf, style_lora, strength=style_strength)
+                # 风格 LoRA 用原文件名（用户手动放置，不加 project hash）
+                wf = self._inject_lora(wf, style_lora, strength=style_strength,
+                                       lora_name=os.path.basename(style_lora))
 
         # 随机化 seed
         self._randomize_seed(wf)

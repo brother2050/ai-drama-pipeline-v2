@@ -1902,6 +1902,7 @@ def train_lora_task(self, config_path: str, char_id: str, *,
 
     cfg, cont = _init_ctx(config_path)
     project_dir = _cfg_dir(config_path)
+    from infra.asset_tracker import comfyui_asset_name
 
     # 检查角色是否存在
     char_yaml_path = project_dir / "config" / "characters" / f"{char_id}.yaml"
@@ -1909,7 +1910,6 @@ def train_lora_task(self, config_path: str, char_id: str, *,
         return {"status": "error", "reason": f"角色 {char_id} 不存在"}
 
     # 检查是否已有 LoRA
-    from infra.asset_tracker import comfyui_asset_name
     lora_filename = comfyui_asset_name(str(project_dir), char_id, f"{char_id}_lora.safetensors")
     lora_path = project_dir / "assets" / "loras" / lora_filename
     if lora_path.exists() and not force:
@@ -1972,7 +1972,6 @@ def train_lora_task(self, config_path: str, char_id: str, *,
         "message": "训练完成，更新角色配置..."})
 
     # 重命名 LoRA 文件：加 project_dir hash 前缀，避免跨项目同名角色 LoRA 覆盖
-    from infra.asset_tracker import comfyui_asset_name
     original_name = Path(result_path).name
     new_name = comfyui_asset_name(str(project_dir), char_id, original_name)
     new_path = Path(result_path).parent / new_name
