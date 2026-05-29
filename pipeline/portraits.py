@@ -1,14 +1,14 @@
-"""定妆照生成 — 为角色生成参考图（含各服装）
+"""定妆照生成 — 为角色生成三视图 + 各服装参考图
 
 被以下入口调用：
 - portraits_task / drama portraits CLI（批量，Celery）
 - portrait_single_task（单角色，Celery）
-- ai_prepare_task step 4（准备阶段，Celery）
 """
 from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -20,24 +20,33 @@ from infra.config import Config
 
 logger = logging.getLogger(__name__)
 
+# 三视图配置
+_THREE_VIEWS = [
+    ("cover.png", "特写", "正面"),
+    ("side.png",  "侧面特写", "侧面"),
+    ("back.png",  "背面特写", "背面"),
+]
 
-def _generate_portrait(char_id: str, appearance: str, portrait_dir: Path,
-                       comfyui, wb) -> list[str]:
-    """生成单张定妆照，返回生成的文件路径列表"""
-    portrait_dir.mkdir(parents=True, exist_ok=True)
+
+def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
+                   comfyui, wb, filename: str, shot_type: str) -> bool:
+    """生成单张视图，成功返回 True"""
     fake_shot = {"characters": char_id, "emotion": "neutral",
-                 "shot_type": "特写", "camera": "固定"}
+                 "shot_type": shot_type, "camera": "固定"}
     _, wf = wb.build_first_frame(fake_shot, character_desc=appearance)
     if not wf:
-        logger.warning(f"    ⚠ 工作流为空（缺少模板）")
-        return []
+        return False
     files = comfyui.generate(wf, str(portrait_dir))
-    return files or []
+    if not files:
+        return False
+    target = portrait_dir / filename
+    os.replace(files[0], str(target))
+    return True
 
 
 def _generate_outfit(char_id: str, appearance: str, outfit_key: str,
-                     outfit_desc: str, base_dir: Path, comfyui, wb, llm) -> list[str]:
-    """为指定服装生成参考图，返回生成的文件路径列表"""
+                     outfit_desc: str, base_dir: Path, comfyui, wb, llm) -> bool:
+    """为指定服装生成参考图，成功返回 True"""
     from engines.prompt import translate_to_english
 
     outfit_dir = base_dir / outfit_key
@@ -51,10 +60,14 @@ def _generate_outfit(char_id: str, appearance: str, outfit_key: str,
                  "shot_type": "全身", "camera": "固定"}
     _, wf = wb.build_first_frame(fake_shot, character_desc=full_desc)
     if not wf:
-        logger.warning(f"      ⚠ 服装 {outfit_key} 工作流为空")
-        return []
+        return False
     files = comfyui.generate(wf, str(outfit_dir))
-    return files or []
+    if not files:
+        return False
+    # 重命名为 cover.png
+    cover_path = outfit_dir / "cover.png"
+    os.replace(files[0], str(cover_path))
+    return True
 
 
 def run_portraits(
@@ -64,7 +77,7 @@ def run_portraits(
     char_ids: list[str] | None = None,
     write_db: bool = False,
 ):
-    """生成定妆照（含各服装参考图）
+    """生成定妆照（三视图 + 各服装参考图）
 
     Args:
         config_path: 项目配置文件路径
@@ -73,9 +86,8 @@ def run_portraits(
         write_db: True 时同步写入数据库
     """
     cfg = Config(config_path)
-    logger.info("生成定妆照")
+    logger.info("生成定妆照（三视图）")
 
-    # 触发后端自注册
     from api import _ensure_registered; _ensure_registered()
     from api.registry import Container
 
@@ -84,23 +96,20 @@ def run_portraits(
         logger.warning("角色配置目录不存在")
         return
 
-    # 尝试创建容器（需要 ComfyUI）
     try:
         cont = Container(cfg.data)
     except Exception as e:
         logger.warning(f"无法创建容器: {e}")
         cont = None
 
-    # 获取 LLM 实例（用于中文→英文翻译）
     llm = None
     if cont:
         try:
             llm = cont.get("llm")
             logger.info(f"LLM 后端: {type(llm).__name__}")
         except Exception as e:
-            logger.warning(f"无 LLM 可用，中文角色描述将无法翻译: {e}")
+            logger.warning(f"无 LLM 可用: {e}")
 
-    # 确定要处理的角色文件列表
     if char_ids is not None:
         char_files = []
         for cid in char_ids:
@@ -119,32 +128,20 @@ def run_portraits(
         except yaml.YAMLError as e:
             logger.warning(f"角色 YAML 格式错误 {f}: {e}")
             continue
+
         char = data.get("character", {})
         char_id = char.get("id", f.stem)
         char_name = char.get("name", char_id)
-
         logger.info(f"  角色: {char_name} ({char_id})")
 
         portrait_dir = Path(cfg.project_dir) / "assets" / "characters" / char_id
         portrait_dir.mkdir(parents=True, exist_ok=True)
 
-        # 检查是否已有定妆照
-        existing = list(portrait_dir.glob("*.png")) + list(portrait_dir.glob("*.jpg"))
-        # 排除子目录（outfit 目录）里的图片
-        existing = [img for img in existing if img.parent == portrait_dir]
-        old_images_to_delete = []  # 生成成功后再删除
-        if existing:
-            if force:
-                old_images_to_delete = list(existing)
-                existing = []  # 标记需要重新生成
-            else:
-                logger.info(f"    已有 {len(existing)} 张定妆照，跳过主图")
-                existing = []  # 跳过主图，但仍然检查 outfits
-
-        appearance = char.get("appearance", "")
         if not cont:
             logger.warning(f"    ⚠ 无 ComfyUI 连接，跳过")
             continue
+
+        appearance = char.get("appearance", "")
 
         try:
             comfyui = cont.get("image")
@@ -153,37 +150,51 @@ def run_portraits(
             wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=comfyui, llm=llm)
             wb.load_workflows()
 
-            # ── 1. 生成主定妆照 ──
-            if existing:
-                # 已有主图，用已有的
-                img_url = f"/api/assets/characters/{char_id}/{existing[0].name}"
-                logger.info(f"    ⏭ 主图已存在: {existing[0].name}")
-            else:
-                files = _generate_portrait(char_id, appearance, portrait_dir, comfyui, wb)
-                if files:
-                    img_url = f"/api/assets/characters/{char_id}/{Path(files[0]).name}"
-                    logger.info(f"    ✅ 主图生成完成")
-                    generated += 1
-                    # 生成成功后删除旧图
-                    for old_img in old_images_to_delete:
-                        try:
-                            old_img.unlink()
-                        except OSError:
-                            pass
-                    if old_images_to_delete:
-                        logger.info(f"    🗑 已删除 {len(old_images_to_delete)} 张旧定妆照")
-                else:
-                    logger.warning(f"    ⚠ 主图未生成（保留旧图）")
-                    img_url = ""
+            # ── 1. 生成三视图 ──
+            char_generated = 0
+            for filename, shot_type, label in _THREE_VIEWS:
+                view_path = portrait_dir / filename
+                if view_path.exists() and not force:
+                    logger.info(f"    ⏭ {label}视图已存在: {filename}")
+                    continue
 
-            # 回写主图 reference_images
-            if img_url:
+                old_file = view_path if view_path.exists() else None
+                logger.info(f"    🎨 生成{label}视图 ({filename})...")
+                try:
+                    ok = _generate_view(char_id, appearance, portrait_dir, comfyui, wb, filename, shot_type)
+                    if ok:
+                        if old_file and force:
+                            pass  # os.replace 已覆盖
+                        logger.info(f"    ✅ {label}视图完成")
+                        char_generated += 1
+                    else:
+                        logger.warning(f"    ⚠ {label}视图未生成")
+                except Exception as e:
+                    logger.error(f"    ❌ {label}视图失败: {e}")
+
+            if char_generated > 0:
+                generated += 1
+
+            # ── 2. 回写三视图 reference_images ──
+            view_urls = []
+            for filename, _, _ in _THREE_VIEWS:
+                if (portrait_dir / filename).exists():
+                    view_urls.append(f"/api/assets/characters/{char_id}/{filename}")
+
+            if view_urls:
                 char.setdefault("reference_images", [])
-                prefix = f"/api/assets/characters/{char_id}/cover"
-                char["reference_images"] = [u for u in char["reference_images"] if not u.startswith(prefix)]
-                char["reference_images"].append(img_url)
+                prefix = f"/api/assets/characters/{char_id}/"
+                # 保留非本角色的引用 + 本角色的三视图引用
+                char["reference_images"] = [
+                    u for u in char["reference_images"]
+                    if not u.startswith(prefix) or any(u.endswith(f"/{fn}") for fn, _, _ in _THREE_VIEWS)
+                ]
+                existing_set = set(char["reference_images"])
+                for url in view_urls:
+                    if url not in existing_set:
+                        char["reference_images"].append(url)
 
-            # ── 2. 遍历服装，生成各 outfit 参考图 ──
+            # ── 3. 遍历服装 ──
             outfits = char.get("outfits", {})
             if isinstance(outfits, dict) and outfits:
                 logger.info(f"    👗 服装: {', '.join(outfits.keys())}")
@@ -192,7 +203,6 @@ def run_portraits(
                         continue
                     outfit_desc = outfit_val.get("description", "")
                     if not outfit_desc:
-                        logger.debug(f"      ⏭ {outfit_key}: 无描述，跳过")
                         continue
 
                     outfit_dir = portrait_dir / outfit_key
@@ -201,38 +211,30 @@ def run_portraits(
                         logger.info(f"      ⏭ {outfit_key}: 已有图，跳过")
                         continue
 
-                    old_outfit_imgs = list(outfit_existing) if force else []
-
                     logger.info(f"      🎨 生成 {outfit_key}...")
                     try:
-                        files = _generate_outfit(
+                        ok = _generate_outfit(
                             char_id, appearance, outfit_key, outfit_desc,
                             portrait_dir, comfyui, wb, llm)
-                        if files:
-                            # 生成成功后删除旧图
-                            for old_img in old_outfit_imgs:
-                                try:
-                                    old_img.unlink()
-                                except OSError:
-                                    pass
-                            outfit_url = f"/api/assets/characters/{char_id}/{outfit_key}/{Path(files[0]).name}"
+                        if ok:
+                            outfit_url = f"/api/assets/characters/{char_id}/{outfit_key}/cover.png"
                             outfit_val.setdefault("reference_images", [])
                             prefix = f"/api/assets/characters/{char_id}/{outfit_key}/cover"
                             outfit_val["reference_images"] = [u for u in outfit_val["reference_images"] if not u.startswith(prefix)]
                             outfit_val["reference_images"].append(outfit_url)
-                            logger.info(f"      ✅ {outfit_key} 生成完成")
+                            logger.info(f"      ✅ {outfit_key} 完成")
                         else:
                             logger.warning(f"      ⚠ {outfit_key} 未生成")
                     except Exception as e:
                         logger.error(f"      ❌ {outfit_key} 失败: {e}")
 
-            # ── 3. 写回 YAML ──
+            # ── 4. 写回 YAML ──
             data["character"] = char
             from infra.config import save_yaml
             save_yaml(f, data)
             logger.info(f"    📝 已更新 YAML")
 
-            # ── 4. 同步数据库（可选）──
+            # ── 5. 同步数据库 ──
             if write_db:
                 try:
                     from infra.database.characters import upsert as db_up

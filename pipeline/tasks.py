@@ -876,7 +876,10 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
         except OSError:
             pass
 
-    img_url = f"/api/assets/characters/{char_id}/{outfit_key}/{Path(files[0]).name}"
+    # 重命名为 cover.png
+    cover_path = outfit_dir / "cover.png"
+    os.replace(files[0], str(cover_path))
+    img_url = f"/api/assets/characters/{char_id}/{outfit_key}/cover.png"
 
     # 更新角色 YAML 中该 outfit 的 reference_images
     try:

@@ -34,6 +34,8 @@ SHOT_TYPE_MAP = {
     "全景": "wide shot, full scene",
     "远景": "extreme wide shot, establishing shot",
     "双人全景": "two-shot, both characters visible",
+    "侧面特写": "side profile close-up shot, detailed side view of face",
+    "背面特写": "back view close-up shot, from behind",
 }
 
 # 运镜→英文描述
