@@ -75,6 +75,7 @@ function renderWB(episodes) {
       <span class="dim" style="margin:0 0.3rem">|</span>
       <button class="btn btn-outline" onclick="runPortraits()">📸 ${t('wb.gen_portraits')}</button>
       <button class="btn btn-outline" onclick="runSceneImages()">🏔 ${t('wb.gen_scene_images')}</button>
+      <button class="btn btn-primary" onclick="runPrepare()" title="${t('wb.prepare_hint')}">${t('wb.prepare')}</button>
       <span class="dim" style="margin:0 0.3rem">|</span>
       ${_stepBtns().map(b => `<button class="btn btn-outline" onclick="batchRun('${b.step}')">${b.icon} ${t('wb.batch_label')} ${b.label}</button>`).join('')}
       <span class="dim" style="margin:0 0.3rem">|</span>
@@ -422,6 +423,43 @@ async function _runTool(apiPath, body, label) {
 async function runPortraits() { _updatePipelineStep('portrait', 'active'); await _runTool('/tools/portraits?force=true', {}, t('wb.gen_portraits')); _updatePipelineStep('portrait', 'done'); }
 async function runSceneImages() { _updatePipelineStep('scene', 'active'); await _runTool('/tools/scene-images?force=true', {}, t('wb.gen_scene_images')); _updatePipelineStep('scene', 'done'); }
 async function runPost() { await _runTool('/tools/post', { episode: ep }, t('wb.post_process')); }
+
+async function runPrepare() {
+  if (!await modalConfirm(t('wb.prepare') + '？\n' + t('wb.prepare_hint'))) return;
+  const statusEl = document.getElementById('wb-batch-status');
+  statusEl.style.display = 'block';
+  statusEl.innerHTML = `<div class="batch-progress"><div class="batch-bar"><div class="batch-fill" style="width:5%"></div></div>
+    <div class="batch-text">⏳ ${t('wb.prepare')}...</div></div>`;
+  try {
+    const force = _isForce();
+    const { task_id } = await api('/prepare', { method: 'POST', body: { episode: ep, force } });
+    const result = await pollTask(task_id, info => {
+      statusEl.innerHTML = `<div class="batch-progress"><div class="batch-bar"><div class="batch-fill" style="width:${info.progress || 10}%"></div></div>
+        <div class="batch-text">⏳ ${info.message || t('wb.prepare')} (${info.progress || 0}%)</div></div>`;
+    });
+    if (result.status === 'success' && result.result?.status !== 'error') {
+      const r = result.result || {};
+      statusEl.innerHTML = `<div class="batch-done">✅ ${t('wb.prepare')}
+        <span style="margin-left:.5rem;font-size:.85rem;color:var(--fg2)">
+          翻译: ${r.translated_chars || 0}角色 + ${r.translated_scenes || 0}场景 + ${r.translated_shots || 0}镜头 ·
+          定妆照: ${r.portraits_generated || 0} · 场景图: ${r.scene_images_generated || 0}
+        </span></div>`;
+      toast('✅ ' + t('wb.prepare'));
+      // 刷新资源
+      invalidateCache(`storyboard/${ep}`);
+      invalidateCache(`res/${ep}`);
+      invalidateCache('characters');
+      invalidateCache('scenes');
+      renderShotsGrid();
+    } else {
+      statusEl.innerHTML = `<div class="batch-done">❌ ${t('wb.prepare')}: ${esc(result.result?.reason || result.error || t('wb.shot_fail'))}</div>`;
+      toast('❌ ' + t('wb.prepare'), 'error');
+    }
+  } catch (e) {
+    statusEl.innerHTML = `<div class="batch-done">❌ ${t('wb.prepare')}: ${esc(e.message)}</div>`;
+    toast('❌ ' + e.message, 'error');
+  }
+}
 
 async function runAll() {
   if (!await modalConfirm(t('wb.run_all') + '?')) return;
