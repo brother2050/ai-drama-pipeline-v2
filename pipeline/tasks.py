@@ -11,6 +11,7 @@ import sys
 import time
 from pathlib import Path
 
+from celery.exceptions import SoftTimeLimitException
 from pipeline.celery_app import app
 
 logger = logging.getLogger(__name__)
@@ -584,6 +585,10 @@ def _step_task(self, step: str, fn, config_path: str, episode: int, shot_id: str
     self.update_state(state="PROGRESS", meta={"step": step, "shot_id": shot_id, "progress": 10, "message": f"[{shot_id}] {step} 开始..."})
     try:
         result = fn(config_path, episode, shot_id, force=force)
+    except SoftTimeLimitException:
+        logger.warning(f"[{shot_id}] {step} 超时（soft_time_limit）")
+        _db_record_step(config_path, episode, shot_id, step, {"status": "error", "reason": "执行超时"})
+        return {"shot_id": shot_id, "step": step, "status": "error", "reason": "执行超时"}
     except Exception as e:
         logger.error(f"[{shot_id}] {step} 异常: {e}")
         return {"shot_id": shot_id, "step": step, "status": "error", "reason": str(e)}

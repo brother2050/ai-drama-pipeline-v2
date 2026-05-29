@@ -28,31 +28,13 @@ class PgPool:
 
     def connect(self):
         conn = self._pool.getconn()
-        # 健康检查：如果连接已关闭或不可用，丢弃并重新获取
+        # 快速检查：conn.closed 是属性，无网络开销
         if getattr(conn, 'closed', False):
             try:
                 self._pool.putconn(conn, close=True)
             except Exception:
                 pass
             conn = self._pool.getconn()
-        else:
-            cur = None
-            try:
-                cur = conn.cursor()
-                cur.execute("SELECT 1")
-            except Exception:
-                try:
-                    if cur:
-                        cur.close()
-                except Exception:
-                    pass
-                try:
-                    self._pool.putconn(conn, close=True)
-                except Exception:
-                    pass
-                conn = self._pool.getconn()
-            else:
-                cur.close()
         return conn
 
     def release(self, conn):

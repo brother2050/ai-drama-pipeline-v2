@@ -28,7 +28,7 @@ def load_storyboard(path: str, episode: int | None = None) -> list[dict[str, Any
     shots = []
     with open(path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        for row in reader:
+        for i, row in enumerate(reader):
             if episode is not None:
                 try:
                     ep = int(row.get("episode", 0) or 0)
@@ -36,7 +36,14 @@ def load_storyboard(path: str, episode: int | None = None) -> list[dict[str, Any
                     continue
                 if ep != episode:
                     continue
-            shots.append(dict(row))
+            # 校验必填字段，缺失时填默认值并警告
+            d = dict(row)
+            missing = [k for k in REQUIRED_FIELDS if not d.get(k)]
+            if missing:
+                logger.warning(f"CSV 第{i+2}行缺少字段: {missing}，用默认值填充")
+                for k in missing:
+                    d.setdefault(k, "")
+            shots.append(d)
 
     shots.sort(key=lambda s: s.get("shot_id", "000"))
     logger.info(f"加载分镜: {len(shots)} 个镜头" + (f" (第{episode}集)" if episode else ""))

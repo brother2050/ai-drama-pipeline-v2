@@ -23,8 +23,10 @@ app.conf.update(
     timezone="Asia/Shanghai",
     enable_utc=True,
     task_track_started=True,
-    task_acks_late=True,
-    task_reject_on_worker_lost=True,
+    task_acks_late=True,           # 完成后才 ack，worker 崩溃时任务自动重入队
+    task_reject_on_worker_lost=True,  # 配合 acks_late，崩溃时 reject 而非 ack
+    # 幂等性保证：DB 操作全部用 upsert；CSV 保存按集覆盖；文件生成前检查已有文件；
+    # _prepare 用 advisory lock 防并发。因此重试安全。
     worker_prefetch_multiplier=1,
     task_soft_time_limit=3600,
     task_time_limit=3900,
