@@ -321,7 +321,7 @@ llm:
   # api_key: ""                # OpenAI 兼容 API 需要
 
 portraits:
-  auto_outfit: false            # 管线中自动生成 outfit 参考图（默认 false）
+  auto_outfit: true             # 管线中自动生成 outfit 参考图（默认 true）
 
 timeouts:
   comfyui: 300

@@ -95,7 +95,7 @@ class Config:
                    "music_backend": "template", "image_backend": "sd15", "video_backend": "animatediff"},
         "llm": {"enabled": False, "backend": "openai", "base_url": "https://api.siliconflow.cn",
                 "model": "Qwen/Qwen2.5-7B-Instruct", "api_key": ""},
-        "portraits": {"auto_outfit": False},
+        "portraits": {"auto_outfit": True},
         "server": {"port": 8888, "host": "0.0.0.0", "cors_origin": "*"},
         "timeouts": {"comfyui": 900, "tts": 60, "lipsync": 120, "llm": 300, "music": 120},
         "post_production": {

@@ -10,7 +10,7 @@ project:
 
 # 定妆照配置
 # portraits:
-#   auto_outfit: true   # 管线自动生成 outfit 参考图（默认 false，仅生成主图）
+#   auto_outfit: false  # 管线自动生成 outfit 参考图（默认 true，设为 false 仅生成主图）
 
 # 项目级覆盖（可选，取消注释可覆盖系统配置）
 # comfyui:
