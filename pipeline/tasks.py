@@ -1987,6 +1987,7 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                     if vd and (not vd_en or force):
                         if any(ord(c) > 127 for c in vd):
                             voice["voice_description_en"] = translate_to_english(vd, llm=llm)
+                            result["translated_chars"] += 1
 
                 # 翻译 outfit descriptions
                 outfits = char.get("outfits", {})
@@ -1998,6 +1999,7 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                             if od and (not od_en or force):
                                 if any(ord(c) > 127 for c in od):
                                     ov["description_en"] = translate_to_english(od, llm=llm)
+                                    result["translated_chars"] += 1
 
                 data["character"] = char
                 save_yaml(f, data)

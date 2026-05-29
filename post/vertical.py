@@ -27,7 +27,10 @@ def _find_face_center(video: str, max_samples: int = 5) -> tuple[int, int] | Non
     """
     try:
         import face_recognition
-        import cv2
+        import cv2  # noqa: F811
+    except ImportError:
+        return None
+    try:
         cap = cv2.VideoCapture(video)
         total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         if total <= 0:
