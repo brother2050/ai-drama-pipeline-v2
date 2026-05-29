@@ -88,12 +88,23 @@ class FluxGymTrainer:
         """
         from gradio_client import handle_file
 
-        # 构建文件参数
-        files = [handle_file(p) for p in img_paths]
+        # 构建文件参数 — handle_file 内部会 stat 路径，确保非 None
+        files = []
+        for p in img_paths:
+            if p is None:
+                logger.warning("  跳过 None 图片路径")
+                continue
+            try:
+                files.append(handle_file(p))
+            except Exception as e:
+                logger.warning(f"  handle_file 失败 ({p}): {e}")
+
+        if not files:
+            raise RuntimeError("无有效图片文件可供上传")
 
         # 调用 /load_captioning（或 /load_captioning_1 等变体）
         api_name = self._find_captioning_api(client)
-        logger.info(f"  自动打标: {len(img_paths)} 张图片 (端点: {api_name})")
+        logger.info(f"  自动打标: {len(files)} 张图片 (端点: {api_name})")
 
         result = client.predict(
             files,
@@ -154,8 +165,18 @@ class FluxGymTrainer:
         """
         from gradio_client import handle_file
 
-        # 构建图片参数
-        files = [handle_file(p) for p in img_paths]
+        # 构建图片参数 — handle_file 内部会 stat 路径，确保非 None
+        files = []
+        for p in img_paths:
+            if p is None:
+                continue
+            try:
+                files.append(handle_file(p))
+            except Exception as e:
+                logger.warning(f"  handle_file 失败 ({p}): {e}")
+
+        if not files:
+            raise RuntimeError("无有效图片文件用于创建数据集")
 
         # 构建 caption 参数: 150 个，不足的用 trigger_word 填充
         caption_args = []
