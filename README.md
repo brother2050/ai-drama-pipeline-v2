@@ -145,8 +145,8 @@ drama serve
 ```
 阶段1: drama prepare 1     ← LLM 密集，运行一次
   ├─ 批量翻译角色/场景/分镜 → 写入 YAML *_en 字段
-  ├─ 生成定妆照 + outfit 参考图
-  └─ 生成场景参考图
+  ├─ 定妆照 → Web 工作台「📸 定妆照」单独执行
+  └─ 场景图 → Web 工作台「🏔️ 场景图」单独执行
 
 阶段2: drama produce 1     ← 纯 GPU/本地，零 LLM 调用，全速
   ├─ TTS → 首帧 → 视频 → 口型同步
@@ -183,7 +183,10 @@ drama preview 1 draft                  # 快速预览（draft/standard/high）
 drama produce 1                        # 完整生产
 drama post 1 --vertical                # 后期合成 + 横转竖
 drama all 1                            # 一键全流程（preview → produce → post）
-drama prepare 1                        # 准备阶段（批量翻译+定妆照+场景图）
+drama prepare 1                        # 准备阶段（批量翻译）
+drama prepare 1 --portraits            # 翻译 + 定妆照
+drama prepare 1 --scene-images         # 翻译 + 场景图
+drama prepare 1 --portraits --scene-images  # 全量（翻译+定妆照+场景图）
 drama portraits                        # 生成定妆照
 
 # 项目管理

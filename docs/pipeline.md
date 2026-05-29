@@ -17,9 +17,10 @@ flowchart TB
     subgraph S1["🔧 阶段 1 · 准备 — LLM 密集，运行一次"]
         direction TB
         t["1.1 批量翻译<br/>appearance→en, description→en<br/>action→en, dialogue→en"]
-        p["1.2 定妆照<br/>主图 + 各 outfit 参考图<br/>run_portraits()"]
-        si["1.3 场景图<br/>全景参考图<br/>run_scene_images()"]
-        t --> p --> si
+        p["1.2 定妆照<br/>Web 工作台单独执行<br/>📸 定妆照按钮"]
+        si["1.3 场景图<br/>Web 工作台单独执行<br/>🏔️ 场景图按钮"]
+        t -.->|"可选"| p
+        t -.->|"可选"| si
     end
 
     subgraph S2["🎬 阶段 2 · 生产 — 纯 GPU，零 LLM"]
@@ -87,20 +88,20 @@ flowchart TB
         tb["分镜翻译<br/>action → action_en<br/>dialogue → dialogue_en"]
     end
 
-    subgraph portraits["1.2 定妆照 — ComfyUI"]
+    subgraph portraits["1.2 定妆照 — ComfyUI（Web 端单独执行）"]
         direction TB
         pm["主定妆照<br/>特写构图"]
         po["服装参考图<br/>全身构图 × N 套"]
         pm --> po
     end
 
-    subgraph scenes_gen["1.3 场景图 — ComfyUI"]
+    subgraph scenes_gen["1.3 场景图 — ComfyUI（Web 端单独执行）"]
         direction TB
         sg["全景参考图<br/>读取 description_en"]
     end
 
-    translate ==>|"翻译完成<br/>写入 *_en 字段"| portraits
-    translate ==> scenes_gen
+    translate -.->|"可选: --portraits"| portraits
+    translate -.->|"可选: --scene-images"| scenes_gen
 
     db1[("PostgreSQL<br/>characters / scenes 表")]
     yaml1["YAML 文件<br/>reference_images 回写"]
@@ -116,10 +117,14 @@ flowchart TB
 
 | 命令 | 功能 | 依赖 |
 |------|------|------|
-| `drama prepare 1` | 全量准备（翻译+定妆照+场景图） | LLM + ComfyUI |
-| `drama prepare 1 --no-portraits` | 只翻译+场景图 | LLM + ComfyUI |
+| `drama prepare 1` | 批量翻译（默认仅翻译） | LLM |
+| `drama prepare 1 --portraits` | 翻译 + 定妆照 | LLM + ComfyUI |
+| `drama prepare 1 --scene-images` | 翻译 + 场景图 | LLM + ComfyUI |
+| `drama prepare 1 --portraits --scene-images` | 全量准备 | LLM + ComfyUI |
 | `drama prepare 1 --no-translate` | 只定妆照+场景图 | ComfyUI |
 | `drama prepare 1 --force` | 强制覆盖已有内容 | LLM + ComfyUI |
+
+> 定妆照和场景图建议通过 Web 工作台「📸 定妆照」「🏔️ 场景图」单独执行，支持单角色/单场景按需生成。
 
 ### 翻译策略
 
@@ -417,7 +422,9 @@ flowchart LR
 ```bash
 # 首次使用
 drama generate all 1 -o outline.txt    # 从大纲生成全部素材
-drama prepare 1                        # 准备阶段（翻译+定妆照+场景图）
+drama prepare 1                        # 准备阶段（批量翻译）
+drama prepare 1 --portraits            # 翻译 + 定妆照
+drama prepare 1 --scene-images         # 翻译 + 场景图
 
 # 日常生产
 drama produce 1                        # 完整生产
