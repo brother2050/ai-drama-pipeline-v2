@@ -543,12 +543,12 @@ tbody tr:hover { background: rgba(108,140,255,.04); }
 .batch-done { font-size: .88rem; padding: .4rem 0; font-weight: 500; }
 
 /* ─── 任务进度 ─── */
-.task-bar { height: 4px; background: var(--bg4); border-radius: 2px; overflow: hidden; margin-bottom: .2rem; }
-.task-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--purple)); transition: width .3s; }
-.task-text    { font-size: .8rem; color: var(--dim); }
-.task-running { color: var(--yellow); font-size: .85rem; font-weight: 500; }
-.task-done    { color: var(--green); font-size: .85rem; font-weight: 500; }
-.task-fail    { color: var(--red); font-size: .85rem; font-weight: 500; }
+#wb-batch-status .task-bar { height: 4px; background: var(--bg4); border-radius: 2px; overflow: hidden; margin-bottom: .2rem; }
+#wb-batch-status .task-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--purple)); transition: width .3s; }
+#wb-batch-status .task-text    { font-size: .8rem; color: var(--dim); }
+#wb-batch-status .task-running { color: var(--yellow); font-size: .85rem; font-weight: 500; }
+#wb-batch-status .task-done    { color: var(--green); font-size: .85rem; font-weight: 500; }
+#wb-batch-status .task-fail    { color: var(--red); font-size: .85rem; font-weight: 500; }
 
 /* ─── 分镜表内联编辑 ─── */
 .sb-inline-input {
