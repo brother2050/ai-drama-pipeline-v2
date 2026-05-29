@@ -91,8 +91,18 @@ class CharacterConsistency:
             "images": ref_images,
             "embeddings": embeddings,
         }
-        with open(path, "w") as f:
-            json.dump(data, f, indent=2)
+        import tempfile
+        fd, tmp = tempfile.mkstemp(dir=str(Path(path).parent), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(data, f, indent=2)
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
         return path
 
     def _extract_embedding(self, image_path: str) -> list[float] | None:

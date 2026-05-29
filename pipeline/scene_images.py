@@ -145,7 +145,11 @@ def run_scene_images(
         try:
             files = comfyui.generate(wf, str(scene_asset_dir))
             if files:
-                img_url = f"/api/assets/scenes/{sid}/{Path(files[0]).name}"
+                # 重命名为 cover.png（避免 ComfyUI 原始文件名如 Cosmos__00039_.png 导致 404）
+                cover_path = scene_asset_dir / "cover.png"
+                import os
+                os.replace(files[0], str(cover_path))
+                img_url = f"/api/assets/scenes/{sid}/cover.png"
                 scene.setdefault("reference_images", [])
                 prefix = f"/api/assets/scenes/{sid}/cover"
                 scene["reference_images"] = [u for u in scene["reference_images"] if not u.startswith(prefix)]

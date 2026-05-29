@@ -145,22 +145,25 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
 # 常见中文外貌描述→英文映射（兜底用，覆盖常见词）
 _TRANSLATE_API = "https://shanhe.kim/api/fany/fanyi.php"
 _translate_cache: dict[str, str] = {}
+_translate_cache_lock = __import__("threading").Lock()
 _CACHE_MAX_SIZE = 4096
 
 
 def _cache_set(key: str, value: str) -> None:
-    if len(_translate_cache) >= _CACHE_MAX_SIZE:
-        # 淘汰最早插入的一批条目（FIFO 近似），避免 clear() 导致缓存雪崩
-        evict_count = _CACHE_MAX_SIZE // 4
-        for old_key in list(_translate_cache)[:evict_count]:
-            del _translate_cache[old_key]
-    _translate_cache[key] = value
+    with _translate_cache_lock:
+        if len(_translate_cache) >= _CACHE_MAX_SIZE:
+            # 淘汰最早插入的一批条目（FIFO 近似），避免 clear() 导致缓存雪崩
+            evict_count = _CACHE_MAX_SIZE // 4
+            for old_key in list(_translate_cache)[:evict_count]:
+                del _translate_cache[old_key]
+        _translate_cache[key] = value
 
 
 def _http_translate(text: str) -> str:
     """通过山河翻译 API 进行中→英翻译（带缓存 + 重试）"""
-    if text in _translate_cache:
-        return _translate_cache[text]
+    with _translate_cache_lock:
+        if text in _translate_cache:
+            return _translate_cache[text]
     import time as _time
     try:
         import httpx

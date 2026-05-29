@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -47,7 +49,18 @@ def generate_srt(shots: list[dict], output: str, *,
         lines.append(f"{idx}\n{start_str} --> {end_str}\n{dialogue}\n")
         idx += 1
 
-    Path(output).write_text("\n".join(lines), encoding="utf-8")
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(Path(output).parent), suffix=".srt.tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        os.replace(tmp, output)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
     logger.info(f"字幕生成: {output} ({idx-1} 条)")
     return output
 

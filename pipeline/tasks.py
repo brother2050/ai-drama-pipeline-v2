@@ -9,7 +9,10 @@ import os
 import re
 import sys
 import time
+import zlib
 from pathlib import Path
+
+import yaml
 
 from pipeline.celery_app import app
 from infra.json_parse import parse_llm_json
@@ -107,51 +110,46 @@ def _try_mark_running_atomic(config_path: str, episode: int, shot_id: str, step:
     try:
         from infra.database.pool import get_pool, placeholder
         pool = get_pool()
-        conn = pool.connect()
-        cur = conn.cursor()
-        import zlib
         lock_key = zlib.crc32(f"gen:{episode}:{shot_id}:{step}".encode()) & 0x7FFFFFFF
-        try:
-            cur.execute("SELECT pg_try_advisory_lock(%s)", (lock_key,))
-            locked = cur.fetchone()[0]
-            if not locked:
-                return False
+        with pool.connection() as conn:
+            cur = conn.cursor()
             try:
-                # 查询当前状态，FOR UPDATE 防止并发修改
-                cur.execute(f"""
-                    SELECT status, EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - updated_at))
-                    FROM generation_status
-                    WHERE episode = {placeholder()} AND shot_id = {placeholder()} AND stage = {placeholder()}
-                    FOR UPDATE
-                """, (episode, shot_id, step))
-                row = cur.fetchone()
-                if row:
-                    status, age = row[0], row[1] or 0
-                    if status == "running" and age < 600:
-                        return False
-                    cur.execute(f"""
-                        UPDATE generation_status SET status='running', updated_at=CURRENT_TIMESTAMP
-                        WHERE episode={placeholder()} AND shot_id={placeholder()} AND stage={placeholder()}
-                    """, (episode, shot_id, step))
-                else:
-                    cur.execute(f"""
-                        INSERT INTO generation_status (episode, shot_id, stage, status, updated_at)
-                        VALUES ({placeholder()}, {placeholder()}, {placeholder()}, 'running', CURRENT_TIMESTAMP)
-                    """, (episode, shot_id, step))
-                conn.commit()
-                return True
-            finally:
-                # 确保 advisory lock 总是被释放
+                cur.execute("SELECT pg_try_advisory_lock(%s)", (lock_key,))
+                locked = cur.fetchone()[0]
+                if not locked:
+                    return False
                 try:
-                    cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
-                except Exception:
-                    pass
-                try:
+                    # 查询当前状态，FOR UPDATE 防止并发修改
+                    cur.execute(f"""
+                        SELECT status, EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - updated_at))
+                        FROM generation_status
+                        WHERE episode = {placeholder()} AND shot_id = {placeholder()} AND stage = {placeholder()}
+                        FOR UPDATE
+                    """, (episode, shot_id, step))
+                    row = cur.fetchone()
+                    if row:
+                        status, age = row[0], row[1] or 0
+                        if status == "running" and age < 600:
+                            return False
+                        cur.execute(f"""
+                            UPDATE generation_status SET status='running', updated_at=CURRENT_TIMESTAMP
+                            WHERE episode={placeholder()} AND shot_id={placeholder()} AND stage={placeholder()}
+                        """, (episode, shot_id, step))
+                    else:
+                        cur.execute(f"""
+                            INSERT INTO generation_status (episode, shot_id, stage, status, updated_at)
+                            VALUES ({placeholder()}, {placeholder()}, {placeholder()}, 'running', CURRENT_TIMESTAMP)
+                        """, (episode, shot_id, step))
                     conn.commit()
-                except Exception:
-                    pass
-        finally:
-            pool.release(conn)
+                    return True
+                finally:
+                    # 确保 advisory lock 总是被释放
+                    try:
+                        cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
+                    except Exception:
+                        pass
+            finally:
+                cur.close()
     except Exception:
         # 数据库不可用时回退到非原子版本
         # 注意: _check_step_running 不检查 updated_at，崩溃的任务可能永久阻塞
@@ -813,7 +811,6 @@ def portrait_single_task(self, config_path: str, char_id: str) -> dict:
 def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) -> dict:
     """为单个角色的指定服装生成参考图（异步）"""
     _ensure_path()
-    import yaml
     from engines.workflow_builder import WorkflowBuilder
     from engines.prompt import translate_to_english
 
@@ -907,7 +904,6 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
 def outfits_batch_task(self, config_path: str, char_id: str) -> dict:
     """为单个角色的所有服装批量生成参考图（异步）"""
     _ensure_path()
-    import yaml
 
     self.update_state(state="PROGRESS", meta={"step": "outfits", "progress": 5, "message": f"加载角色 {char_id}..."})
 
@@ -1042,7 +1038,6 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
     """AI 生成分镜表 + 自动补全角色/场景（面向新用户）"""
     from engines.llm_generator import generate_storyboard, generate_characters, generate_scenes
     from engines.storyboard import save_storyboard
-    import yaml as _yaml
 
     self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 10, "message": "正在初始化 LLM..."})
 
@@ -1278,7 +1273,6 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
 def ai_characters_task(self, config_path: str, descriptions: list[str]) -> dict:
     """AI 生成角色（异步）"""
     from engines.llm_generator import generate_characters
-    import yaml
 
     self.update_state(state="PROGRESS", meta={"step": "ai_characters", "progress": 20, "message": "AI 正在生成角色..."})
 
@@ -1322,7 +1316,6 @@ def ai_characters_task(self, config_path: str, descriptions: list[str]) -> dict:
 def ai_scenes_task(self, config_path: str, descriptions: list[str]) -> dict:
     """AI 生成场景（异步）"""
     from engines.llm_generator import generate_scenes
-    import yaml
 
     self.update_state(state="PROGRESS", meta={"step": "ai_scenes", "progress": 20, "message": "AI 正在生成场景..."})
 
@@ -1646,7 +1639,6 @@ def seko_import_task(
     并异步下载关联图片。
     """
     _ensure_path()
-    import yaml
 
     steps = proposal_data.get("steps", [])
     elements = proposal_data.get("elements", [])
@@ -1911,7 +1903,6 @@ def train_lora_task(self, config_path: str, char_id: str, *,
 
     # 读取角色名作为默认触发词
     if not trigger_word:
-        import yaml
         try:
             with open(char_yaml_path, encoding="utf-8") as f:
                 char_data = yaml.safe_load(f) or {}
@@ -1941,7 +1932,6 @@ def train_lora_task(self, config_path: str, char_id: str, *,
 
     # 更新角色 YAML，标记 LoRA 路径
     try:
-        import yaml
         with open(char_yaml_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         char = data.get("character", {})

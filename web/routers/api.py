@@ -21,24 +21,6 @@ from fastapi import APIRouter, Body, Depends, File, HTTPException, Request, Uplo
 
 logger = logging.getLogger(__name__)
 
-# 跨平台文件锁
-try:
-    import fcntl
-    def _file_lock(f):
-        fcntl.flock(f, fcntl.LOCK_EX)
-    def _file_unlock(f):
-        fcntl.flock(f, fcntl.LOCK_UN)
-except ImportError:
-    # Windows: 使用 msvcrt
-    import msvcrt
-    def _file_lock(f):
-        msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
-    def _file_unlock(f):
-        try:
-            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
-        except OSError:
-            pass
-
 # ── 简易 Rate Limiting ──
 import threading as _threading
 _rate_limit_store: dict[str, list[float]] = {}
@@ -1068,25 +1050,8 @@ def save_storyboard(episode: int, data: dict):
             _check_id(sid, "shot_id")
 
     sb_path = _proj() / "storyboard" / "episodes.csv"
-    sb_path.parent.mkdir(parents=True, exist_ok=True)
-    from engines.storyboard import STORYBOARD_FIELDNAMES
-    fieldnames = STORYBOARD_FIELDNAMES
-    lock_path = sb_path.with_suffix(".lock")
-    with open(lock_path, "w") as lock_f:
-        _file_lock(lock_f)
-        try:
-            existing = []
-            if sb_path.exists():
-                with open(sb_path, encoding="utf-8") as f:
-                    for row in csv.DictReader(f):
-                        if int(row.get("episode", 0) or 0) != episode:
-                            existing.append(row)
-            with open(sb_path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-                writer.writeheader()
-                writer.writerows(existing + shots)
-        finally:
-            _file_unlock(lock_f)
+    from engines.storyboard import save_storyboard
+    save_storyboard(sb_path, shots, episode, append=False)
 
     # 同步更新数据库 shots 表
     try:
