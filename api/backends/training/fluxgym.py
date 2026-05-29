@@ -528,16 +528,18 @@ class FluxGymTrainer:
         logger.info("[1/4] 自动打标...")
         captions = self._load_captioning(client, img_paths, trigger_word)
 
-        # Step 2: 创建数据集
-        logger.info("[2/4] 创建数据集...")
-        self._create_dataset(client, img_paths, captions, res_val)
-
-        # Step 3: 生成训练配置
-        logger.info("[3/4] 生成训练配置...")
+        # Step 2: 生成训练配置（必须在 create_dataset 之前！）
+        # /update 会设置 FluxGym 全局状态（destination_folder 等），
+        # /create_dataset 依赖这些全局变量，顺序不能反。
+        logger.info("[2/4] 生成训练配置...")
         train_script, train_config = self._update_config(
             client, trigger_word, output_name,
             steps, lr_str, rank, res_val,
         )
+
+        # Step 3: 创建数据集（依赖 /update 设置的全局状态）
+        logger.info("[3/4] 创建数据集...")
+        self._create_dataset(client, img_paths, captions, res_val)
 
         # Step 4: 启动训练
         logger.info("[4/4] 启动训练...")
@@ -572,11 +574,15 @@ class FluxGymTrainer:
         client = self._get_client()
 
         captions = self._load_captioning(client, img_paths, trigger_word)
-        self._create_dataset(client, img_paths, captions, self._default_resolution)
+
+        # /update 必须在 /create_dataset 之前（设置全局状态）
         train_script, train_config = self._update_config(
             client, trigger_word, output_name,
             steps, self._default_learning_rate, rank, self._default_resolution,
         )
+
+        self._create_dataset(client, img_paths, captions, self._default_resolution)
+
         result = self._start_training(
             client, self._base_model, output_name,
             train_script, train_config,
