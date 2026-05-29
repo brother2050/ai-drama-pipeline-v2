@@ -994,6 +994,25 @@ def get_entity_asset(entity_type: str, entity_id: str, filename: str):
     return FileResponse(str(file_path), media_type=media_types.get(ext, "application/octet-stream"))
 
 
+@router.get("/assets/{entity_type}/{entity_id}/{sub_dir}/{filename}")
+def get_entity_sub_asset(entity_type: str, entity_id: str, sub_dir: str, filename: str):
+    """访问角色/场景子目录资源文件（如服装图 /assets/characters/{id}/{outfit}/cover.png）"""
+    from fastapi.responses import FileResponse
+
+    _check_entity_type(entity_type)
+    _check_id(entity_id)
+    _check_filename(sub_dir)
+    _check_filename(filename)
+
+    file_path = _safe_path(_proj() / "assets" / entity_type / entity_id, sub_dir, filename)
+    if not file_path.exists():
+        raise HTTPException(404, f"文件不存在: {sub_dir}/{filename}")
+
+    ext = file_path.suffix.lower()
+    media_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}
+    return FileResponse(str(file_path), media_type=media_types.get(ext, "application/octet-stream"))
+
+
 @router.get("/episodes")
 def get_episodes():
     """获取可用集数列表"""
