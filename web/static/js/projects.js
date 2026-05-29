@@ -27,7 +27,7 @@ function switchProj(name) {
     toast(t('toast.switched'));
     loadProjects();
     const p = document.querySelector('.page.active');
-    if (p) { const pageName = p.id.replace('page-', ''); if (PAGES[pageName]) PAGES[pageName](); }
+    if (p) { const pageName = p.id.replace('page-', ''); const fn = PAGES[pageName]; if (fn && typeof window[fn] === 'function') window[fn](); }
   }).catch(e => toast(e.message, 'error'));
 }
 async function deleteProj(n) {

@@ -238,8 +238,9 @@ document.querySelectorAll('.nav-item').forEach(item => {
   };
 });
 function navTo(p) { document.querySelector(`.nav-item[data-page="${p}"]`).click(); }
-const PAGES = { dashboard: loadDashboard, characters: loadCharacters, scenes: loadScenes, storyboard: loadStoryboard, pipeline: loadPipeline, projects: loadProjects, settings: loadSettings, seko: loadSeko, assets: loadAssets };
-async function loadPage(p) { if (PAGES[p]) await PAGES[p](); }
+// PAGES 使用惰性查找，避免动态加载脚本时函数尚未定义
+const PAGES = { dashboard: 'loadDashboard', characters: 'loadCharacters', scenes: 'loadScenes', storyboard: 'loadStoryboard', pipeline: 'loadPipeline', projects: 'loadProjects', settings: 'loadSettings', seko: 'loadSeko', assets: 'loadAssets' };
+async function loadPage(p) { const fn = PAGES[p]; if (fn && typeof window[fn] === 'function') await window[fn](); }
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') document.querySelector('.res-overlay, .edit-overlay')?.remove();
