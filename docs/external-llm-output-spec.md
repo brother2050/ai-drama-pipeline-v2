@@ -1,0 +1,411 @@
+# 📐 外部 LLM 输出规范 — AI 短剧管线 v2 数据格式
+
+> **用途**：将本文档发给任意 LLM（ChatGPT / Claude / Gemini / 通义 / 文心 / DeepSeek 等），让它按规范生成完整的短剧项目数据。
+>
+> **输出格式**：支持 **JSON（推荐）**、Markdown 代码块、纯文本，均可被 Trae 自动解析导入。
+
+---
+
+## 使用方式
+
+1. 将 **[第 2 节：系统提示词](#2-系统提示词)** 完整复制为 LLM 的 System Prompt
+2. 将 **[第 3 节：用户消息模板](#3-用户消息模板)** 填写后作为 User Message 发送
+3. LLM 返回结构化数据后，交给 Trae 执行导入
+
+---
+
+## 1. 输出格式说明
+
+LLM 必须输出一个 **JSON 对象**，包含以下顶级键（均可选，按需生成）：
+
+```jsonc
+{
+  "project": { ... },       // 项目配置（可选，不填用默认值）
+  "characters": [ ... ],    // 角色列表
+  "scenes": [ ... ],        // 场景列表
+  "storyboard": [ ... ]     // 分镜表
+}
+```
+
+### 1.1 也可以用 Markdown 代码块输出
+
+如果 LLM 不方便输出纯 JSON，可以用以下 Markdown 格式，效果等价：
+
+````markdown
+以下是生成的项目数据：
+
+```json
+{
+  "characters": [...],
+  "scenes": [...],
+  "storyboard": [...]
+}
+```
+````
+
+Trae 会自动从 Markdown 中提取 JSON 代码块。
+
+### 1.2 也可以用纯文本分段输出
+
+如果 LLM 连 JSON 也生成不好，可以分段输出，每段用明确标记：
+
+```
+===CHARACTERS===
+（角色 YAML 或 JSON）
+
+===SCENES===
+（场景 YAML 或 JSON）
+
+===STORYBOARD===
+（分镜 CSV 或 JSON）
+```
+
+Trae 会按标记分段解析。
+
+---
+
+## 2. 系统提示词
+
+> 将以下内容完整复制为 LLM 的 System Prompt：
+
+```
+你是一位专业的 AI 短剧数据生成专家。你的任务是根据用户提供的剧情大纲，生成完整的短剧项目数据。
+
+## 输出规范
+
+你必须输出一个合法的 JSON 对象，结构如下。所有字段名严格使用英文，所有用户可见的描述文本使用中文（除非用户指定其他语言）。
+
+### 顶层结构
+
+{
+  "project": { "name": "项目名", "style": "cinematic", "genre": "urban" },
+  "characters": [ ... ],
+  "scenes": [ ... ],
+  "storyboard": [ ... ]
+}
+
+### characters 数组 — 每个元素
+
+{
+  "id": "英文ID（小写字母+数字+下划线+连字符，全局唯一）",
+  "name": "角色真实名字（中文）",
+  "gender": "male 或 female",
+  "appearance": "详细外貌描述 50-100 字，包含年龄/发型/五官/体型/身高，能指导 AI 绘图",
+  "appearance_en": "appearance 的英文翻译（必须准确，用于 AI 绘图英文提示词）",
+  "personality": "性格特征 20-40 字",
+  "outfits": {
+    "default": { "description": "默认服装描述 30-50 字", "description_en": "英文翻译" },
+    "casual": { "description": "休闲装描述", "description_en": "英文翻译" }
+  },
+  "voice": {
+    "voice_description": "声音特征 20-40 字，含音色/语速/口音",
+    "voice_description_en": "英文翻译"
+  }
+}
+
+### scenes 数组 — 每个元素
+
+{
+  "id": "英文ID（小写字母+数字+下划线+连字符）",
+  "name": "场景中文名",
+  "description": "详细场景描述 50-100 字，含空间布局/家具/色调/氛围",
+  "description_en": "description 的英文翻译（必须准确，用于 AI 绘图英文提示词）",
+  "lighting": "光照描述 20-40 字，含光源方向/色温/明暗",
+  "lighting_en": "lighting 的英文翻译"
+}
+
+### storyboard 数组 — 每个元素
+
+{
+  "episode": 1,
+  "shot_id": "001",
+  "scene": "场景ID（必须与 scenes 中的 id 一致）",
+  "characters": "角色ID（多人用 + 连接，必须与 characters 中的 id 一致）",
+  "action": "中文动作描述，具体到肢体语言",
+  "action_en": "action 的英文翻译（必须准确自然，不要直译）",
+  "dialogue": "中文台词，无台词用 ......",
+  "dialogue_en": "dialogue 的英文翻译，无台词用 ......",
+  "camera": "运镜方式",
+  "shot_type": "景别",
+  "duration": 4,
+  "outfit": "服装标签（对应角色 outfits 中的 key）",
+  "emotion": "情绪英文",
+  "language": "zh"
+}
+
+## 硬性规则
+
+1. JSON 必须合法，可被 JSON.parse() 解析
+2. id 字段仅允许 [a-zA-Z0-9_-]，不允许空格、中文、特殊字符
+3. 所有 *_en 字段必须填写，是对应中文的地道英文翻译（不要 Chinglish）
+4. dialogue 中不要出现英文双引号 "，用中文引号 "" 或省略号代替
+5. duration 为整数，范围 2-8
+6. shot_id 三位数从 001 递增，每个 episode 独立编号
+7. emotion 可选值：happy/sad/worried/surprised/angry/romantic/calm/determined/serious/neutral
+8. camera 可选值：固定/缓慢推近/跟随平移/手持晃动/环绕/俯视/仰视
+9. shot_type 可选值：特写/近景/中景/过肩/全身/全景/远景
+10. 多人同框用 + 连接角色 ID，如 linxia+guchen
+11. outfits 中必须包含 default 键
+12. 一个 JSON 包含全部数据，不要分多次输出
+```
+
+---
+
+## 3. 用户消息模板
+
+> 填写后作为 User Message 发送给 LLM：
+
+```
+请根据以下信息，生成完整的 AI 短剧项目数据（JSON 格式）。
+
+## 项目名称
+（填写项目名，如：都市爱情短剧）
+
+## 剧情大纲
+（粘贴你的剧情大纲，越详细越好）
+
+## 角色设定（可选）
+（如果有预设角色，列出名字和简要描述。没有则让 LLM 从大纲中自动提取）
+
+## 集数与时长
+- 集数：1（默认 1 集）
+- 目标时长：90 秒（默认 90 秒，即约 15-25 个镜头）
+
+## 输出要求
+- 输出完整 JSON 对象，包含 characters、scenes、storyboard
+- 所有 *_en 英文翻译字段必须填写
+- storyboard 中的 scene 和 characters 字段必须引用 characters/scenes 中的 id
+```
+
+---
+
+## 4. 完整输出示例
+
+```json
+{
+  "project": {
+    "name": "生日惊喜",
+    "style": "cinematic",
+    "genre": "urban"
+  },
+  "characters": [
+    {
+      "id": "linxia",
+      "name": "林夏",
+      "gender": "female",
+      "appearance": "22岁年轻女性，黑色长发及腰，瓜子脸，大眼睛，柳叶眉，身高165cm，体型纤细，皮肤白皙",
+      "appearance_en": "22-year-old young woman, long black hair reaching waist, oval face, big eyes, arched eyebrows, 165cm tall, slim build, fair skin",
+      "personality": "温柔内敛，善良细心，有点小忧郁",
+      "outfits": {
+        "default": {
+          "description": "浅粉色针织开衫，白色连衣裙，白色帆布鞋",
+          "description_en": "light pink cardigan, white dress, white canvas shoes"
+        },
+        "home": {
+          "description": "浅粉色居家服，棉拖鞋，头发随意扎起",
+          "description_en": "light pink loungewear, cotton slippers, hair casually tied up"
+        }
+      },
+      "voice": {
+        "voice_description": "轻柔甜美的年轻女声，语速偏慢，带一点南方口音",
+        "voice_description_en": "soft and sweet young female voice, slightly slow speech, subtle southern accent"
+      }
+    },
+    {
+      "id": "guchen",
+      "name": "顾辰",
+      "gender": "male",
+      "appearance": "25岁年轻男性，黑色短发，剑眉星目，鼻梁高挺，身高180cm，体型匀称",
+      "appearance_en": "25-year-old young man, short black hair, sharp eyebrows, bright eyes, straight nose, 180cm tall, well-proportioned build",
+      "personality": "阳光开朗，做事果断，对林夏很温柔",
+      "outfits": {
+        "default": {
+          "description": "黑色卫衣，深色休闲裤，运动鞋",
+          "description_en": "black hoodie, dark casual pants, sneakers"
+        },
+        "casual": {
+          "description": "白色T恤，牛仔裤，双肩包",
+          "description_en": "white t-shirt, jeans, backpack"
+        }
+      },
+      "voice": {
+        "voice_description": "沉稳有力的年轻男声，声音低沉有磁性",
+        "voice_description_en": "steady and powerful young male voice, deep and magnetic"
+      }
+    }
+  ],
+  "scenes": [
+    {
+      "id": "living_room",
+      "name": "客厅",
+      "description": "现代简约风格客厅，米色布艺沙发靠墙，落地窗透入柔和光线，木质茶几上放着水杯和手机，墙上挂着风景画",
+      "description_en": "modern minimalist living room, beige fabric sofa against wall, soft light from floor-to-ceiling windows, wooden coffee table with water glass and phone, landscape painting on wall",
+      "lighting": "暖色调室内光，自然光从落地窗斜射入，营造温馨氛围",
+      "lighting_en": "warm indoor lighting, natural light streaming in from floor-to-ceiling windows, creating a cozy atmosphere"
+    },
+    {
+      "id": "street_night",
+      "name": "夜晚街道",
+      "description": "城市商业街夜景，两侧霓虹灯招牌闪烁，湿润路面反射灯光，远处可见红绿灯",
+      "description_en": "city commercial street at night, neon signs flickering on both sides, wet road reflecting lights, traffic lights visible in distance",
+      "lighting": "冷暖混合霓虹灯光，主色调偏蓝紫，路面有暖黄反光",
+      "lighting_en": "mixed cool and warm neon lighting, predominantly blue-purple tones, warm yellow reflections on road surface"
+    }
+  ],
+  "storyboard": [
+    {
+      "episode": 1,
+      "shot_id": "001",
+      "scene": "living_room",
+      "characters": "linxia",
+      "action": "坐在沙发上看手机，表情失落，时不时叹气",
+      "action_en": "sitting on sofa looking at phone, looking disappointed, sighing occasionally",
+      "dialogue": "他怎么还不回消息...",
+      "dialogue_en": "Why isn't he replying...",
+      "camera": "缓慢推近",
+      "shot_type": "特写",
+      "duration": 4,
+      "outfit": "home",
+      "emotion": "worried",
+      "language": "zh"
+    },
+    {
+      "episode": 1,
+      "shot_id": "002",
+      "scene": "living_room",
+      "characters": "linxia",
+      "action": "起身走到窗前，望向窗外的夜景",
+      "action_en": "stands up and walks to the window, gazing out at the night view",
+      "dialogue": "......",
+      "dialogue_en": "......",
+      "camera": "跟随平移",
+      "shot_type": "中景",
+      "duration": 3,
+      "outfit": "home",
+      "emotion": "sad",
+      "language": "zh"
+    },
+    {
+      "episode": 1,
+      "shot_id": "003",
+      "scene": "street_night",
+      "characters": "guchen",
+      "action": "骑自行车快速穿过街道，神情焦急",
+      "action_en": "riding bicycle quickly through the street, looking anxious",
+      "dialogue": "马上就到了！",
+      "dialogue_en": "Almost there!",
+      "camera": "固定",
+      "shot_type": "全身",
+      "duration": 4,
+      "outfit": "default",
+      "emotion": "determined",
+      "language": "zh"
+    },
+    {
+      "episode": 1,
+      "shot_id": "004",
+      "scene": "living_room",
+      "characters": "linxia",
+      "action": "听到门铃声惊讶地抬头",
+      "action_en": "hears the doorbell and looks up in surprise",
+      "dialogue": "嗯？",
+      "dialogue_en": "Hmm?",
+      "camera": "手持晃动",
+      "shot_type": "近景",
+      "duration": 2,
+      "outfit": "home",
+      "emotion": "surprised",
+      "language": "zh"
+    },
+    {
+      "episode": 1,
+      "shot_id": "005",
+      "scene": "living_room",
+      "characters": "linxia+guchen",
+      "action": "林夏打开门，两人对视，顾辰微笑",
+      "action_en": "Lin Xia opens the door, they look at each other, Gu Chen smiles",
+      "dialogue": "......",
+      "dialogue_en": "......",
+      "camera": "缓慢推近",
+      "shot_type": "全景",
+      "duration": 5,
+      "outfit": "default",
+      "emotion": "romantic",
+      "language": "zh"
+    },
+    {
+      "episode": 1,
+      "shot_id": "006",
+      "scene": "living_room",
+      "characters": "guchen",
+      "action": "从背后拿出一束花递过去",
+      "action_en": "takes out a bouquet of flowers from behind and presents it",
+      "dialogue": "生日快乐！",
+      "dialogue_en": "Happy birthday!",
+      "camera": "固定",
+      "shot_type": "近景",
+      "duration": 3,
+      "outfit": "default",
+      "emotion": "happy",
+      "language": "zh"
+    },
+    {
+      "episode": 1,
+      "shot_id": "007",
+      "scene": "living_room",
+      "characters": "linxia",
+      "action": "接过花，眼眶泛红，感动地笑了",
+      "action_en": "takes the bouquet, eyes tearing up, smiles emotionally",
+      "dialogue": "谢谢...我好开心",
+      "dialogue_en": "Thank you... I'm so happy",
+      "camera": "缓慢推近",
+      "shot_type": "特写",
+      "duration": 4,
+      "outfit": "default",
+      "emotion": "romantic",
+      "language": "zh"
+    }
+  ]
+}
+```
+
+---
+
+## 5. 字段取值速查表
+
+| 字段 | 类型 | 可选值 / 范围 |
+|------|------|--------------|
+| `gender` | string | `male`, `female` |
+| `camera` | string | `固定`, `缓慢推近`, `跟随平移`, `手持晃动`, `环绕`, `俯视`, `仰视` |
+| `shot_type` | string | `特写`, `近景`, `中景`, `过肩`, `全身`, `全景`, `远景` |
+| `emotion` | string | `happy`, `sad`, `worried`, `surprised`, `angry`, `romantic`, `calm`, `determined`, `serious`, `neutral` |
+| `duration` | int | 2 ~ 8 |
+| `outfit` | string | 对应角色 `outfits` 中的 key，默认 `default` |
+| `language` | string | `zh`(默认), `en`, `ja`, `ko`, `fr`, `de`, `es` |
+| `episode` | int | ≥ 1 |
+| `shot_id` | string | 三位数，从 `001` 递增 |
+
+---
+
+## 6. 注意事项
+
+### 6.1 ID 命名规范
+
+- 仅允许：`a-z` `A-Z` `0-9` `_` `-`
+- **不允许**：空格、中文、`/`、`.`、`@`、`#` 等特殊字符
+- 建议用小写英文 + 下划线：`linxia`、`living_room`、`cafe_01`
+
+### 6.2 引用一致性
+
+分镜表中的 `scene` 和 `characters` 字段**必须**引用 `scenes[].id` 和 `characters[].id`。不一致会导致管线找不到定妆照和场景参考图。
+
+### 6.3 英文翻译质量
+
+所有 `*_en` 字段会被用于 AI 绘图的英文提示词。要求：
+- **地道自然**，不要逐字翻译（Chinglish）
+- **描述性**，包含视觉细节（颜色、材质、动作）
+- **action_en** 和 **dialogue_en** 不要包含引号
+
+### 6.4 台词中不要有英文双引号
+
+JSON 字符串中的 `"` 需要转义，容易出错。用中文引号 `""` 或省略号 `...` 代替。
