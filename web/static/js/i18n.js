@@ -48,6 +48,7 @@ const I18N = {
   'wb.batch_video': { zh: '🎬 批量视频', en: '🎬 Batch Video' },
   'wb.batch_lipsync': { zh: '👄 批量口型', en: '👄 Batch LipSync' },
   'wb.batch_label': { zh: '批量', en: 'Batch' },
+  'wb.force_overwrite': { zh: '强制覆盖', en: 'Force Overwrite' },
   'wb.no_shots': { zh: '暂无分镜', en: 'No shots yet' },
   'wb.no_shots_hint': { zh: '先在分镜表添加镜头', en: 'Add shots in Storyboard first' },
   'wb.go_edit': { zh: '去编辑', en: 'Go Edit' },

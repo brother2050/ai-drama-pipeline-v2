@@ -19,6 +19,8 @@ function _resetPipelineSteps() {
   document.querySelectorAll('.pipeline-arrow').forEach(el => el.classList.remove('done'));
 }
 
+function _isForce() { return document.getElementById('wb-force-cb')?.checked || false; }
+
 const _stepBtns = () => [
   { step: 'tts', icon: '🎤', label: t('step.tts') },
   { step: 'first-frame', icon: '🎨', label: t('step.first_frame') },
@@ -69,6 +71,7 @@ function renderWB(episodes) {
     <div class="wb-batch-btns">
       <button class="btn btn-outline" onclick="undo()" title="Ctrl+Z">↩ ${t('undo.undo')}</button>
       <button class="btn btn-outline" onclick="redo()" title="Ctrl+Shift+Z">↪ ${t('undo.redo')}</button>
+      <label class="force-toggle" title="${t('wb.force_overwrite')}"><input type="checkbox" id="wb-force-cb"> ${t('wb.force_overwrite')}</label>
       ${_stepBtns().map(b => `<button class="btn btn-outline" onclick="batchRun('${b.step}')">${b.icon} ${t('wb.batch_label')} ${b.label}</button>`).join('')}
       <span class="dim" style="margin:0 0.3rem">|</span>
       <button class="btn btn-outline" onclick="runPortraits()">📸 ${t('wb.gen_portraits')}</button>
@@ -295,7 +298,8 @@ async function runOne(step, idx) {
   _html(act, `<span class="run-indicator">⏳ ${step}...</span> <button class="btn btn-xs btn-danger" onclick="cancelCurrentTask()">⏹</button>`);
   _updatePipelineStep(step, 'active');
   try {
-    const { task_id } = await api(`/steps/${step}`, { method: 'POST', body: { episode: ep, shot_id: sid } });
+    const force = _isForce();
+    const { task_id } = await api(`/steps/${step}`, { method: 'POST', body: { episode: ep, shot_id: sid, force } });
     _currentTaskId = task_id;
     const result = await pollTask(task_id, info => _html(act, `<span class="run-indicator">⏳ ${info.message || step} (${info.progress || 0}%)</span> <button class="btn btn-xs btn-danger" onclick="cancelCurrentTask()">⏹</button>`));
     _currentTaskId = null;
@@ -344,7 +348,8 @@ async function batchRun(step) {
     if (batchCancelled) return;
     const sid = _shotId(shots[i], i);
     try {
-      const { task_id } = await api(`/steps/${step}`, { method: 'POST', body: { episode: ep, shot_id: sid } });
+      const force = _isForce();
+      const { task_id } = await api(`/steps/${step}`, { method: 'POST', body: { episode: ep, shot_id: sid, force } });
       _currentTaskId = task_id;
       const result = await pollTask(task_id);
       _currentTaskId = null;
