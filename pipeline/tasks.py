@@ -1347,6 +1347,51 @@ def ai_scenes_task(self, config_path: str, descriptions: list[str]) -> dict:
 # 4.1 对话式编辑 — LLM Chat Edit
 # ══════════════════════════════════════════════════════════
 
+def _parse_llm_json(text: str):
+    """从 LLM 响应中提取 JSON（容错：markdown 代码块、前后多余文字）
+
+    Returns:
+        解析后的对象，或 None 表示解析失败
+    """
+    if not text:
+        return None
+    text = text.strip()
+
+    # 1. 尝试直接解析
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # 2. 提取 markdown 代码块（```json ... ``` 或 ``` ... ```）
+    m = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+
+    # 3. 提取第一个 JSON 数组（从第一个 [ 到最后一个 ]）
+    start = text.find("[")
+    end = text.rfind("]")
+    if start != -1 and end > start:
+        try:
+            return json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+
+    # 4. 提取第一个 JSON 对象
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end > start:
+        try:
+            return json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+
+    return None
+
+
 @app.task(bind=True, name="ai_chat_edit", soft_time_limit=300)
 def ai_chat_edit_task(self, config_path: str, episode: int, message: str, current_shots: list) -> dict:
     """对话式编辑分镜 — 用自然语言修改分镜表"""
@@ -1374,16 +1419,11 @@ def ai_chat_edit_task(self, config_path: str, episode: int, message: str, curren
 
     try:
         response = llm.chat(prompt)
-        # 尝试解析 JSON
-        text = response.strip()
-        # 去掉可能的 markdown 代码块
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-            if text.endswith("```"):
-                text = text[:-3]
-            text = text.strip()
+        result = _parse_llm_json(response)
 
-        result = json.loads(text)
+        if result is None:
+            logger.warning(f"chat_edit JSON 解析失败，原始响应: {response[:500]}")
+            return {"status": "error", "reason": "LLM 返回的不是有效 JSON"}
 
         if isinstance(result, dict) and "error" in result:
             return {"status": "error", "reason": result["error"]}
@@ -1394,9 +1434,8 @@ def ai_chat_edit_task(self, config_path: str, episode: int, message: str, curren
 
         return {"status": "error", "reason": "LLM 返回格式不正确"}
 
-    except json.JSONDecodeError:
-        return {"status": "error", "reason": "LLM 返回的不是有效 JSON"}
     except Exception as e:
+        logger.error(f"chat_edit 异常: {e}")
         return {"status": "error", "reason": f"LLM 执行失败: {e}"}
 
 
