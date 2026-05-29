@@ -132,7 +132,7 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None, force:
         comfyui = container.get("image")
         from engines.workflow_builder import WorkflowBuilder
         models = config.get("models", {})
-        wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui, llm=llm)
+        wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui, llm=llm, force=force)
         wb.load_workflows()
 
         # 读取代数计数器（force 时递增，得到不同的生成结果）

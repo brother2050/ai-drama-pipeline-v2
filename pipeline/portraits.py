@@ -202,7 +202,7 @@ def run_portraits(
             comfyui = cont.get("image")
             from engines.workflow_builder import WorkflowBuilder
             models = cfg.get("models", {})
-            wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=comfyui, llm=llm)
+            wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=comfyui, llm=llm, force=force)
             wb.load_workflows()
 
             # ── 1. 生成三视图 ──

@@ -37,7 +37,8 @@ class WorkflowBuilder:
     """ComfyUI 工作流构建器"""
 
     def __init__(self, config: dict, models: dict, project_dir: str,
-                 wf_dir: str = "", registry=None, comfyui=None, llm=None):
+                 wf_dir: str = "", registry=None, comfyui=None, llm=None,
+                 force: bool = False):
         self.config = config
         self.models = models
         self.project_dir = project_dir
@@ -45,6 +46,7 @@ class WorkflowBuilder:
         self.registry = registry
         self.comfyui = comfyui
         self.llm = llm
+        self.force = force
         self.first_frame_wf: dict = {}
         self.video_wf: dict = {}
 
@@ -601,7 +603,7 @@ class WorkflowBuilder:
             # outfit 目录为空，尝试触发 ensure_portrait（auto_outfit 会补充 outfit 图）
             portrait = ensure_portrait(char_id, self.config,
                                        _SimpleContainer(self.comfyui) if self.comfyui else None,
-                                       llm=self.llm)
+                                       llm=self.llm, force=self.force)
             # 重新检查 outfit 目录
             if outfit_dir.exists():
                 for ext in ("*.png", "*.jpg", "*.jpeg"):
@@ -620,7 +622,7 @@ class WorkflowBuilder:
         # 3. 尝试自动定妆照（主图也不存在时）
         portrait = ensure_portrait(char_id, self.config,
                                    _SimpleContainer(self.comfyui) if self.comfyui else None,
-                                   llm=self.llm)
+                                   llm=self.llm, force=self.force)
         if portrait:
             return [portrait]
 

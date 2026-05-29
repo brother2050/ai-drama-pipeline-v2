@@ -350,7 +350,7 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, forc
         multi_char_prompt = MultiCharacterHandler().generate_multi_char_prompt(
             [c for c in (sm.get_character(cid) for cid in char_ids) if c])
 
-    wb = WorkflowBuilder(cfg.data, cfg.get("models", {}), cfg.project_dir, comfyui=cont.get("image"))
+    wb = WorkflowBuilder(cfg.data, cfg.get("models", {}), cfg.project_dir, comfyui=cont.get("image"), force=force)
     wb.load_workflows()
     prompt, wf = wb.build_first_frame(
         shot, character_desc=", ".join(char_descs),
