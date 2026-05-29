@@ -137,7 +137,7 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None, force:
 
         # 读取代数计数器（force 时递增，得到不同的生成结果）
         generation = char.get("portrait_generation", 0)
-        if force and all_views_exist:
+        if force:
             generation += 1
             char["portrait_generation"] = generation
             data["character"] = char

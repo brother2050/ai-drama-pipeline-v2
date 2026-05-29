@@ -94,8 +94,10 @@ def _ensure_redis():
 def _ensure_deps():
     """启动前检查"""
     _load_env()
-    _ensure_redis()
-    _ensure_postgres()
+    if not _ensure_redis():
+        sys.exit(1)
+    if not _ensure_postgres():
+        sys.exit(1)
 
 
 def _ensure_postgres():
@@ -105,7 +107,8 @@ def _ensure_postgres():
         console.print("[red]❌ AI_DRAMA_DB_DSN 未配置（PostgreSQL 必须）[/red]")
         console.print("  示例: AI_DRAMA_DB_DSN=postgresql://drama:drama123@127.0.0.1:5432/ai_drama")
         console.print("  先创建数据库: CREATE DATABASE ai_drama;")
-        sys.exit(1)
+        return False
+    return True
 
 
 # ── CLI ──

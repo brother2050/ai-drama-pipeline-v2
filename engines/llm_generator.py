@@ -211,7 +211,7 @@ def generate_characters(llm, descriptions: list[str], expected_ids: list[str] | 
                 cname = char.get("name", "").strip()
                 if cname in used_names:
                     suffix = char.get("id", str(i + 1))
-                    new_name = f"{cname}{suffix}"
+                    new_name = f"{cname}_{suffix}"
                     logger.warning(f"  ⚠ 角色名重复: {cname} → {new_name}")
                     char["name"] = new_name
                     cname = new_name
@@ -260,6 +260,7 @@ def generate_scenes(llm, descriptions: list[str], expected_ids: list[str] | None
         场景配置列表，与 descriptions 等长，失败的位置为 None
     """
     results = []
+    used_names: set[str] = set()
     for i, desc in enumerate(descriptions):
         if not desc.strip():
             results.append(None)
@@ -271,6 +272,15 @@ def generate_scenes(llm, descriptions: list[str], expected_ids: list[str] | None
             if scene and isinstance(scene, dict):
                 if expected_ids and i < len(expected_ids):
                     scene["id"] = expected_ids[i]
+                # 去重：如果 name 与已有场景重复，追加 ID 后缀
+                sname = scene.get("name", "").strip()
+                if sname in used_names:
+                    suffix = scene.get("id", str(i + 1))
+                    new_name = f"{sname}_{suffix}"
+                    logger.warning(f"  ⚠ 场景名重复: {sname} → {new_name}")
+                    scene["name"] = new_name
+                    sname = new_name
+                used_names.add(sname)
                 results.append(scene)
                 logger.info(f"  ✅ 生成场景: {scene.get('name', '?')} ({scene.get('id', '?')})")
             else:
@@ -313,12 +323,19 @@ def expand_outline(llm, outline: str) -> str:
 def _postprocess_shots(shots: list[dict], episode: int) -> list[dict]:
     """后处理镜头列表"""
     result = []
+    used_ids: set[str] = set()
     for i, shot in enumerate(shots):
         if not isinstance(shot, dict):
             continue
-        # 确保 shot_id
-        if not shot.get("shot_id"):
-            shot["shot_id"] = f"{i+1:03d}"
+        # 确保 shot_id（去重：LLM 可能返回重复 ID）
+        sid = shot.get("shot_id", "")
+        if not sid:
+            sid = f"{i+1:03d}"
+        if sid in used_ids:
+            sid = f"{i+1:03d}"
+            logger.warning(f"镜头 shot_id 重复，自动重编号为 {sid}")
+        shot["shot_id"] = sid
+        used_ids.add(sid)
         # 确保 episode（统一为字符串，与 CSV 读取行为一致）
         shot["episode"] = str(episode)
         # 限制 duration 范围（截断时警告，避免用户不知情）

@@ -130,7 +130,13 @@ class ComfyUI:
         files = []
         headers = self._headers()
         for node_out in outputs.values():
-            for img in node_out.get("images", []):
+            # 兼容图片(images)和视频(gifs/videos)输出
+            media_items = (
+                node_out.get("images", [])
+                + node_out.get("gifs", [])
+                + node_out.get("videos", [])
+            )
+            for img in media_items:
                 fname = img.get("filename")
                 if not fname:
                     continue

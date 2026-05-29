@@ -62,7 +62,7 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
         logger.warning("没有视频文件")
         return
 
-    # 拼接
+    # 拼接参数
     transition = cfg.get("post_production.transition", "crossfade")
     transition_duration = cfg.get("post_production.transition_duration", 0.5)
 
