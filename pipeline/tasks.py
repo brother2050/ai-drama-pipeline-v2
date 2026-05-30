@@ -1120,7 +1120,7 @@ def _run_subtitle(config_path: str, episode: int) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     srt = str(out_dir / f"episode_{episode:02d}.srt")
     generate_srt(shots, srt, transition_duration=cfg.get("post_production.transition_duration", 0.5))
-    return {"path": srt, "count": len(shots)}
+    return {"status": "done", "path": srt, "count": len(shots)}
 
 
 def _run_post(config_path: str, episode: int, vertical: bool = False) -> None:
