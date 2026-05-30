@@ -90,8 +90,8 @@ def check_platform_compat(video: str, platform: str) -> dict:
     pw, ph = preset["resolution"]
     vw, vh = info.get("width", 0), info.get("height", 0)
     if vw > 0 and vh > 0:
-        expected_ratio = ph / pw  # 目标宽高比
-        actual_ratio = vh / vw
+        expected_ratio = pw / ph  # 目标宽高比（标准 width/height）
+        actual_ratio = vw / vh
         if abs(actual_ratio - expected_ratio) > 0.1:
             issues.append(f"宽高比不匹配: 视频 {vw}x{vh}，平台要求 {pw}x{ph}")
 

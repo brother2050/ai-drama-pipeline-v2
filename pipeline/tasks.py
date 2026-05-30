@@ -1391,11 +1391,8 @@ def ai_scenes_task(self, config_path: str, descriptions: list[str]) -> dict:
 
 
 # ══════════════════════════════════════════════════════════
-# 4.1 对话式编辑 — LLM Chat Edit
+#  对话式编辑 — LLM Chat Edit
 # ══════════════════════════════════════════════════════════
-
-
-
 
 @app.task(bind=True, name="ai_chat_edit", soft_time_limit=300)
 def ai_chat_edit_task(self, config_path: str, episode: int, message: str, current_shots: list) -> dict:

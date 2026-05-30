@@ -54,7 +54,7 @@ project:
 
 # 默认分镜表模板（空表头）
 _DEFAULT_STORYBOARD_CSV = """\
-episode,shot_id,scene,characters,action,dialogue,camera,shot_type,duration,outfit,emotion,action_en,dialogue_en
+episode,shot_id,scene,characters,action,dialogue,camera,shot_type,duration,outfit,emotion,action_en,dialogue_en,language
 """
 
 # 示例角色模板

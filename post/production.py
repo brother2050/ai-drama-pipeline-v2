@@ -99,7 +99,6 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
             return
 
     # 添加字幕（如果有 SRT）
-    srt_path = out_dir / f"episode_{episode:02d}.srt"
     if srt_path.exists():
         subtitled_out = out_dir / f"episode_{episode:02d}_subtitled.mp4"
         try:

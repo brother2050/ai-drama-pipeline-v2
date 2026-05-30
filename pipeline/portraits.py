@@ -21,7 +21,7 @@ from engines.portrait import _view_seed, _outfit_seed
 
 logger = logging.getLogger(__name__)
 
-# 三视图配置
+# 三视图配置: (文件名, 景别, 标签)
 _THREE_VIEWS = [
     ("cover.png", "特写", "正面"),
     ("side.png",  "侧面特写", "侧面"),

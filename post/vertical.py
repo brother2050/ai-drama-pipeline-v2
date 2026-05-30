@@ -27,7 +27,7 @@ def _find_face_center(video: str, max_samples: int = 5) -> tuple[int, int] | Non
     """
     try:
         import face_recognition
-        import cv2  # noqa: F811
+        import cv2
     except ImportError:
         return None
     try:
