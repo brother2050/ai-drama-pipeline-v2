@@ -15,24 +15,6 @@
  *  11. extras.js    — 拖拽排序/批量导入导出/引用计数/成片预览/主体库/多剧集/Worker状态
  *  12. init.js      — 启动入口
  */
-
-/**
- * AI 短剧工作台 v2 — 主应用
- *
- * 模块清单（按加载顺序）：
- *   1. core.js      — 基础设施：API/cache/toast/modal/pollTask/undo-redo/routing/CRUD
- *   2. dashboard.js — 仪表盘 + 灵感生成
- *   3. pipeline.js  — 生产工作台：步骤/镜头编辑/执行/工具
- *   4. characters.js— 角色管理 + 定妆照 + 服装 + LoRA 训练
- *   5. scenes.js    — 场景管理
- *   6. storyboard.js— 分镜表（表格/卡片视图）
- *   7. ai-gen.js    — AI 生成（通用执行器 + 对话式编辑）
- *   8. seko.js      — Seko 影视策划案
- *   9. projects.js  — 项目管理
- *  10. settings.js  — 系统设置 + 配置预设
- *  11. extras.js    — 拖拽排序/批量导入导出/引用计数/成片预览/主体库/多剧集/Worker状态
- *  12. init.js      — 启动入口
- */
 const API = '/api';
 
 // ── 基础设施 ──
