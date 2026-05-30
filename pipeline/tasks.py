@@ -816,7 +816,6 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
     """为单个角色的指定服装生成参考图（异步）"""
     _ensure_path()
     from engines.workflow_builder import WorkflowBuilder
-    from engines.prompt import translate_to_english
 
     self.update_state(state="PROGRESS", meta={"step": "outfit", "progress": 10, "message": f"生成 {char_id}/{outfit_key} 服装图..."})
 
@@ -830,7 +829,7 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
     with open(char_yaml_path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     char = data.get("character", {})
-    appearance = char.get("appearance", char_id)
+    appearance_en = char.get("appearance_prompt_en", "")
     outfits = char.get("outfits", {})
 
     if not isinstance(outfits, dict) or outfit_key not in outfits:
@@ -838,7 +837,7 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
         return {"status": "error", "reason": f"角色 {char_id} 没有名为 '{outfit_key}' 的服装，可用: {available}"}
 
     outfit_val = outfits[outfit_key]
-    outfit_desc = outfit_val.get("description", "")
+    outfit_desc = outfit_val.get("description_en", "") or outfit_val.get("description", "")
     if not outfit_desc:
         return {"status": "error", "reason": f"角色 {char_id} 的服装 '{outfit_key}' 描述为空"}
 
@@ -852,9 +851,7 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
     # 记录旧图，生成成功后再删除（避免生成失败导致无图）
     old_outfit_imgs = list(outfit_dir.glob("*.png")) + list(outfit_dir.glob("*.jpg"))
 
-    full_desc = f"{appearance}, wearing {outfit_desc}"
-    if any(ord(c) > 127 for c in full_desc):
-        full_desc = translate_to_english(full_desc, llm=None)
+    full_desc = f"{appearance_en}, wearing {outfit_desc}"
 
     models = cfg.get("models", {})
     wb = WorkflowBuilder(cfg.data, models, str(project_dir), comfyui=comfyui)
@@ -2053,31 +2050,23 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
         if translate:
             logger.warning(f"LLM 不可用，跳过翻译: {e}")
 
-    from engines.prompt import translate_to_english, batch_translate_to_english, generate_appearance_prompt, generate_view_prompts
+    from engines.prompt import translate_to_english, batch_translate_to_english, batch_generate_appearance_prompts
     from infra.config import save_yaml
-
-    # 批量翻译开关（config: llm.batch_translate，默认 True）
-    use_batch = cfg.get("llm.batch_translate", True)
-    if use_batch:
-        logger.info("  批量翻译模式: ON")
-    else:
-        logger.info("  批量翻译模式: OFF")
 
     result = {
         "prompt_chars": 0, "translated_scenes": 0, "translated_shots": 0,
     }
 
-    def _single(text: str) -> str:
-        return translate_to_english(text, llm=llm)
-
-    # ── 1. 生成角色模型友好 prompt（替代翻译） ──
+    # ── 1. 批量生成角色模型友好 prompt ──
     if translate and llm:
         self.update_state(state="PROGRESS", meta={
             "step": "prepare", "progress": 10, "message": "生成角色 prompt..."})
 
         char_dir = project_dir / "config" / "characters"
         if char_dir.exists():
-            all_char_files: list[tuple[Path, dict]] = []
+            # 收集需要生成 prompt 的角色
+            chars_to_process: list[dict] = []
+            char_files: list[tuple[Path, dict]] = []
 
             for f in char_dir.glob("*.yaml"):
                 if f.stem.endswith(".example"):
@@ -2090,43 +2079,43 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                 char = data.get("character", {})
                 if not char.get("id"):
                     continue
-                all_char_files.append((f, data))
+                char_files.append((f, data))
 
                 appearance = char.get("appearance", "")
                 if not appearance:
                     continue
-                # 需要生成：无 prompt_en 或 force 模式
                 need_prompt = not char.get("appearance_prompt_en") or force
                 need_views = not all(char.get(f"appearance_{v}_prompt_en") for v in ("front", "side", "back")) or force
+                if need_prompt or need_views:
+                    chars_to_process.append(char)
 
-                if not need_prompt and not need_views:
-                    continue
+            # 批量调用 LLM（一次调用处理所有角色）
+            if chars_to_process:
+                prompt_results = batch_generate_appearance_prompts(chars_to_process, llm)
 
-                # 生成通用 prompt_en
-                if need_prompt:
-                    prompt_en = generate_appearance_prompt(appearance, llm)
-                    if prompt_en:
-                        char["appearance_prompt_en"] = prompt_en
+                # 回写结果
+                for f, data in char_files:
+                    char = data.get("character", {})
+                    cid = char.get("id", "")
+                    if cid in prompt_results:
+                        pr = prompt_results[cid]
+                        if pr.get("prompt_en"):
+                            char["appearance_prompt_en"] = pr["prompt_en"]
+                        if pr.get("front"):
+                            char["appearance_front_prompt_en"] = pr["front"]
+                        if pr.get("side"):
+                            char["appearance_side_prompt_en"] = pr["side"]
+                        if pr.get("back"):
+                            char["appearance_back_prompt_en"] = pr["back"]
+                        data["character"] = char
                         result["prompt_chars"] += 1
-                        logger.info(f"  ✅ prompt_en {char['id']}: {prompt_en[:60]}...")
 
-                # 生成视角专属 prompt_en
-                if need_views:
-                    view_prompts = generate_view_prompts(appearance, llm)
-                    if view_prompts:
-                        char["appearance_front_prompt_en"] = view_prompts["front"]
-                        char["appearance_side_prompt_en"] = view_prompts["side"]
-                        char["appearance_back_prompt_en"] = view_prompts["back"]
-                        logger.info(f"  ✅ 视角 prompt {char['id']}: front/side/back")
+                # 批量保存
+                for f, data in char_files:
+                    save_yaml(f, data)
+                logger.info(f"  生成角色 prompt: {result['prompt_chars']} 个")
 
-                data["character"] = char
-
-            # 批量保存
-            for f, data in all_char_files:
-                save_yaml(f, data)
-            logger.info(f"  生成角色 prompt: {result['prompt_chars']} 个")
-
-    # ── 1b. 翻译角色其他字段（voice、outfits） ──
+    # ── 1b. 批量翻译角色附属字段（voice、outfits） ──
     if translate and llm:
         self.update_state(state="PROGRESS", meta={
             "step": "prepare", "progress": 20, "message": "翻译角色附属字段..."})
@@ -2167,7 +2156,7 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
 
             if pending:
                 texts = [p[3] for p in pending]
-                translations = batch_translate_to_english(texts, llm=llm) if use_batch else [_single(t) for t in texts]
+                translations = batch_translate_to_english(texts, llm=llm)
 
                 for (_, file_data, field_path, _), translated in zip(pending, translations):
                     if not translated:
@@ -2220,7 +2209,7 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
 
             if pending:
                 texts = [p[3] for p in pending]
-                translations = batch_translate_to_english(texts, llm=llm) if use_batch else [_single(t) for t in texts]
+                translations = batch_translate_to_english(texts, llm=llm)
 
                 for (_, file_data, field_path, _), translated in zip(pending, translations):
                     if not translated:
@@ -2267,7 +2256,7 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
 
             if shot_pending:
                 texts = [p[2] for p in shot_pending]
-                translations = batch_translate_to_english(texts, llm=llm) if use_batch else [_single(t) for t in texts]
+                translations = batch_translate_to_english(texts, llm=llm)
 
                 changed = False
                 for (si, field, _), translated in zip(shot_pending, translations):

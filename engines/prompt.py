@@ -1,9 +1,7 @@
-"""Prompt 工程引擎 — LLM 生成模型友好 prompt + ComfyUI Prompt 构建"""
+"""Prompt 工程引擎 — LLM 批量生成模型友好 prompt + ComfyUI Prompt 构建"""
 from __future__ import annotations
 import logging
 import re
-import urllib.parse
-import urllib.request
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +66,7 @@ def _strip_dialogue(text: str) -> str:
 
 
 # ══════════════════════════════════════════════════════════
-#  LLM 生成模型友好 prompt（prepare 阶段调用）
+#  LLM 批量生成模型友好 prompt（prepare 阶段调用）
 # ══════════════════════════════════════════════════════════
 
 _APPEARANCE_PROMPT_SYSTEM = """你是一位顶级 AI 绘画提示词工程师，精通 Stable Diffusion / Flux / Cosmos 的 prompt 编写。
@@ -84,90 +82,86 @@ _APPEARANCE_PROMPT_SYSTEM = """你是一位顶级 AI 绘画提示词工程师，
 6. 不要包含 quality 标签（如 best quality, masterpiece，由负向 prompt 控制）
 7. 如果描述中有年龄、身高等数字信息，保留
 
-示例：
-输入：22岁温柔女生，长发及腰，皮肤白皙，大眼睛，瓜子脸，身材娇小
-输出：1girl, 22 years old, gentle appearance, long hair reaching waist, fair skin, big eyes, oval face, petite figure, delicate features
-
-输入：25岁冷酷男生，短发，剑眉星目，高鼻梁，身材高挑，肌肉线条分明
-输出：1boy, 25 years old, cold expression, short hair, thick straight eyebrows, bright eyes, high nose bridge, tall and slender, muscular build
-
-只输出英文 prompt，不要任何解释。"""
-
-
-_VIEW_PROMPT_SYSTEM = """你是一位顶级 AI 绘画提示词工程师。根据角色的完整外貌描述，为三个不同视角生成英文 prompt。
-
-规则：
-1. 只描述该视角**可见**的内容，不可见的特征必须省略
-2. 正面（front）：包含面部特征、表情、发型正面、全身服装、配饰
-3. 侧面（side）：侧面轮廓、发型侧面、体型剪影、服装侧面，可保留鼻梁/下巴轮廓
-4. 背面（back）：只包含后脑勺/发型背面、背部、体型背面、服装背面、手臂/手部。**绝对不能包含任何面部特征**
-5. 输出纯英文，逗号分隔的短语，不要完整句子
-6. 保持原始描述的风格基调
-
 输出格式（严格 JSON，不要其他文字）：
 ```json
 {
-  "front": "1girl, ...",
-  "side": "1girl, ...",
-  "back": "1girl, ..."
+  "prompt_en": "1girl, 22 years old, ...",
+  "front": "1girl, 22 years old, ...（正面可见的所有特征）",
+  "side": "1girl, ...（侧面可见特征，无正面面部细节）",
+  "back": "1girl, ...（仅背面可见特征，绝对无面部）"
 }
-```"""
+```
+
+视角规则：
+- front：包含面部特征、表情、发型正面、全身服装、配饰
+- side：侧面轮廓、发型侧面、体型剪影、服装侧面，可保留鼻梁/下巴轮廓
+- back：只包含后脑勺/发型背面、背部、体型背面、服装背面。**绝对不能包含任何面部特征**
+
+只输出 JSON，不要任何解释。"""
 
 
-def generate_appearance_prompt(appearance_zh: str, llm) -> str:
-    """用 LLM 将中文外貌描述转为模型友好的英文 prompt
+def batch_generate_appearance_prompts(characters: list[dict], llm) -> dict[str, dict]:
+    """批量生成角色模型友好 prompt（一次 LLM 调用处理多个角色）
 
     Args:
-        appearance_zh: 中文外貌描述
+        characters: 角色数据列表，每项需有 id 和 appearance 字段
         llm: LLM 后端实例
 
     Returns:
-        英文 prompt 字符串，失败返回空字符串
+        {char_id: {"prompt_en": "...", "front": "...", "side": "...", "back": "..."}} 映射
     """
-    if not appearance_zh or not llm:
-        return ""
-    # 已是英文直接返回
-    if all(ord(c) < 128 for c in appearance_zh):
-        return appearance_zh
-
-    try:
-        result = llm.chat(f"角色外貌描述：\n{appearance_zh}", system=_APPEARANCE_PROMPT_SYSTEM, max_tokens=512)
-        if result and result.strip():
-            prompt = result.strip().strip('"\'')
-            logger.info(f"  ✅ 外貌 prompt 生成: {prompt[:80]}...")
-            return prompt
-    except Exception as e:
-        logger.warning(f"外貌 prompt 生成失败: {e}")
-
-    return ""
-
-
-def generate_view_prompts(appearance_zh: str, llm) -> dict[str, str]:
-    """用 LLM 将外貌描述拆分为三个视角的模型友好英文 prompt
-
-    Args:
-        appearance_zh: 中文外貌描述
-        llm: LLM 后端实例
-
-    Returns:
-        {"front": "...", "side": "...", "back": "..."} 或空 dict（失败时）
-    """
-    if not appearance_zh or not llm:
+    if not characters or not llm:
         return {}
 
-    prompt = f"角色外貌描述：\n{appearance_zh}\n\n请拆分为三个视角的英文 prompt。"
+    # 构建批量 prompt：每个角色编号
+    parts = []
+    for i, char in enumerate(characters):
+        cid = char.get("id", f"char_{i}")
+        appearance = char.get("appearance", "")
+        parts.append(f"[角色 {i+1}] id={cid}\n外貌描述：{appearance}")
+
+    prompt = "请为以下每个角色生成 AI 绘图 prompt，按角色编号输出 JSON 数组。\n\n" + "\n\n".join(parts)
 
     try:
         from infra.json_parse import parse_llm_json
-        response = llm.chat(prompt, system=_VIEW_PROMPT_SYSTEM, max_tokens=1024)
+        response = llm.chat(prompt, system=_APPEARANCE_PROMPT_SYSTEM, max_tokens=4096)
         result = parse_llm_json(response)
-        if isinstance(result, dict) and all(k in result for k in ("front", "side", "back")):
-            return {k: v.strip() for k, v in result.items() if isinstance(v, str)}
-        logger.warning(f"LLM 视角拆分返回格式不正确: {response[:200]}")
-    except Exception as e:
-        logger.warning(f"LLM 视角拆分失败: {e}")
 
-    return {}
+        if not result:
+            logger.warning(f"批量 prompt 生成返回无法解析")
+            return {}
+
+        # 统一为列表处理
+        if isinstance(result, dict):
+            result = [result]
+
+        if not isinstance(result, list):
+            logger.warning(f"批量 prompt 生成返回格式不正确: {type(result)}")
+            return {}
+
+        # 映射回 char_id
+        mapping: dict[str, dict] = {}
+        for i, item in enumerate(result):
+            if not isinstance(item, dict):
+                continue
+            # 从结果中提取 id，或按顺序匹配
+            cid = item.get("id", "")
+            if not cid and i < len(characters):
+                cid = characters[i].get("id", f"char_{i}")
+            if cid:
+                mapping[cid] = {
+                    "prompt_en": item.get("prompt_en", ""),
+                    "front": item.get("front", ""),
+                    "side": item.get("side", ""),
+                    "back": item.get("back", ""),
+                }
+
+        logger.info(f"  ✅ 批量 prompt 生成: {len(mapping)}/{len(characters)} 个角色")
+        return mapping
+
+    except Exception as e:
+        logger.warning(f"批量 prompt 生成失败: {e}")
+        return {}
 
 
 def get_view_appearance(char: dict, shot_type: str) -> str:
@@ -190,12 +184,10 @@ def get_view_appearance(char: dict, shot_type: str) -> str:
     else:
         view_key = "front"
 
-    # 优先视角专属 prompt
     view_prompt = char.get(f"appearance_{view_key}_prompt_en", "")
     if view_prompt:
         return view_prompt
 
-    # 回退到通用 prompt
     return char.get("appearance_prompt_en", "")
 
 
@@ -208,23 +200,19 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
     """
     parts = []
 
-    # 风格前缀
     if style:
         parts.append(f"{style} style")
     if genre:
         parts.append(f"{genre} atmosphere")
 
-    # 场景（已是英文则直接用，否则翻译）
     if scene_desc:
         if any(ord(c) > 127 for c in scene_desc):
             scene_desc = translate_to_english(scene_desc, llm=llm)
         parts.append(scene_desc)
 
-    # 角色（调用方应传入 prompt_en，此处直接使用）
     if character_desc:
         parts.append(character_desc)
 
-    # 动作：优先读预翻译的 action_en，否则翻译 action
     action = shot.get("action_en", "").strip()
     if not action:
         action = shot.get("action", "")
@@ -237,16 +225,13 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
     if action:
         parts.append(action)
 
-    # 情绪
     emotion = shot.get("emotion", "neutral")
     emotion_desc = EMOTION_MAP.get(emotion, EMOTION_MAP.get("neutral", "neutral expression"))
     parts.append(emotion_desc)
 
-    # 景别
     shot_type = shot.get("shot_type", "中景")
     parts.append(SHOT_TYPE_MAP.get(shot_type, "medium shot"))
 
-    # 运镜
     camera = shot.get("camera", "固定")
     parts.append(CAMERA_MAP.get(camera, "static camera"))
 
@@ -254,83 +239,27 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
 
 
 # ══════════════════════════════════════════════════════════
-#  翻译（场景描述、动作、台词等非外貌文本）
+#  LLM 翻译（场景、动作、台词等非外貌文本）
 # ══════════════════════════════════════════════════════════
 
-_TRANSLATE_API = "https://shanhe.kim/api/fany/fanyi.php"
-_translate_cache: dict[str, str] = {}
-_translate_cache_lock = __import__("threading").Lock()
-_CACHE_MAX_SIZE = 4096
-
-
-def _cache_set(key: str, value: str) -> None:
-    with _translate_cache_lock:
-        if len(_translate_cache) >= _CACHE_MAX_SIZE:
-            evict_count = _CACHE_MAX_SIZE // 4
-            for old_key in list(_translate_cache)[:evict_count]:
-                del _translate_cache[old_key]
-        _translate_cache[key] = value
-
-
-def _http_translate(text: str) -> str:
-    """通过山河翻译 API 进行中→英翻译（带缓存 + 重试）"""
-    with _translate_cache_lock:
-        if text in _translate_cache:
-            return _translate_cache[text]
-    import time as _time
-    try:
-        import httpx
-        _do_http = lambda url: httpx.get(url, timeout=10, follow_redirects=True).text
-    except ImportError:
-        _do_http = lambda url: urllib.request.urlopen(
-            urllib.request.Request(url, headers={"User-Agent": "ai-drama-pipeline/2.0"}),
-            timeout=10).read().decode("utf-8", errors="replace")
-
-    for attempt in range(3):
-        try:
-            url = f"{_TRANSLATE_API}?msg={urllib.parse.quote(text)}"
-            raw = _do_http(url)
-            m = re.search(r"结果[：:]\s*(.+)", raw, re.DOTALL)
-            if m:
-                result = m.group(1).strip()
-                result = re.sub(r"<[^>]+>", "", result).strip()
-                if result:
-                    _cache_set(text, result)
-                    logger.debug(f"HTTP 翻译成功: {text[:30]} → {result[:30]}")
-                    return result
-            logger.warning(f"HTTP 翻译返回格式异常: {raw[:100]}")
-        except Exception as e:
-            if attempt < 2:
-                _time.sleep(0.5 * (attempt + 1))
-                logger.debug(f"HTTP 翻译重试 ({attempt+1}/3): {e}")
-            else:
-                logger.warning(f"HTTP 翻译失败（已重试3次）: {e}")
-    return ""
+_TRANSLATE_SYSTEM = "You are a professional translator. Output only the translation, no explanations."
 
 
 def translate_to_english(text: str, llm=None) -> str:
-    """中文→英文翻译（LLM 优先，HTTP API 兜底）"""
+    """中文→英文翻译（LLM）"""
     if not text:
         return ""
     if all(ord(c) < 128 for c in text):
         return text
-    if text in _translate_cache:
-        return _translate_cache[text]
-    if llm:
-        try:
-            result = llm.chat(f"Translate to English, output only the translation: {text}",
-                              system="You are a professional translator.")
-            if result and result.strip():
-                translated = result.strip()
-                _cache_set(text, translated)
-                return translated
-        except Exception as e:
-            logger.warning(f"LLM translation failed: {e}")
-    result = _http_translate(text)
-    if result:
-        return result
-    logger.warning(f"翻译全部失败，中文描述将原样传入 ComfyUI（可能无效）: {text[:50]}...")
-    return text
+    if not llm:
+        logger.warning(f"LLM 不可用，中文描述将原样传入（可能无效）: {text[:50]}...")
+        return text
+    try:
+        result = llm.chat(f"Translate to English: {text}", system=_TRANSLATE_SYSTEM)
+        return result.strip() if result and result.strip() else text
+    except Exception as e:
+        logger.warning(f"翻译失败: {e}")
+        return text
 
 
 _BATCH_TRANSLATE_SYSTEM = """You are a professional translator. The user will send numbered Chinese texts.
@@ -354,8 +283,6 @@ def batch_translate_to_english(texts: list[str], llm=None) -> list[str]:
             results[i] = ""
         elif all(ord(c) < 128 for c in t):
             results[i] = t
-        elif t in _translate_cache:
-            results[i] = _translate_cache[t]
         else:
             need_idx.append(i)
             need_text.append(t)
@@ -398,10 +325,8 @@ def _translate_batch(batch: list[tuple[int, str]], results: list[str], llm) -> N
         for i, (orig_idx, orig_text) in enumerate(batch):
             translated = parsed.get(i + 1, "")
             if translated:
-                _cache_set(orig_text, translated)
                 results[orig_idx] = translated
             else:
-                logger.debug(f"批量翻译第 {i+1} 条解析失败，回退单条翻译")
                 results[orig_idx] = translate_to_english(orig_text, llm=llm)
 
         logger.debug(f"批量翻译成功: {len(batch)} 条, 解析到 {len(parsed)} 条")
