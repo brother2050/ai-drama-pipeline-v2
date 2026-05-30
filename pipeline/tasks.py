@@ -50,6 +50,7 @@ def _load_shots(config_path: str, episode: int) -> list[dict]:
 
 # ── 分镜表缓存（同一次生产周期内只读一次 CSV）──
 _sb_cache: dict[str, tuple[float, list[dict]]] = {}
+_SB_CACHE_MAX = 8  # 最多缓存不同项目的分镜表数量
 
 
 def _load_all_shots_cached(config_path: str) -> list[dict]:
@@ -64,6 +65,10 @@ def _load_all_shots_cached(config_path: str) -> list[dict]:
         return cached[1]
     with open(sb, encoding="utf-8") as f:
         all_shots = [dict(r) for r in csv.DictReader(f)]
+    # 缓存数量上限：淘汰最旧的条目，防止 worker 长期运行时内存泄漏
+    if len(_sb_cache) >= _SB_CACHE_MAX and sb_str not in _sb_cache:
+        oldest_key = min(_sb_cache, key=lambda k: _sb_cache[k][0])
+        _sb_cache.pop(oldest_key, None)
     _sb_cache[sb_str] = (mtime, all_shots)
     return all_shots
 
@@ -196,7 +201,8 @@ def _prepare(config_path: str, episode: int, shot_id: str, step: str, tool: str,
 
     传入 cfg/cont/shot 时跳过对应创建/读取，复用已有对象。
     """
-    _ensure_path()
+    if cfg is None or cont is None:
+        _ensure_path()
     # force=True 时跳过 running 状态检查，允许强制覆盖
     if not force and not _try_mark_running_atomic(config_path, episode, shot_id, step):
         return None, None, None, _skip(shot_id, step, "该步骤正在执行中")
