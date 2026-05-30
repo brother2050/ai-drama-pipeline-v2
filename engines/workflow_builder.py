@@ -107,20 +107,23 @@ class WorkflowBuilder:
         return {}
 
     def _apply_gpu(self, wf: dict, stage: str, gpu_cfg: dict) -> None:
-        """应用生成参数到工作流（仅步数，分辨率保持 JSON 模板原生值）
+        """应用生成参数到工作流（分辨率可选覆盖 + 步数可选覆盖）
 
-        各工作流 JSON 中的分辨率是模型训练时的原生尺寸，不应被覆盖：
-        - Cosmos 首帧: 1024×1024
-        - Flux 首帧:   1024×576
-        - SD1.5 首帧:  512×512
-        - Cosmos 视频:  848×480
-        - CogVideoX:    720×480
+        优先级: generation.resolution 配置 > JSON 模板原生值
+        未配置 generation 段时，使用 JSON 模板中的模型原生分辨率。
         """
+        resolution = gpu_cfg.get("resolution")
         image_steps = gpu_cfg.get("image_steps")
 
         for nid, node in wf.items():
             ct = node.get("class_type", "")
             inp = node.get("inputs", {})
+
+            # 分辨率 → EmptyLatentImage（仅用户显式配置时覆盖）
+            if ct in ("EmptyLatentImage", "EmptySD3LatentImage"):
+                if resolution and len(resolution) == 2:
+                    inp["width"] = resolution[0]
+                    inp["height"] = resolution[1]
 
             # 步数 → KSampler / KSamplerAdvanced（仅首帧，且仅用户显式配置时覆盖）
             if ct in ("KSampler", "KSamplerAdvanced") and stage == "first_frame":
