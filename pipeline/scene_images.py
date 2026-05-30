@@ -122,12 +122,25 @@ def run_scene_images(
 
         scene_asset_dir.mkdir(parents=True, exist_ok=True)
 
-        # 翻译策略：优先读预翻译的 description_en
+        # 翻译策略：优先读预翻译的 description_en，缺失时用 LLM 翻译
         desc_en = scene.get("description_en", "")
         if not desc_en:
             if description and any(ord(c) > 127 for c in description):
-                logger.warning(f"  ⚠ 场景 {sname}: 尚未生成英文描述，请先执行: drama prepare <集数>")
-                continue
+                if llm:
+                    from engines.prompt import translate_to_english
+                    desc_en = translate_to_english(description, llm=llm)
+                    if desc_en and desc_en != description:
+                        # 回写翻译结果，下次不再翻译
+                        scene["description_en"] = desc_en
+                        data["scene"] = scene
+                        save_yaml(f, data)
+                        logger.info(f"  📝 场景 {sname}: 已自动翻译 description_en")
+                    else:
+                        logger.warning(f"  ⚠ 场景 {sname}: 翻译失败，请手动执行: drama prepare <集数>")
+                        continue
+                else:
+                    logger.warning(f"  ⚠ 场景 {sname}: 尚未生成英文描述且无 LLM 可用，请先执行: drama prepare <集数>")
+                    continue
             else:
                 desc_en = description
 

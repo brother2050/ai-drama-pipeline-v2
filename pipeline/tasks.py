@@ -730,12 +730,7 @@ def produce_task(self, config_path: str, episode: int, vertical: bool = False, f
     shots = _load_episode_shots(config_path, episode)
     if not shots:
         return {"status": "empty", "message": f"第{episode}集没有镜头"}
-    try:
-        self.update_state(state="PROGRESS", meta={"step": "subtitle", "progress": 2, "message": "生成字幕..."})
-        _run_subtitle(config_path, episode)
-    except Exception as e:
-        logger.warning(f"字幕失败: {e}")
-    results = _iterate_shots(self, config_path, episode, shots, progress_base=5, progress_range=80, force=force)
+    results = _iterate_shots(self, config_path, episode, shots, progress_base=5, progress_range=85, force=force)
     self.update_state(state="PROGRESS", meta={"step": "post", "progress": 90, "message": "后期合成..."})
     try:
         _run_post(config_path, episode, vertical)

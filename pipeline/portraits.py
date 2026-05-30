@@ -48,7 +48,7 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
     view_desc = get_view_appearance(char, shot_type) if char else ""
     if not view_desc:
         logger.error(f"角色 '{char_id}' 未生成 AI 绘图 prompt，请先运行: drama prepare <episode>")
-        return ""
+        return False
 
     fake_shot = {"characters": char_id, "emotion": "neutral",
                  "shot_type": shot_type, "camera": "固定"}
