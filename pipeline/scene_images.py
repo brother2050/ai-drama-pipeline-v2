@@ -41,7 +41,6 @@ def run_scene_images(
     """
     import yaml
     from engines.workflow_builder import WorkflowBuilder
-    from engines.prompt import translate_to_english
     from infra.config import Config, save_yaml
     from api import _ensure_registered
     from api.registry import Container
@@ -123,11 +122,12 @@ def run_scene_images(
 
         scene_asset_dir.mkdir(parents=True, exist_ok=True)
 
-        # 翻译策略：优先读预翻译的 description_en，无则回退到 LLM 翻译
+        # 翻译策略：优先读预翻译的 description_en
         desc_en = scene.get("description_en", "")
         if not desc_en:
-            if any(ord(c) > 127 for c in description):
-                desc_en = translate_to_english(description, llm=llm)
+            if description and any(ord(c) > 127 for c in description):
+                logger.warning(f"  ⚠ 场景 {sname}: 尚未生成英文描述，请先执行: drama prepare <集数>")
+                continue
             else:
                 desc_en = description
 
