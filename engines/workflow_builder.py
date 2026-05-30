@@ -232,8 +232,10 @@ class WorkflowBuilder:
         # 使用统一的 prompt 构建函数
         style = self.config.get("project", {}).get("style", "cinematic")
         genre = self.config.get("project", {}).get("genre", "urban")
+        img_backend = self.models.get("image_backend", "sd15")
         positive = build_prompt(shot, character_desc=character_desc,
-                                scene_desc=scene_desc, style=style, genre=genre)
+                                scene_desc=scene_desc, style=style, genre=genre,
+                                image_backend=img_backend)
         if multi_char_prompt:
             positive = f"{positive}, {multi_char_prompt}"
 

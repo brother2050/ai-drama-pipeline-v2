@@ -237,25 +237,27 @@ def get_view_appearance(char: dict, shot_type: str) -> str:
 
 
 def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
-                 style: str = "cinematic", genre: str = "urban") -> str:
+                 style: str = "cinematic", genre: str = "urban",
+                 image_backend: str = "") -> str:
     """从镜头数据构建 ComfyUI Prompt
 
     character_desc 应为已准备好的英文 prompt（prepare 阶段生成的 appearance_prompt_en）。
+
+    Args:
+        image_backend: 图像后端名（sd15/flux/cosmos/...）。Flux/Cosmos 使用 T5-XXL
+            编码器，输出自然语言段落；SD1.5/SDXL 使用 CLIP 编码器，输出逗号分隔 tag。
     """
-    parts = []
+    # ── 收集各维度素材（两种风格共用） ──
+    style_tag = f"{style} style" if style else ""
+    genre_tag = f"{genre} atmosphere" if genre else ""
 
-    if style:
-        parts.append(f"{style} style")
-    if genre:
-        parts.append(f"{genre} atmosphere")
-
+    scene_clean = ""
     if scene_desc:
         if any(ord(c) > 127 for c in scene_desc):
             logger.warning(f"场景描述仍为中文，请先执行: drama prepare <集数>")
-        parts.append(scene_desc)
+        scene_clean = scene_desc
 
-    if character_desc:
-        parts.append(character_desc)
+    char_clean = character_desc.strip() if character_desc else ""
 
     action = shot.get("action_en", "").strip()
     if not action:
@@ -266,20 +268,96 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
                 logger.warning(f"动作描述仍为中文（action_en 缺失），请先执行: drama prepare <集数>")
     else:
         action = _strip_dialogue(action)
-    if action:
-        parts.append(action)
 
     emotion = shot.get("emotion", "neutral")
     emotion_desc = EMOTION_MAP.get(emotion, EMOTION_MAP.get("neutral", "neutral expression"))
-    parts.append(emotion_desc)
 
     shot_type = shot.get("shot_type", "中景")
-    parts.append(SHOT_TYPE_MAP.get(shot_type, "medium shot"))
+    shot_type_desc = SHOT_TYPE_MAP.get(shot_type, "medium shot")
 
     camera = shot.get("camera", "固定")
-    parts.append(CAMERA_MAP.get(camera, "static camera"))
+    camera_desc = CAMERA_MAP.get(camera, "static camera")
 
+    # ── 判断后端：Flux/Cosmos → 自然语言段落，其他 → 逗号 tag ──
+    backend_lower = image_backend.lower() if image_backend else ""
+    use_natural = backend_lower in ("flux", "cosmos")
+
+    if use_natural:
+        return _build_natural_prompt(
+            style_tag, genre_tag, scene_clean, char_clean,
+            action, emotion, emotion_desc, shot_type_desc, camera_desc)
+    else:
+        return _build_tag_prompt(
+            style_tag, genre_tag, scene_clean, char_clean,
+            action, emotion_desc, shot_type_desc, camera_desc)
+
+
+def _build_tag_prompt(style_tag: str, genre_tag: str, scene: str, character: str,
+                      action: str, emotion_desc: str, shot_type: str, camera: str) -> str:
+    """逗号分隔 tag 风格（SD1.5/SDXL，CLIP 编码器）"""
+    parts = []
+    if style_tag:
+        parts.append(style_tag)
+    if genre_tag:
+        parts.append(genre_tag)
+    if scene:
+        parts.append(scene)
+    if character:
+        parts.append(character)
+    if action:
+        parts.append(action)
+    parts.append(emotion_desc)
+    parts.append(shot_type)
+    parts.append(camera)
     return ", ".join(parts)
+
+
+def _build_natural_prompt(style_tag: str, genre_tag: str, scene: str, character: str,
+                          action: str, emotion: str, emotion_desc: str,
+                          shot_type: str, camera: str) -> str:
+    """自然语言段落风格（Flux/Cosmos，T5-XXL 编码器）
+
+    将各维度组装为连贯的英文描述段落，充分利用 T5 的自然语言理解能力。
+    """
+    sentences = []
+
+    # 第一句：整体风格 + 场景
+    parts_1 = []
+    if style_tag and genre_tag:
+        parts_1.append(f"A {style_tag} in {genre_tag}")
+    elif style_tag:
+        parts_1.append(f"A {style_tag}")
+    if scene:
+        parts_1.append(f"Set in {scene}")
+    if parts_1:
+        sentences.append(". ".join(parts_1) + ".")
+
+    # 第二句：角色 + 动作 + 情绪
+    parts_2 = []
+    if character:
+        # 句首大写
+        parts_2.append(character[0].upper() + character[1:] if character else "")
+    if action:
+        if parts_2:
+            parts_2[0] += f" {action}"
+        else:
+            parts_2.append(action[0].upper() + action[1:] if action else "")
+    if emotion and emotion != "neutral":
+        if parts_2:
+            parts_2[0] += f", with a {emotion} expression"
+        else:
+            parts_2.append(f"With a {emotion} expression")
+    if parts_2:
+        sentences.append(parts_2[0] + ".")
+
+    # 第三句：镜头语言
+    camera_parts = []
+    camera_parts.append(shot_type)
+    if camera and camera != "static camera":
+        camera_parts.append(camera)
+    sentences.append(", ".join(camera_parts) + ".")
+
+    return " ".join(sentences)
 
 
 # ══════════════════════════════════════════════════════════

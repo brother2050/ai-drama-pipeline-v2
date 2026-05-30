@@ -245,13 +245,31 @@ def test_prompt():
     from engines.prompt import build_prompt, translate_to_english
 
     shot = {
-        "action": "坐在沙发上", "emotion": "worried",
+        "action": "sitting on sofa", "emotion": "worried",
         "shot_type": "特写", "camera": "缓慢推近"
     }
+
+    # SD1.5/默认：逗号 tag 风格
     prompt = build_prompt(shot, character_desc="young woman", scene_desc="modern living room")
     assert "young woman" in prompt
     assert "modern living room" in prompt
     assert "worried" in prompt
+    assert ", " in prompt  # 逗号分隔
+
+    # Flux：自然语言段落风格
+    prompt_flux = build_prompt(shot, character_desc="young woman",
+                               scene_desc="modern living room", image_backend="flux")
+    assert "young woman" in prompt_flux
+    assert "modern living room" in prompt_flux
+    assert "worried" in prompt_flux
+    assert "." in prompt_flux  # 句子结构
+    assert prompt_flux != prompt  # 两种风格输出不同
+
+    # Cosmos：同 Flux 自然语言风格
+    prompt_cosmos = build_prompt(shot, character_desc="young woman",
+                                 scene_desc="modern living room", image_backend="cosmos")
+    assert "young woman" in prompt_cosmos
+    assert prompt_cosmos == prompt_flux  # flux 和 cosmos 输出一致
 
     # 翻译
     assert translate_to_english("hello") == "hello"
