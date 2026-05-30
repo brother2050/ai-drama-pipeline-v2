@@ -1161,11 +1161,12 @@ def save_storyboard(episode: int, data: dict):
     if len(shots) > 500:
         raise HTTPException(400, "shots 数组过大，最多 500 个镜头")
 
-    # 校验每个镜头的 shot_id 格式
+    # 校验每个镜头的 shot_id 格式 + 强制 episode 一致
     for shot in shots:
         sid = shot.get("shot_id", "")
         if sid:
             _check_id(sid, "shot_id")
+        shot["episode"] = str(episode)
 
     sb_path = _proj() / "storyboard" / "episodes.csv"
     from engines.storyboard import save_storyboard

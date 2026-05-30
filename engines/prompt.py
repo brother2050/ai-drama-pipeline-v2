@@ -333,18 +333,22 @@ def _build_natural_prompt(style_tag: str, genre_tag: str, scene: str, character:
         sentences.append(". ".join(parts_1) + ".")
 
     # 第二句：角色 + 动作 + 情绪
+    # 自然语言模式下跳过中文 action（需先 prepare 翻译，否则中英混杂不自然）
+    action_ok = action and all(ord(c) < 127 for c in action)
     parts_2 = []
     if character:
-        # 句首大写
         parts_2.append(character[0].upper() + character[1:] if character else "")
-    if action:
+    if action_ok:
         if parts_2:
             parts_2[0] += f" {action}"
         else:
             parts_2.append(action[0].upper() + action[1:] if action else "")
     if emotion and emotion != "neutral":
         if parts_2:
-            parts_2[0] += f", with a {emotion} expression"
+            if action_ok:
+                parts_2[0] += f", with a {emotion} expression"
+            else:
+                parts_2[0] += f" has a {emotion} expression"
         else:
             parts_2.append(f"With a {emotion} expression")
     if parts_2:

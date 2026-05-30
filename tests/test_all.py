@@ -259,7 +259,7 @@ def test_prompt():
     # Flux：自然语言段落风格
     prompt_flux = build_prompt(shot, character_desc="young woman",
                                scene_desc="modern living room", image_backend="flux")
-    assert "young woman" in prompt_flux
+    assert "young woman" in prompt_flux.lower()  # 句首大写
     assert "modern living room" in prompt_flux
     assert "worried" in prompt_flux
     assert "." in prompt_flux  # 句子结构
@@ -268,8 +268,19 @@ def test_prompt():
     # Cosmos：同 Flux 自然语言风格
     prompt_cosmos = build_prompt(shot, character_desc="young woman",
                                  scene_desc="modern living room", image_backend="cosmos")
-    assert "young woman" in prompt_cosmos
+    assert "young woman" in prompt_cosmos.lower()
     assert prompt_cosmos == prompt_flux  # flux 和 cosmos 输出一致
+
+    # 自然语言：无动作时用 "has a" 而非逗号
+    shot_no_action = {"emotion": "worried", "shot_type": "特写", "camera": "固定"}
+    p_na = build_prompt(shot_no_action, character_desc="young woman", image_backend="flux")
+    assert "has a worried expression" in p_na
+
+    # 自然语言：中文 action 被跳过（不混杂）
+    shot_cn = {"action": "坐在沙发上", "emotion": "calm", "shot_type": "中景", "camera": "固定"}
+    p_cn = build_prompt(shot_cn, character_desc="young woman", image_backend="flux")
+    assert "坐在" not in p_cn  # 中文被跳过
+    assert "calm" in p_cn
 
     # 翻译
     assert translate_to_english("hello") == "hello"
