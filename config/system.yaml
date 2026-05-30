@@ -2,8 +2,8 @@ comfyui:
   url: http://127.0.0.1:8188
   api_key: ''
 models:
-  image_backend: sd15
-  video_backend: animatediff
+  image_backend: flux
+  video_backend: cogvideox
   tts_backend: mimo-voicedesign
   lip_sync_backend: musetalk
   music_backend: template
@@ -58,6 +58,6 @@ timeouts:
   music: 120
 generation:
   resolution:
-  - 512
-  - 512
-  image_steps: 20
+  - 1024
+  - 576
+  image_steps: 28

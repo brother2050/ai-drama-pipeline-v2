@@ -13,10 +13,10 @@ logger = logging.getLogger(__name__)
 
 # 默认生成参数（用户未配置时使用）
 _DEFAULTS: dict[str, Any] = {
-    "resolution": [512, 512],
-    "image_steps": 20,
-    "image_backend": "sd15",
-    "video_backend": "animatediff",
+    "resolution": [1024, 576],
+    "image_steps": 28,
+    "image_backend": "flux",
+    "video_backend": "cogvideox",
 }
 
 
