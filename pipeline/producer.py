@@ -123,7 +123,7 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
             from engines.workflow_builder import WorkflowBuilder
             from engines.multi_char import MultiCharacterHandler
 
-            # 读取 prompt_en（prepare 阶段已生成）
+            # 读取 prompt_en（prepare 阶段已生成，无需 LLM）
             from engines.prompt import get_view_appearance
             shot_type = shot.get("shot_type", "")
             char_descs = []
@@ -131,8 +131,9 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
                 char = sm.get_character(cid)
                 if char:
                     desc_en = get_view_appearance(char, shot_type)
-                    if desc_en:
-                        char_descs.append(desc_en)
+                    if not desc_en:
+                        raise RuntimeError(f"角色 {cid} 未生成 AI 绘图 prompt，请先运行: drama prepare <episode>")
+                    char_descs.append(desc_en)
 
             # 读取预翻译的 description_en
             scene_id = shot.get("scene", "")

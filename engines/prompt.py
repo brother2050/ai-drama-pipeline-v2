@@ -154,24 +154,13 @@ def _estimate_context_length(llm) -> int:
     """估算 LLM 可用上下文长度
 
     优先级：
-    1. llm.context_length 属性（后端自动检测）
-    2. llm.config / llm._config 中的 context_length
-    3. 兜底 8K（保守，宁可多分批也别炸）
+    1. llm.context_length 属性（后端自动检测 / 按模型名猜）
+    2. 兜底 8K（保守，宁可多分批也别炸）
     """
-    # 1. 从 llm 对象属性读取（OllamaLLM / OpenAICompatLLM 已实现 context_length property）
     val = getattr(llm, "context_length", None)
     if val and isinstance(val, int) and val > 0:
         return val
 
-    # 2. 从 config dict 读取
-    config = getattr(llm, "config", None) or getattr(llm, "_config", None)
-    if isinstance(config, dict):
-        for key in ("context_length", "num_ctx", "max_context_length"):
-            val = config.get(key)
-            if val and isinstance(val, int) and val > 0:
-                return val
-
-    # 3. 保守兜底
     return 8192
 
 

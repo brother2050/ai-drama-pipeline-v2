@@ -11,7 +11,7 @@ class OllamaLLM:
         self._url = config.get("base_url", "http://localhost:11434")
         self._model = config.get("model", "qwen3:8b")
         self._timeout = config.get("timeouts", {}).get("llm", 300)
-        self._ctx = config.get("llm", {}).get("context_length", 0)
+        self._ctx = config.get("context_length", 0)
 
     @property
     def name(self): return "ollama"
@@ -87,7 +87,7 @@ class OpenAICompatLLM:
         self._model = config.get("model", "qwen2.5-7b")
         self._api_key = config.get("api_key", "")
         self._timeout = config.get("timeouts", {}).get("llm", 300)
-        self._ctx = config.get("llm", {}).get("context_length", 0)
+        self._ctx = config.get("context_length", 0)
 
     @property
     def name(self): return "openai"
