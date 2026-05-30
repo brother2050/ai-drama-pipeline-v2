@@ -47,7 +47,7 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
     from engines.prompt import get_view_appearance
     view_desc = get_view_appearance(char, shot_type) if char else ""
     if not view_desc:
-        logger.error(f"角色 '{char_id}' 缺少视角 prompt，请先运行 prepare 阶段（drama prepare <episode>）")
+        logger.error(f"角色 '{char_id}' 未生成 AI 绘图 prompt，请先运行: drama prepare <episode>")
         return False
 
     fake_shot = {"characters": char_id, "emotion": "neutral",
@@ -98,7 +98,7 @@ def _generate_outfit(char_id: str, appearance: str, outfit_key: str,
     # 优先用 prompt_en，无则报错
     char_desc = appearance_prompt_en
     if not char_desc:
-        logger.error(f"角色 '{char_id}' 缺少 appearance_prompt_en，请先运行 prepare 阶段")
+        logger.error(f"角色 '{char_id}' 未生成 AI 绘图 prompt，请先运行: drama prepare <episode>")
         return False
     full_desc = f"{char_desc}, wearing {outfit_desc}"
 

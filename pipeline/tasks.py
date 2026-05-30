@@ -326,7 +326,7 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, forc
             desc = get_view_appearance(char, shot_type)
             if not desc:
                 return _err(shot_id, "first_frame",
-                            f"角色 {cid} 缺少 appearance prompt，请先运行 prepare 阶段（drama prepare <episode>）")
+                            f"角色 {cid} 未生成 AI 绘图 prompt，请先运行: drama prepare <episode>")
             char_descs.append(desc)
 
     # 读取预翻译的 description_en
@@ -833,7 +833,7 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
     char = data.get("character", {})
     appearance_en = char.get("appearance_prompt_en", "")
     if not appearance_en:
-        return {"status": "error", "reason": f"角色 {char_id} 缺少 appearance_prompt_en，请先运行 prepare 阶段（drama prepare <episode>）"}
+        return {"status": "error", "reason": f"角色 {char_id} 未生成 AI 绘图 prompt，请先运行: drama prepare <episode>"}
     outfits = char.get("outfits", {})
 
     if not isinstance(outfits, dict) or outfit_key not in outfits:
