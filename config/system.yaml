@@ -21,7 +21,7 @@ llm:
   base_url: https://api.siliconflow.cn
   model: Qwen/Qwen2.5-7B-Instruct
   api_key: ''
-  # context_length: 32768  # 手动指定模型上下文长度（不填则自动检测）
+  # context_length: 32768  # 模型上下文长度（token 数，不填则自动检测。常见值：8K/32K/128K）
 training:
   enabled: false
   backend: ai-toolkit
