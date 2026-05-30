@@ -324,8 +324,10 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, forc
         char = sm.get_character(cid)
         if char:
             desc = get_view_appearance(char, shot_type)
-            if desc:
-                char_descs.append(desc)
+            if not desc:
+                return _err(shot_id, "first_frame",
+                            f"角色 {cid} 缺少 appearance prompt，请先运行 prepare 阶段（drama prepare <episode>）")
+            char_descs.append(desc)
 
     # 读取预翻译的 description_en
     scene = sm.get_scene(shot.get("scene", ""))
@@ -829,7 +831,9 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
     with open(char_yaml_path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     char = data.get("character", {})
-    appearance_en = char.get("appearance_prompt_en", "") or char.get("appearance", char_id)
+    appearance_en = char.get("appearance_prompt_en", "")
+    if not appearance_en:
+        return {"status": "error", "reason": f"角色 {char_id} 缺少 appearance_prompt_en，请先运行 prepare 阶段（drama prepare <episode>）"}
     outfits = char.get("outfits", {})
 
     if not isinstance(outfits, dict) or outfit_key not in outfits:

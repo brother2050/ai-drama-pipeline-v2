@@ -55,9 +55,8 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
     from engines.prompt import get_view_appearance
     view_desc = get_view_appearance(char, shot_type) if char else ""
     if not view_desc:
-        view_desc = char.get("appearance_prompt_en", "") if char else ""
-    if not view_desc:
-        view_desc = appearance  # 最后兜底
+        logger.error(f"角色 '{char_id}' 缺少 appearance_{shot_type}_prompt_en，请先运行 prepare 阶段")
+        return ""
 
     fake_shot = {"characters": char_id, "emotion": "neutral",
                  "shot_type": shot_type, "camera": "固定"}
@@ -243,7 +242,10 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
     generation = char.get("portrait_generation", 0)
 
     # 读取模型友好 prompt（prepare 阶段已生成）
-    appearance_en = char.get("appearance_prompt_en", "") or char.get("appearance", "")
+    appearance_en = char.get("appearance_prompt_en", "")
+    if not appearance_en:
+        logger.error(f"角色 '{char_id}' 缺少 appearance_prompt_en，请先运行 prepare 阶段（drama prepare <episode>）")
+        return
 
     for outfit_idx, (outfit_key, outfit_val) in enumerate(outfits.items()):
         if not isinstance(outfit_val, dict):
