@@ -55,7 +55,7 @@ async def train(
     images: list[UploadFile] = File(..., description="训练图片"),
     trigger_word: str = Form("ohwx person"),
     lora_name: str = Form("my_lora"),
-    steps: int = Form(1000),
+    steps: int = Form(600),
     learning_rate: str = Form("1e-4"),
     network_dim: int = Form(16),
     resolution: str = Form("512"),

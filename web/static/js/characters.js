@@ -496,7 +496,7 @@ function _loraTrainHtml(charId, item) {
       </div>
       <div class="edit-field"><label>${t('train.trigger')}</label><input id="train-trigger" value="${esc(item.lora_trigger || '')}" placeholder="ohwx ${esc(item.name || charId)}"><span class="dim" style="font-size:.7rem">${t('train.trigger_hint')}</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem">
-        <div class="edit-field"><label>${t('train.steps')}</label><input id="train-steps" type="number" value="1000" min="100" max="10000" step="100"></div>
+        <div class="edit-field"><label>${t('train.steps')}</label><input id="train-steps" type="number" value="600" min="100" max="10000" step="100"></div>
         <div class="edit-field"><label>${t('train.lr')}</label><input id="train-lr" type="text" value="0.0001"></div>
         <div class="edit-field"><label>${t('train.rank')}</label><select id="train-rank"><option value="4">4</option><option value="8">8</option><option value="16" selected>16</option><option value="32">32</option><option value="64">64</option><option value="128">128</option></select></div>
       </div>
@@ -541,7 +541,7 @@ async function startLoraTraining(charId) {
     const body = {
       char_id: charId,
       trigger_word: $val('train-trigger') || '',
-      steps: parseInt($val('train-steps')) || 1000,
+      steps: parseInt($val('train-steps')) || 600,
       learning_rate: parseFloat($val('train-lr')) || 0.0001,
       rank: parseInt($val('train-rank')) || 16,
       resolution: $val('train-resolution') || '512x768',
@@ -592,7 +592,7 @@ async function batchTrainLora() {
     <p class="dim" style="font-size:.8rem;margin-bottom:.8rem">选择要训练 LoRA 的角色（🟢 有定妆照可训练，🔴 无定妆照需先生成）</p>
     <div style="max-height:300px;overflow-y:auto;margin-bottom:1rem">${charList}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-bottom:.5rem">
-      <div class="edit-field"><label>${t('train.steps')}</label><input id="batch-train-steps" type="number" value="1000" min="100" max="10000" step="100"></div>
+      <div class="edit-field"><label>${t('train.steps')}</label><input id="batch-train-steps" type="number" value="600" min="100" max="10000" step="100"></div>
       <div class="edit-field"><label>${t('train.lr')}</label><input id="batch-train-lr" type="text" value="0.0001"></div>
       <div class="edit-field"><label>${t('train.rank')}</label><select id="batch-train-rank"><option value="8">8</option><option value="16" selected>16</option><option value="32">32</option><option value="64">64</option></select></div>
     </div>
@@ -616,7 +616,7 @@ async function _doBatchTrain() {
   const charIds = Array.from(checkboxes).map(cb => cb.value).filter(Boolean);
   if (!charIds.length) { toast('请至少选择一个角色', 'error'); return; }
 
-  const steps = parseInt($val('batch-train-steps')) || 1000;
+  const steps = parseInt($val('batch-train-steps')) || 600;
   const lr = parseFloat($val('batch-train-lr')) || 0.0001;
   const rank = parseInt($val('batch-train-rank')) || 16;
   const resolution = $val('batch-train-resolution') || '512x768';

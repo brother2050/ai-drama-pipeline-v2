@@ -81,7 +81,7 @@ class AIToolkitTrainer:
         self._default_learning_rate = str(defaults.get("learning_rate", "1e-4"))
         self._default_network_dim = int(defaults.get("network_dim", 16))
         self._default_conv_dim = int(defaults.get("conv_dim", 16))
-        self._default_steps = int(defaults.get("steps", 1000))
+        self._default_steps = int(defaults.get("steps", 600))
         self._base_model = str(defaults.get("base_model", "ostris/Flex.1-alpha"))
         self._arch = str(defaults.get("arch", ""))
         self._quantize_type = str(defaults.get("quantize_type", "qfloat8"))
