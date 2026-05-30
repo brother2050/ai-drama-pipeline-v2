@@ -58,8 +58,6 @@ def _find_face_center(video: str, max_samples: int = 5) -> tuple[int, int] | Non
         avg_x = sum(p[0] for p in positions) // len(positions)
         avg_y = sum(p[1] for p in positions) // len(positions)
         return (avg_x, avg_y)
-    except ImportError:
-        return None
     except Exception:
         return None
 

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Callable
 
@@ -139,7 +140,6 @@ def run_scene_images(
             if files:
                 # 重命名为 cover.png（避免 ComfyUI 原始文件名如 Cosmos__00039_.png 导致 404）
                 cover_path = scene_asset_dir / "cover.png"
-                import os
                 os.replace(files[0], str(cover_path))
                 img_url = f"/api/assets/scenes/{sid}/cover.png"
                 scene.setdefault("reference_images", [])
