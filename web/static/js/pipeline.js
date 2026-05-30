@@ -411,11 +411,16 @@ async function batchRun(step) {
 
 // ── 管线工具 ──
 
-async function _runTool(apiPath, body, label) {
+async function _runTool(apiPath, body, label, queryParams) {
   if (!await modalConfirm(label + '?')) return;
+  let url = apiPath;
+  if (queryParams) {
+    const qs = Object.entries(queryParams).filter(([, v]) => v !== undefined).map(([k, v]) => `${k}=${v}`).join('&');
+    if (qs) url += (url.includes('?') ? '&' : '?') + qs;
+  }
   try {
     toast('⏳ ' + label);
-    const { task_id } = await api(apiPath, { method: 'POST', body });
+    const { task_id } = await api(url, { method: 'POST', body });
     if (typeof TaskPanel !== 'undefined') TaskPanel.trackTask(task_id, label);
     const result = await pollTask(task_id);
     if (result.status === 'success' && result.result?.status !== 'error') toast('✅ ' + label);
@@ -423,8 +428,8 @@ async function _runTool(apiPath, body, label) {
   } catch (e) { toast('❌ ' + e.message, 'error'); }
 }
 
-async function runPortraits() { _updatePipelineStep('portrait', 'active'); await _runTool('/tools/portraits?force=true', {}, t('wb.gen_portraits')); _updatePipelineStep('portrait', 'done'); }
-async function runSceneImages() { _updatePipelineStep('scene', 'active'); await _runTool('/tools/scene-images?force=true', {}, t('wb.gen_scene_images')); _updatePipelineStep('scene', 'done'); }
+async function runPortraits() { _updatePipelineStep('portrait', 'active'); await _runTool('/tools/portraits', {}, t('wb.gen_portraits'), { force: _isForce() }); _updatePipelineStep('portrait', 'done'); }
+async function runSceneImages() { _updatePipelineStep('scene', 'active'); await _runTool('/tools/scene-images', {}, t('wb.gen_scene_images'), { force: _isForce() }); _updatePipelineStep('scene', 'done'); }
 async function runPost() { await _runTool('/tools/post', { episode: ep }, t('wb.post_process')); }
 
 async function runPrepare() {
