@@ -40,7 +40,7 @@ function showAIGenStoryboard() {
 
 async function doAIGenStoryboard() {
   const outline = document.getElementById('ai-sb-outline')?.value?.trim();
-  if (!outline || outline.length < 10) { toast('请输入至少 10 字的剧情大纲', 'error'); return; }
+  if (!outline || outline.length < 10) { toast(t('toast.input_outline'), 'error'); return; }
   const episode = parseInt(document.getElementById('ai-sb-ep')?.value) || ep;
   const duration = parseInt(document.getElementById('ai-sb-dur')?.value) || 90;
   const append = document.getElementById('ai-sb-append')?.checked || false;
@@ -63,9 +63,9 @@ function showAIGenCharacter() {
 
 async function doAIGenCharacter() {
   const descText = document.getElementById('ai-char-desc')?.value?.trim();
-  if (!descText) { toast('请输入角色描述', 'error'); return; }
+  if (!descText) { toast(t('toast.input_desc'), 'error'); return; }
   const descriptions = descText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
-  if (!descriptions.length) { toast('请输入至少一个角色描述', 'error'); return; }
+  if (!descriptions.length) { toast(t('toast.input_at_least_one'), 'error'); return; }
   await _runAIGen('/llm/characters', { descriptions }, 'ai-char-status', 'ai-gen-char-overlay',
     `正在生成 ${descriptions.length} 个角色`, 'characters', loadCharacters);
 }
@@ -79,9 +79,9 @@ function showAIGenScene() {
 
 async function doAIGenScene() {
   const descText = document.getElementById('ai-scene-desc')?.value?.trim();
-  if (!descText) { toast('请输入场景描述', 'error'); return; }
+  if (!descText) { toast(t('toast.input_desc'), 'error'); return; }
   const descriptions = descText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
-  if (!descriptions.length) { toast('请输入至少一个场景描述', 'error'); return; }
+  if (!descriptions.length) { toast(t('toast.input_at_least_one'), 'error'); return; }
   await _runAIGen('/llm/scenes', { descriptions }, 'ai-scene-status', 'ai-gen-scene-overlay',
     `正在生成 ${descriptions.length} 个场景`, 'scenes', loadScenes);
 }
@@ -222,7 +222,7 @@ function _toggleAllSB(checked) {
 async function batchDeleteShots() {
   const cbs = document.querySelectorAll('.sb-batch-cb:checked');
   const shotIds = Array.from(cbs).map(cb => cb.value).filter(Boolean);
-  if (!shotIds.length) { toast('请先选择要删除的镜头', 'error'); return; }
+  if (!shotIds.length) { toast(t('toast.select_first'), 'error'); return; }
   if (!await modalConfirm(t('confirm.batch_delete_shots', { n: shotIds.length }))) return;
   try {
     const r = await api(`/storyboard/${ep}/batch-delete`, { method: 'POST', body: { shot_ids: shotIds } });

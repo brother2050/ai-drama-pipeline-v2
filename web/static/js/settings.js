@@ -210,7 +210,7 @@ async function testTtsPreview() {
             } else {
               if (resultEl) resultEl.innerHTML = `<span style="color:#22c55e">✅ 完成</span>`;
             }
-            toast('✅ TTS 试听完成');
+            toast(t('toast.tts_preview_done'));
             if (btn) btn.disabled = false;
             return;
           }

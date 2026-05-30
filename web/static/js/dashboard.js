@@ -138,7 +138,7 @@ async function loadDashboard() {
 async function dashInspireGen() {
   const input = document.getElementById('dash-inspire-input');
   const outline = input?.value?.trim();
-  if (!outline || outline.length < 10) { toast('请输入至少 10 字的剧情灵感', 'error'); input?.focus(); return; }
+  if (!outline || outline.length < 10) { toast(t('toast.input_outline'), 'error'); input?.focus(); return; }
   const episode = parseInt(document.getElementById('dash-inspire-ep')?.value) || ep;
   const duration = parseInt(document.getElementById('dash-inspire-dur')?.value) || 90;
   const append = document.getElementById('dash-inspire-append')?.checked || false;

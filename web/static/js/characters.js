@@ -59,7 +59,7 @@ function _toggleSelectAll(type) {
 
 async function _batchDeleteEntities(type, labelKey) {
   const ids = Array.from(_batchState[type] || []);
-  if (!ids.length) { toast('请先选择要删除的项目', 'error'); return; }
+  if (!ids.length) { toast(t('toast.select_first'), 'error'); return; }
   if (!await modalConfirm(t(labelKey, { n: ids.length }))) return;
   try {
     const r = await api(`/${type}/batch-delete`, { method: 'POST', body: { ids } });
@@ -291,7 +291,7 @@ async function generatePortrait(charId) {
     if (result.status === 'success' && result.result?.status === 'done') {
       const r = result.result;
       _html(status, '✅ 生成完成');
-      toast('✅ 定妆照已生成');
+      toast(t('toast.portrait_done'));
       const preview = document.getElementById('ec-img-preview');
       if (preview && r.url) {
         preview.src = r.url + '?t=' + Date.now();
@@ -328,7 +328,7 @@ async function generateSceneImage(sceneId) {
     if (result.status === 'success' && result.result?.status === 'done') {
       const r = result.result;
       _html(status, '✅ 生成完成');
-      toast('✅ 场景图已生成');
+      toast(t('toast.scene_img_done'));
       const preview = document.getElementById('es-img-preview');
       if (preview && r.url) {
         preview.src = r.url + '?t=' + Date.now();
@@ -415,7 +415,7 @@ function _collectOutfits() {
 async function generateOutfit(charId, btnEl) {
   const entry = btnEl.closest('.outfit-entry');
   const key = entry?.querySelector('.outfit-key')?.value?.trim();
-  if (!key) { toast('请先填写服装名称', 'error'); return; }
+  if (!key) { toast(t('toast.fill_name'), 'error'); return; }
   const statusEl = document.getElementById('gen-all-outfits-status');
   const reset = _btnLoad(btnEl, '⏳');
   try {
@@ -614,7 +614,7 @@ async function batchTrainLora() {
 async function _doBatchTrain() {
   const checkboxes = document.querySelectorAll('.batch-train-char:checked');
   const charIds = Array.from(checkboxes).map(cb => cb.value).filter(Boolean);
-  if (!charIds.length) { toast('请至少选择一个角色', 'error'); return; }
+  if (!charIds.length) { toast(t('toast.select_chars'), 'error'); return; }
 
   const steps = parseInt($val('batch-train-steps')) || 600;
   const lr = parseFloat($val('batch-train-lr')) || 0.0001;
@@ -700,7 +700,7 @@ async function _uploadImg(entityType, id) {
     if (!r.ok) throw new Error(d.detail || '上传失败');
     // 标记新上传的 URL，save 时会追加到已有列表
     window[`_${prefix}GeneratedPortraitUrl`] = d.url;
-    invalidateCache(entityType); toast('✅ 图片已上传');
+    invalidateCache(entityType); toast(t('toast.upload_done'));
     // 刷新编辑面板以显示新图
     if (entityType === 'characters') editChar(id);
     else if (entityType === 'scenes') editScene(id);

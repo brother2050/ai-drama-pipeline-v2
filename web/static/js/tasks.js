@@ -203,9 +203,9 @@ const TaskPanel = (() => {
     try {
       await api(`/tasks/${taskId}/cancel`, { method: 'POST' });
       updateTask(taskId, { status: 'cancelled' });
-      toast('任务已取消');
+      toast(t('toast.task_cancelled'));
     } catch (e) {
-      toast('取消失败: ' + e.message, 'error');
+      toast(t('toast.cancel_fail') + ': ' + e.message, 'error');
     }
   }
 
