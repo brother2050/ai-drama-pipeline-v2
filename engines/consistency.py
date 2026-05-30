@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import threading
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -157,10 +158,23 @@ class CharacterConsistency:
         ip_config = ip_config or {}
 
         if not ref_images:
-            # 移除所有 IP-Adapter 节点（无参考图）
-            from engines.workflow import find_nodes_by_class
-            for nid in find_nodes_by_class(wf, "IPAdapterAdvanced"):
-                del wf[nid]
+            # 移除所有 IP-Adapter 节点（无参考图）+ 清理悬挂引用
+            from engines.workflow import find_nodes_by_class, find_first_node
+            ip_nodes = set(find_nodes_by_class(wf, "IPAdapterAdvanced"))
+            if ip_nodes:
+                model_source = find_first_node(wf, "UNETLoader") or find_first_node(wf, "CheckpointLoaderSimple")
+                # 将下游引用从 IP-Adapter 节点重接到模型源
+                for nid, node in list(wf.items()):
+                    if nid in ip_nodes:
+                        continue
+                    for key, val in list(node.get("inputs", {}).items()):
+                        if isinstance(val, list) and len(val) == 2 and val[0] in ip_nodes:
+                            if node.get("class_type") == "KSampler" and key == "model" and model_source:
+                                node["inputs"][key] = [model_source, 0]
+                            else:
+                                del node["inputs"][key]
+                for nid in ip_nodes:
+                    del wf[nid]
             return wf
 
         # 设置参考图到 LoadImage 节点

@@ -2177,6 +2177,11 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
     try:
         if cfg.get("llm", {}).get("enabled"):
             llm = cont.get("llm")
+        elif translate:
+            logger.warning("LLM 未启用（llm.enabled=false），翻译和 prompt 生成将跳过")
+            self.update_state(state="PROGRESS", meta={
+                "step": "prepare", "progress": 100,
+                "message": "LLM 未启用，跳过翻译（请在设置中开启 LLM）"})
     except Exception as e:
         if translate:
             logger.warning(f"LLM 不可用，跳过翻译: {e}")
