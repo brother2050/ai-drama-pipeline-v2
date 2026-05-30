@@ -28,6 +28,7 @@ def get_generation_config(config=None) -> dict:
     """
     result: dict[str, Any] = {
         "resolution": None,
+        "aspect_ratio": None,
         "image_steps": None,
         "image_backend": None,
         "video_backend": None,
@@ -49,7 +50,7 @@ def get_generation_config(config=None) -> dict:
         gen = config.get("generation", {}) if isinstance(config, dict) else {}
 
     if gen:
-        for key in ("resolution", "image_steps",
+        for key in ("resolution", "aspect_ratio", "image_steps",
                      "image_backend", "video_backend"):
             if key in gen and gen[key] is not None:
                 result[key] = gen[key]

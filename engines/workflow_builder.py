@@ -107,25 +107,39 @@ class WorkflowBuilder:
         return {}
 
     def _apply_gpu(self, wf: dict, stage: str, gpu_cfg: dict) -> None:
-        """应用生成参数到工作流（分辨率可选覆盖 + 步数可选覆盖）
+        """应用生成参数到工作流（比例自动计算分辨率 + 步数可选覆盖）
 
-        优先级: generation.resolution 配置 > JSON 模板原生值
-        未配置 generation 段时，使用 JSON 模板中的模型原生分辨率。
+        用户配置 generation.aspect_ratio（如 "16:9", "9:16", "1:1"），
+        代码读取 JSON 模板的原生分辨率，保持长边不变，按比例计算新分辨率。
+
+        优先级:
+          generation.resolution（精确值）> generation.aspect_ratio（比例计算）> JSON 原生值
         """
         resolution = gpu_cfg.get("resolution")
+        aspect_ratio = gpu_cfg.get("aspect_ratio")
         image_steps = gpu_cfg.get("image_steps")
 
         for nid, node in wf.items():
             ct = node.get("class_type", "")
             inp = node.get("inputs", {})
 
-            # 分辨率 → EmptyLatentImage（仅用户显式配置时覆盖）
+            # 分辨率 → EmptyLatentImage
             if ct in ("EmptyLatentImage", "EmptySD3LatentImage"):
+                native_w = inp.get("width", 1024)
+                native_h = inp.get("height", 576)
+
                 if resolution and len(resolution) == 2:
+                    # 精确值覆盖（最高优先级）
                     inp["width"] = resolution[0]
                     inp["height"] = resolution[1]
+                elif aspect_ratio:
+                    # 按比例计算：保持长边不变，按比例算短边
+                    target_w, target_h = self._calc_resolution(
+                        native_w, native_h, aspect_ratio)
+                    inp["width"] = target_w
+                    inp["height"] = target_h
 
-            # 步数 → KSampler / KSamplerAdvanced（仅首帧，且仅用户显式配置时覆盖）
+            # 步数 → KSampler / KSamplerAdvanced（仅首帧）
             if ct in ("KSampler", "KSamplerAdvanced") and stage == "first_frame":
                 if image_steps:
                     inp["steps"] = image_steps
@@ -134,6 +148,52 @@ class WorkflowBuilder:
         # 不再从 generation.video_frames 硬编码读取。
 
     # ── Seed 随机化 ────────────────────────────────────────
+
+    @staticmethod
+    def _calc_resolution(native_w: int, native_h: int, aspect_ratio: str) -> tuple[int, int]:
+        """根据目标比例计算分辨率，保持长边不变
+
+        Args:
+            native_w: 模板原生宽度
+            native_h: 模板原生高度
+            aspect_ratio: 目标比例，如 "16:9", "9:16", "1:1", "4:3"
+
+        Returns:
+            (width, height) 元组，8 的倍数（模型要求）
+
+        示例（Cosmos 原生 1024×576）：
+            "16:9" → 1024×576（不变）
+            "9:16" → 576×1024
+            "1:1"  → 728×728
+        """
+        try:
+            parts = aspect_ratio.split(":")
+            rw, rh = int(parts[0]), int(parts[1])
+        except (ValueError, IndexError):
+            logger.warning(f"无效比例格式: {aspect_ratio}，使用原生分辨率")
+            return native_w, native_h
+
+        if rw <= 0 or rh <= 0:
+            logger.warning(f"比例值必须为正数: {aspect_ratio}")
+            return native_w, native_h
+
+        long_side = max(native_w, native_h)
+
+        if rw >= rh:
+            # 横屏或正方形：长边为宽
+            w = long_side
+            h = int(long_side * rh / rw)
+        else:
+            # 竖屏：长边为高
+            h = long_side
+            w = int(long_side * rw / rh)
+
+        # 对齐到 8 的倍数（扩散模型 latent 空间要求）
+        w = max(64, (w // 8) * 8)
+        h = max(64, (h // 8) * 8)
+
+        logger.info(f"分辨率计算: 原生 {native_w}×{native_h}, 比例 {aspect_ratio} → {w}×{h}")
+        return w, h
 
     @staticmethod
     def _randomize_seed(wf: dict) -> None:

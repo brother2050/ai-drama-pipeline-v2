@@ -64,6 +64,13 @@ def run_preview(config_path: str, episode: int, level: str = "draft", force: boo
 
     base_steps = gen.get("image_steps") or fallback_steps
     base_res = gen.get("resolution") or fallback_res
+    aspect_ratio = gen.get("aspect_ratio")
+
+    # 如果配置了 aspect_ratio 且没有精确 resolution，按比例计算
+    if aspect_ratio and not gen.get("resolution"):
+        from engines.workflow_builder import WorkflowBuilder
+        base_res = list(WorkflowBuilder._calc_resolution(
+            base_res[0], base_res[1], aspect_ratio))
 
     presets = {
         "draft": {"steps": max(4, base_steps // 3), "resolution": [max(256, base_res[0] // 2), max(144, base_res[1] // 2)]},

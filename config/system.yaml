@@ -57,7 +57,10 @@ timeouts:
   llm: 300
   music: 120
 # 分辨率和步数：默认使用各工作流 JSON 中的模型原生值，无需配置
-# 如需覆盖（如横转竖 9:16），取消注释并修改：
+# 如需覆盖比例，取消注释并修改（代码自动根据后端原生分辨率计算）：
 # generation:
-#   resolution: [576, 1024]   # 9:16 竖屏
+#   aspect_ratio: "16:9"      # 横屏（默认）
+#   aspect_ratio: "9:16"      # 竖屏
+#   aspect_ratio: "1:1"       # 方形
+#   resolution: [576, 1024]   # 或精确值（优先级高于 aspect_ratio）
 #   image_steps: 35           # 覆盖步数
