@@ -48,15 +48,38 @@ def _load_shots(config_path: str, episode: int) -> list[dict]:
         return [dict(r) for r in csv.DictReader(f) if _safe_int(r.get("episode", 0)) == episode]
 
 
-def _find_shot(config_path: str, episode: int, shot_id: str) -> dict | None:
+# ── 分镜表缓存（同一次生产周期内只读一次 CSV）──
+_sb_cache: dict[str, tuple[float, list[dict]]] = {}
+
+
+def _load_all_shots_cached(config_path: str) -> list[dict]:
+    """加载全部分镜（带 mtime 缓存）。同一次 produce/preview 内只读一次 CSV。"""
     sb = Path(config_path).resolve().parent.parent / "storyboard" / "episodes.csv"
     if not sb.exists():
-        return None
+        return []
+    sb_str = str(sb)
+    mtime = sb.stat().st_mtime
+    cached = _sb_cache.get(sb_str)
+    if cached and cached[0] == mtime:
+        return cached[1]
     with open(sb, encoding="utf-8") as f:
-        for r in csv.DictReader(f):
-            if _safe_int(r.get("episode", 0)) == episode and r.get("shot_id") == shot_id:
-                return dict(r)
+        all_shots = [dict(r) for r in csv.DictReader(f)]
+    _sb_cache[sb_str] = (mtime, all_shots)
+    return all_shots
+
+
+def _find_shot(config_path: str, episode: int, shot_id: str) -> dict | None:
+    """查找单个镜头（优先走缓存）"""
+    for s in _load_all_shots_cached(config_path):
+        if _safe_int(s.get("episode", 0)) == episode and s.get("shot_id") == shot_id:
+            return s
     return None
+
+
+def _load_episode_shots_cached(config_path: str, episode: int) -> list[dict]:
+    """加载指定集的镜头列表（缓存）"""
+    return [s for s in _load_all_shots_cached(config_path)
+            if _safe_int(s.get("episode", 0)) == episode]
 
 
 def _shot_dir(config_path: str, episode: int, shot_id: str) -> Path:
@@ -64,6 +87,7 @@ def _shot_dir(config_path: str, episode: int, shot_id: str) -> Path:
 
 
 def _check_available(tool_name: str, config_path: str) -> tuple[bool, str]:
+    """检测工具可用性。Config 内部有 mtime 缓存，重复调用开销很小。"""
     from infra.config import Config
     from infra.toolcheck import check_tool
     result = check_tool(tool_name, Config(config_path).data)
@@ -165,8 +189,13 @@ def _try_mark_running_atomic(config_path: str, episode: int, shot_id: str, step:
 #  公共前置检查
 # ══════════════════════════════════════════════════════════
 
-def _prepare(config_path: str, episode: int, shot_id: str, step: str, tool: str, *, need_shot: bool = True, force: bool = False):
-    """防重复 → 工具可用 → 查镜头 → 标记运行 → 返回 (cfg, cont, shot, err)"""
+def _prepare(config_path: str, episode: int, shot_id: str, step: str, tool: str,
+             *, need_shot: bool = True, force: bool = False,
+             cfg=None, cont=None, shot: dict | None = None):
+    """防重复 → 工具可用 → 查镜头 → 标记运行 → 返回 (cfg, cont, shot, err)
+
+    传入 cfg/cont/shot 时跳过对应创建/读取，复用已有对象。
+    """
     _ensure_path()
     # force=True 时跳过 running 状态检查，允许强制覆盖
     if not force and not _try_mark_running_atomic(config_path, episode, shot_id, step):
@@ -178,15 +207,18 @@ def _prepare(config_path: str, episode: int, shot_id: str, step: str, tool: str,
         # 回滚 running 状态，否则该步骤 10 分钟内无法重试
         _db_record_step(config_path, episode, shot_id, step, {"status": "skipped", "reason": reason})
         return None, None, None, _skip(shot_id, step, f"{tool} 不可用: {reason}")
-    shot = _find_shot(config_path, episode, shot_id) if need_shot else None
+    if need_shot and shot is None:
+        shot = _find_shot(config_path, episode, shot_id)
     if need_shot and not shot:
         _db_record_step(config_path, episode, shot_id, step, {"status": "error", "reason": "镜头不存在"})
         return None, None, None, _err(shot_id, step, "镜头不存在")
-    from infra.config import Config
-    from api.registry import Container
-    from api import _ensure_registered; _ensure_registered()
-    cfg = Config(config_path)
-    return cfg, Container(cfg.data), shot, None
+    if cfg is None or cont is None:
+        from infra.config import Config
+        from api.registry import Container
+        from api import _ensure_registered; _ensure_registered()
+        cfg = Config(config_path)
+        cont = Container(cfg.data)
+    return cfg, cont, shot, None
 
 
 def _load_episode_shots(config_path: str, episode: int) -> list[dict] | None:
@@ -243,7 +275,8 @@ def _unique_hash_id(prefix: str, name: str, existing: dict) -> str:
 #  核心逻辑函数（可被 preview.py 等模块复用）
 # ══════════════════════════════════════════════════════════
 
-def tts_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, force: bool = False) -> dict:
+def tts_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *,
+             force: bool = False, characters: dict | None = None) -> dict:
     """TTS 核心逻辑 — 合成台词为音频
 
     Args:
@@ -253,6 +286,7 @@ def tts_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, force: bool 
         cont: DI 容器
         out_dir: 输出目录
         force: True 时覆盖已有文件，False 时跳过
+        characters: 预加载的角色字典 {id: char_data}，避免重复读 YAML
 
     Returns:
         {"status": "done"/"skipped"/"error", ...}
@@ -269,10 +303,16 @@ def tts_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, force: bool 
         return _skip(shot_id, "tts", "音频已存在")
 
     char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
-    from engines.shot_manager import ShotManager
-    sm = ShotManager(str(Path(cfg.project_dir) / "storyboard" / "episodes.csv"),
-                     str(Path(cfg.project_dir) / "config"))
-    char_data = sm.get_character(char_ids[0]) if char_ids else {}
+
+    # 优先用预加载的角色数据，避免每次创建 ShotManager 读全部 YAML
+    if characters:
+        char_data = characters.get(char_ids[0], {}) if char_ids else {}
+    else:
+        from engines.shot_manager import ShotManager
+        sm = ShotManager(str(Path(cfg.project_dir) / "storyboard" / "episodes.csv"),
+                         str(Path(cfg.project_dir) / "config"))
+        char_data = sm.get_character(char_ids[0]) if char_ids else {}
+
     if char_ids and not char_data:
         logger.warning(f"[{shot_id}] 角色 {char_ids[0]} 不存在，使用默认声音")
     voice_config = char_data.get("voice", {})
@@ -287,7 +327,10 @@ def tts_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, force: bool 
     return _done(shot_id, "tts", audio_path)
 
 
-def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, force: bool = False) -> dict:
+def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *,
+                     force: bool = False,
+                     characters: dict | None = None,
+                     scenes: dict | None = None) -> dict:
     """首帧生成核心逻辑 — ComfyUI 工作流构建 + 执行
 
     Args:
@@ -297,6 +340,8 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, forc
         cont: DI 容器
         out_dir: 输出目录
         force: True 时覆盖已有文件，False 时跳过
+        characters: 预加载的角色字典 {id: char_data}，避免重复读 YAML
+        scenes: 预加载的场景字典 {id: scene_data}，避免重复读 YAML
 
     Returns:
         {"status": "done"/"error", ...}
@@ -308,20 +353,27 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, forc
     if not force and frame_path.exists():
         return _skip(shot_id, "first_frame", "首帧已存在")
 
-    from engines.shot_manager import ShotManager
     from engines.workflow_builder import WorkflowBuilder
     from engines.prompt import get_view_appearance
     from engines.multi_char import MultiCharacterHandler
 
     char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
-    sm = ShotManager(str(Path(cfg.project_dir) / "storyboard" / "episodes.csv"),
-                     str(Path(cfg.project_dir) / "config"))
+
+    # 优先用预加载数据，避免每次创建 ShotManager 读全部 YAML
+    if characters is None or scenes is None:
+        from engines.shot_manager import ShotManager
+        sm = ShotManager(str(Path(cfg.project_dir) / "storyboard" / "episodes.csv"),
+                         str(Path(cfg.project_dir) / "config"))
+        if characters is None:
+            characters = sm.characters
+        if scenes is None:
+            scenes = sm.scenes
 
     # 读取 prompt_en（prepare 阶段已生成，无需 LLM）
     shot_type = shot.get("shot_type", "")
     char_descs = []
     for cid in char_ids:
-        char = sm.get_character(cid)
+        char = characters.get(cid, {})
         if char:
             desc = get_view_appearance(char, shot_type)
             if not desc:
@@ -330,7 +382,7 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, forc
             char_descs.append(desc)
 
     # 读取预翻译的 description_en
-    scene = sm.get_scene(shot.get("scene", ""))
+    scene = scenes.get(shot.get("scene", ""), {})
     scene_desc = ""
     if scene:
         scene_desc = scene.get("description_en", "")
@@ -341,7 +393,7 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, forc
     multi_char_prompt = ""
     if len(char_ids) > 1:
         multi_char_prompt = MultiCharacterHandler().generate_multi_char_prompt(
-            [c for c in (sm.get_character(cid) for cid in char_ids) if c])
+            [c for c in (characters.get(cid, {}) for cid in char_ids) if c])
 
     wb = WorkflowBuilder(cfg.data, cfg.get("models", {}), cfg.project_dir, comfyui=cont.get("image"), force=force)
     wb.load_workflows()
@@ -558,29 +610,47 @@ def lipsync_core(shot_id: str, cont, out_dir: Path, *, force: bool = False) -> d
 
 # ── Celery 任务包装（_prepare 防重复 + 核心逻辑）──
 
-def _run_tts(config_path: str, episode: int, shot_id: str, *, force: bool = False) -> dict:
-    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "tts", "tts", force=force)
+def _run_tts(config_path: str, episode: int, shot_id: str, *,
+             force: bool = False,
+             cfg=None, cont=None, shot: dict | None = None,
+             characters: dict | None = None, **kw) -> dict:
+    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "tts", "tts",
+                                    force=force, cfg=cfg, cont=cont, shot=shot)
     if err:
         return err
-    return tts_core(shot_id, shot, cfg, cont, _shot_dir(config_path, episode, shot_id), force=force)
+    return tts_core(shot_id, shot, cfg, cont, _shot_dir(config_path, episode, shot_id),
+                    force=force, characters=characters)
 
 
-def _run_first_frame(config_path: str, episode: int, shot_id: str, *, force: bool = False) -> dict:
-    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "first_frame", "comfyui", force=force)
+def _run_first_frame(config_path: str, episode: int, shot_id: str, *,
+                     force: bool = False,
+                     cfg=None, cont=None, shot: dict | None = None,
+                     characters: dict | None = None,
+                     scenes: dict | None = None, **kw) -> dict:
+    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "first_frame", "comfyui",
+                                    force=force, cfg=cfg, cont=cont, shot=shot)
     if err:
         return err
-    return first_frame_core(shot_id, shot, cfg, cont, _shot_dir(config_path, episode, shot_id), force=force)
+    return first_frame_core(shot_id, shot, cfg, cont, _shot_dir(config_path, episode, shot_id),
+                            force=force, characters=characters, scenes=scenes)
 
 
-def _run_video(config_path: str, episode: int, shot_id: str, *, force: bool = False) -> dict:
-    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "video", "comfyui", need_shot=True, force=force)
+def _run_video(config_path: str, episode: int, shot_id: str, *,
+               force: bool = False,
+               cfg=None, cont=None, shot: dict | None = None, **kw) -> dict:
+    cfg, cont, shot, err = _prepare(config_path, episode, shot_id, "video", "comfyui",
+                                    need_shot=True, force=force, cfg=cfg, cont=cont, shot=shot)
     if err:
         return err
-    return video_core(shot_id, cfg, cont, _shot_dir(config_path, episode, shot_id), shot=shot, force=force)
+    return video_core(shot_id, cfg, cont, _shot_dir(config_path, episode, shot_id),
+                      shot=shot, force=force)
 
 
-def _run_lipsync(config_path: str, episode: int, shot_id: str, *, force: bool = False) -> dict:
-    cfg, cont, _, err = _prepare(config_path, episode, shot_id, "lipsync", "lipsync", need_shot=False, force=force)
+def _run_lipsync(config_path: str, episode: int, shot_id: str, *,
+                 force: bool = False,
+                 cfg=None, cont=None, **kw) -> dict:
+    cfg, cont, _, err = _prepare(config_path, episode, shot_id, "lipsync", "lipsync",
+                                 need_shot=False, force=force, cfg=cfg, cont=cont)
     if err:
         return err
     return lipsync_core(shot_id, cont, _shot_dir(config_path, episode, shot_id), force=force)
@@ -631,13 +701,38 @@ def shot_task(self, config_path: str, episode: int, shot_data: dict, force: bool
     shot_id = shot_data.get("shot_id", "")
     if not shot_id:
         return {"shot_id": "", "status": "error", "reason": "镜头数据缺少 shot_id"}
+
+    # ── 一次性初始化：Config + Container + 角色/场景数据 ──
+    # 同一镜头的 4 个步骤共享，避免每步重复读 CSV/YAML
+    _ensure_path()
+    from infra.config import Config
+    from api.registry import Container
+    from api import _ensure_registered; _ensure_registered()
+    cfg = Config(config_path)
+    cont = Container(cfg.data)
+
+    # 预加载角色和场景数据（tts_core / first_frame_core 共用）
+    characters = None
+    scenes = None
+    try:
+        from engines.shot_manager import ShotManager
+        sm = ShotManager(str(Path(cfg.project_dir) / "storyboard" / "episodes.csv"),
+                         str(Path(cfg.project_dir) / "config"))
+        characters = sm.characters
+        scenes = sm.scenes
+    except Exception as e:
+        logger.debug(f"预加载角色/场景数据失败（不影响流程）: {e}")
+
+    ctx = {"cfg": cfg, "cont": cont, "shot": shot_data,
+           "characters": characters, "scenes": scenes}
+
     steps = [("tts", _run_tts), ("first_frame", _run_first_frame), ("video", _run_video), ("lipsync", _run_lipsync)]
     results = {}
     for i, (name, fn) in enumerate(steps):
         self.update_state(state="PROGRESS", meta={"step": name, "shot_id": shot_id, "progress": int((i + 1) / len(steps) * 100), "message": f"[{shot_id}] {name} ({i+1}/{len(steps)})"})
         try:
             t0 = time.time()
-            result = fn(config_path, episode, shot_id, force=force)
+            result = fn(config_path, episode, shot_id, force=force, **ctx)
             result["elapsed"] = round(time.time() - t0, 2)
             results[name] = result
             _db_record_step(config_path, episode, shot_id, name, result)
@@ -677,7 +772,7 @@ def _iterate_shots(self, config_path: str, episode: int, shots: list[dict], prog
 
 @app.task(bind=True, name="pipeline.preview", soft_time_limit=1800)
 def preview_task(self, config_path: str, episode: int, preset: str = "draft", force: bool = False) -> dict:
-    shots = _load_episode_shots(config_path, episode)
+    shots = _load_episode_shots_cached(config_path, episode)
     if not shots:
         return {"status": "empty", "message": f"第{episode}集没有镜头"}
     # 根据 preset 缩放生成参数，写入临时配置文件
@@ -727,7 +822,7 @@ def _apply_preset(config_path: str, preset: str) -> str:
 
 @app.task(bind=True, name="pipeline.produce", soft_time_limit=7200)
 def produce_task(self, config_path: str, episode: int, vertical: bool = False, force: bool = False) -> dict:
-    shots = _load_episode_shots(config_path, episode)
+    shots = _load_episode_shots_cached(config_path, episode)
     if not shots:
         return {"status": "empty", "message": f"第{episode}集没有镜头"}
     results = _iterate_shots(self, config_path, episode, shots, progress_base=5, progress_range=85, force=force)
