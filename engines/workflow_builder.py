@@ -691,8 +691,9 @@ class WorkflowBuilder:
         if portrait:
             return [portrait]
 
-        # 4. 从 shared_assets 查找
-        shared_dir = Path(self.project_dir) / "shared_assets" / "characters" / char_id
+        # 4. 从全局主体库查找（ROOT/shared_assets/）
+        root_dir = Path(__file__).resolve().parent.parent
+        shared_dir = root_dir / "shared_assets" / "characters" / char_id
         if shared_dir.exists():
             for ext in ("*.png", "*.jpg", "*.jpeg"):
                 refs.extend(str(p) for p in shared_dir.glob(ext))
