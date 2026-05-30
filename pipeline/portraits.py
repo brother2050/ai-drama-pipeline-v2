@@ -201,7 +201,7 @@ def run_portraits(
             continue
 
         appearance = char.get("appearance", "")
-        appearance_prompt_en = char.get("appearance_prompt_en", "")
+        appearance_prompt_en = char.get("appearance_prompt_en", "") or appearance
 
         try:
             comfyui = cont.get("image")

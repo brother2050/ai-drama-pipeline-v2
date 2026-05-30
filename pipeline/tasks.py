@@ -829,7 +829,7 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
     with open(char_yaml_path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     char = data.get("character", {})
-    appearance_en = char.get("appearance_prompt_en", "")
+    appearance_en = char.get("appearance_prompt_en", "") or char.get("appearance", char_id)
     outfits = char.get("outfits", {})
 
     if not isinstance(outfits, dict) or outfit_key not in outfits:

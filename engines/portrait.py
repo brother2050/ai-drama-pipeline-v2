@@ -243,7 +243,7 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
     generation = char.get("portrait_generation", 0)
 
     # 读取模型友好 prompt（prepare 阶段已生成）
-    appearance_en = char.get("appearance_prompt_en", "")
+    appearance_en = char.get("appearance_prompt_en", "") or char.get("appearance", "")
 
     for outfit_idx, (outfit_key, outfit_val) in enumerate(outfits.items()):
         if not isinstance(outfit_val, dict):
