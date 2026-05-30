@@ -2,8 +2,8 @@ comfyui:
   url: http://127.0.0.1:8188
   api_key: ''
 models:
-  image_backend: flux
-  video_backend: cogvideox
+  image_backend: cosmos
+  video_backend: cosmos-video
   tts_backend: mimo-voicedesign
   lip_sync_backend: musetalk
   music_backend: template
@@ -56,8 +56,8 @@ timeouts:
   lipsync: 120
   llm: 300
   music: 120
-generation:
-  resolution:
-  - 1024
-  - 576
-  image_steps: 28
+# generation 段已移除 — 各后端使用 models_registry.yaml 中的原生默认参数
+# 如需覆盖，取消注释以下内容：
+# generation:
+#   resolution: [1024, 1024]   # Cosmos 推荐 1024x1024
+#   image_steps: 35            # Cosmos 推荐 35 步

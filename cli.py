@@ -427,9 +427,12 @@ def env():
     console.print(f"[cyan]OS:[/cyan]     {platform.system()} {platform.release()}")
     console.print(f"[cyan]Python:[/cyan] {platform.python_version()}")
     console.print("[cyan]GPU:[/cyan]    由三方工具管理（本地不检测）")
-    console.print(f"[cyan]生成参数:[/cyan] {gen.get('resolution')} / steps={gen.get('image_steps')}")
-    if gen.get("note", "").startswith("未配置"):
-        console.print(f"[yellow]提示:[/yellow] 建议在 config/system.yaml 中添加 generation 段自定义参数")
+    res = gen.get('resolution')
+    steps = gen.get('image_steps')
+    if res and steps:
+        console.print(f"[cyan]生成参数:[/cyan] {res} / steps={steps}")
+    else:
+        console.print("[cyan]生成参数:[/cyan] 使用各后端 models_registry.yaml 中的原生默认值")
     console.print(f"[cyan]Redis:[/cyan]  {'✅ 运行中' if _port_open(6379) else '❌ 未运行'}")
 
 

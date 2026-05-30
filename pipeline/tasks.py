@@ -709,8 +709,13 @@ def _apply_preset(config_path: str, preset: str) -> str:
     import tempfile
     cfg = Config(config_path)
     gen = cfg.get("generation", {})
-    base_steps = gen.get("image_steps", 20)
-    base_res = gen.get("resolution", [512, 512])
+    # 未配置 generation 段时，不覆盖后端默认值
+    if not gen:
+        return config_path
+    base_steps = gen.get("image_steps")
+    base_res = gen.get("resolution")
+    if not base_steps or not base_res:
+        return config_path
     if preset == "high":
         overrides = {
             "image_steps": int(base_steps * 1.4),

@@ -3,6 +3,8 @@
 项目本身不使用 GPU，GPU 由三方工具（ComfyUI 等）管理。
 本模块提供生成参数（分辨率、步数等）的配置读取。
 Config 对象支持 mtime 热读取，文件改了即时生效。
+
+当 generation 段未配置时，返回空值，让各后端使用 models_registry.yaml 中的原生默认参数。
 """
 from __future__ import annotations
 
@@ -10,14 +12,6 @@ import logging
 from typing import Any
 
 logger = logging.getLogger(__name__)
-
-# 默认生成参数（用户未配置时使用）
-_DEFAULTS: dict[str, Any] = {
-    "resolution": [1024, 576],
-    "image_steps": 28,
-    "image_backend": "flux",
-    "video_backend": "cogvideox",
-}
 
 
 def get_generation_config(config=None) -> dict:
@@ -29,26 +23,29 @@ def get_generation_config(config=None) -> dict:
 
     Returns:
         包含 resolution / image_steps 等键的字典。
+        未配置 generation 段时，resolution 和 image_steps 为 None（不覆盖后端默认值）。
         video_frames 不再由此处决定，由 build_video() 根据镜头 duration 动态计算。
     """
-    result = dict(_DEFAULTS)
+    result: dict[str, Any] = {
+        "resolution": None,
+        "image_steps": None,
+        "image_backend": None,
+        "video_backend": None,
+    }
 
     # 获取配置数据
     if config is None:
-        # 自行加载 Config（支持热读取）
         try:
             from infra.config import Config
             config = Config()
         except Exception as e:
             logger.debug(f"无法加载 Config: {e}")
-            result["note"] = "无法加载配置文件，使用默认值"
             return result
 
     # Config 对象：通过 .data 属性触发 mtime 检测 + 自动重载
     if hasattr(config, "data"):
         gen = config.get("generation", {})
     else:
-        # dict 快照（向后兼容）
         gen = config.get("generation", {}) if isinstance(config, dict) else {}
 
     if gen:
@@ -56,10 +53,5 @@ def get_generation_config(config=None) -> dict:
                      "image_backend", "video_backend"):
             if key in gen and gen[key] is not None:
                 result[key] = gen[key]
-    else:
-        result["note"] = "未配置 generation 段，使用默认值。建议在 config/system.yaml 中添加：\n" \
-                         "generation:\n" \
-                         "  resolution: [512, 512]   # [宽, 高]\n" \
-                         "  image_steps: 20          # 生图步数"
 
     return result
