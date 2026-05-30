@@ -55,6 +55,7 @@ class MimoVoiceClone:
     def __init__(self, config: dict):
         self._api_key = config.get("api_key") or os.environ.get("MIMO_API_KEY", "")
         self._timeout = config.get("timeouts", {}).get("tts", 60)
+        self._client = httpx.Client(timeout=self._timeout)
 
     @property
     def name(self) -> str:
@@ -113,15 +114,14 @@ class MimoVoiceClone:
             "messages": messages,
         }
 
-        with httpx.Client(timeout=self._timeout) as client:
-            r = client.post(
-                self.API_URL,
-                headers={"api-key": self._api_key,
-                         "Content-Type": "application/json"},
-                json=payload,
-            )
-            r.raise_for_status()
-            resp = r.json()
+        r = self._client.post(
+            self.API_URL,
+            headers={"api-key": self._api_key,
+                     "Content-Type": "application/json"},
+            json=payload,
+        )
+        r.raise_for_status()
+        resp = r.json()
 
         # 检查 API 错误
         if resp.get("error"):
@@ -157,7 +157,7 @@ class MimoVoiceClone:
         return True, "API key 已配置"
 
     def shutdown(self) -> None:
-        pass
+        self._client.close()
 
 
 def _factory(config: dict) -> MimoVoiceClone:

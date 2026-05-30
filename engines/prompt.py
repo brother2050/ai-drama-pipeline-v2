@@ -242,6 +242,7 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
     """从镜头数据构建 ComfyUI Prompt
 
     character_desc 应为已准备好的英文 prompt（prepare 阶段生成的 appearance_prompt_en）。
+    llm 参数已废弃（翻译由 prepare 阶段统一处理），保留签名兼容性。
     """
     parts = []
 
@@ -252,7 +253,7 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
 
     if scene_desc:
         if any(ord(c) > 127 for c in scene_desc):
-            scene_desc = translate_to_english(scene_desc, llm=llm)
+            logger.warning(f"场景描述仍为中文，请先执行: drama prepare <集数>")
         parts.append(scene_desc)
 
     if character_desc:
@@ -264,7 +265,7 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
         if action:
             action = _strip_dialogue(action)
             if any(ord(c) > 127 for c in action):
-                action = translate_to_english(action, llm=llm)
+                logger.warning(f"动作描述仍为中文（action_en 缺失），请先执行: drama prepare <集数>")
     else:
         action = _strip_dialogue(action)
     if action:

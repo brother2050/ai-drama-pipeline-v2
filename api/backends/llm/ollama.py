@@ -12,6 +12,8 @@ class OllamaLLM:
         self._model = config.get("model", "qwen3:8b")
         self._timeout = config.get("timeouts", {}).get("llm", 300)
         self._ctx = config.get("context_length", 0)
+        self._client = httpx.Client(timeout=self._timeout)
+        self._fast_client = httpx.Client(timeout=5)
 
     @property
     def name(self): return "ollama"
@@ -21,43 +23,40 @@ class OllamaLLM:
         """模型上下文长度（优先配置值，否则查询 Ollama API）"""
         if self._ctx > 0:
             return self._ctx
-        # 尝试从 Ollama /api/show 读取
         try:
-            with httpx.Client(timeout=5) as c:
-                r = c.post(f"{self._url}/api/show", json={"name": self._model})
-                if r.status_code == 200:
-                    params = r.json().get("model_info", {})
-                    # Ollama 的参数名格式: "qwen2.context_length" 或 "general.context_length"
-                    for key, val in params.items():
-                        if key.endswith(".context_length") and isinstance(val, int) and val > 0:
-                            self._ctx = val
-                            return val
+            r = self._fast_client.post(f"{self._url}/api/show", json={"name": self._model})
+            if r.status_code == 200:
+                params = r.json().get("model_info", {})
+                for key, val in params.items():
+                    if key.endswith(".context_length") and isinstance(val, int) and val > 0:
+                        self._ctx = val
+                        return val
         except Exception:
             pass
-        return 8192  # 保守兜底
+        return 8192
 
     def chat(self, prompt: str, system: str = "", **kwargs) -> str:
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
-        with httpx.Client(timeout=self._timeout) as c:
-            r = c.post(f"{self._url}/api/chat", json={
-                "model": self._model, "messages": messages, "stream": False,
-                "options": {"num_predict": kwargs.get("max_tokens", 2048)},
-            })
-            r.raise_for_status()
-            return r.json()["message"]["content"]
+        r = self._client.post(f"{self._url}/api/chat", json={
+            "model": self._model, "messages": messages, "stream": False,
+            "options": {"num_predict": kwargs.get("max_tokens", 2048)},
+        })
+        r.raise_for_status()
+        return r.json()["message"]["content"]
 
     def health_check(self) -> tuple[bool, str]:
         try:
-            with httpx.Client(timeout=5) as c:
-                r = c.get(f"{self._url}/api/tags")
-                return True, f"Ollama reachable (HTTP {r.status_code})"
+            r = self._fast_client.get(f"{self._url}/api/tags")
+            return True, f"Ollama reachable (HTTP {r.status_code})"
         except Exception as e:
             return False, f"Ollama unreachable: {e}"
 
-    def shutdown(self): pass
+    def shutdown(self):
+        self._client.close()
+        self._fast_client.close()
 
 def _f(config): return OllamaLLM(config)
 registry.register(BackendMeta(name="ollama", service_type="llm", factory=_f,
@@ -65,7 +64,6 @@ registry.register(BackendMeta(name="ollama", service_type="llm", factory=_f,
 
 
 class OpenAICompatLLM:
-    # 常见模型上下文长度映射（模型名关键词 → context_length）
     _MODEL_CTX_MAP = {
         "qwen3": 131072, "qwen2.5": 32768, "qwen2": 32768, "qwen": 32768,
         "deepseek-v3": 65536, "deepseek-r1": 65536, "deepseek": 32768,
@@ -88,6 +86,11 @@ class OpenAICompatLLM:
         self._api_key = config.get("api_key", "")
         self._timeout = config.get("timeouts", {}).get("llm", 300)
         self._ctx = config.get("context_length", 0)
+        self._headers = {"Content-Type": "application/json"}
+        if self._api_key:
+            self._headers["Authorization"] = f"Bearer {self._api_key}"
+        self._client = httpx.Client(timeout=self._timeout, headers=self._headers)
+        self._fast_client = httpx.Client(timeout=5, headers=self._headers)
 
     @property
     def name(self): return "openai"
@@ -101,36 +104,30 @@ class OpenAICompatLLM:
         for keyword, ctx in self._MODEL_CTX_MAP.items():
             if keyword in model_lower:
                 return ctx
-        return 8192  # 保守兜底
+        return 8192
 
     def chat(self, prompt: str, system: str = "", **kwargs) -> str:
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
-        headers = {"Content-Type": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
-        with httpx.Client(timeout=self._timeout) as c:
-            r = c.post(f"{self._url}/v1/chat/completions", json={
-                "model": self._model, "messages": messages,
-                "max_tokens": kwargs.get("max_tokens", 2048),
-            }, headers=headers)
-            r.raise_for_status()
-            return r.json()["choices"][0]["message"]["content"]
+        r = self._client.post(f"{self._url}/v1/chat/completions", json={
+            "model": self._model, "messages": messages,
+            "max_tokens": kwargs.get("max_tokens", 2048),
+        })
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"]
 
     def health_check(self) -> tuple[bool, str]:
         try:
-            headers = {}
-            if self._api_key:
-                headers["Authorization"] = f"Bearer {self._api_key}"
-            with httpx.Client(timeout=5) as c:
-                r = c.get(f"{self._url}/v1/models", headers=headers)
-                return True, f"OpenAI-compat reachable (HTTP {r.status_code})"
+            r = self._fast_client.get(f"{self._url}/v1/models")
+            return True, f"OpenAI-compat reachable (HTTP {r.status_code})"
         except Exception as e:
             return False, f"OpenAI-compat unreachable: {e}"
 
-    def shutdown(self): pass
+    def shutdown(self):
+        self._client.close()
+        self._fast_client.close()
 
 def _f2(config): return OpenAICompatLLM(config)
 registry.register(BackendMeta(name="openai", service_type="llm", factory=_f2,

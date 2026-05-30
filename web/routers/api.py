@@ -1272,9 +1272,7 @@ def get_shot_file(episode: int, shot_id: str, filename: str):
 
     if shot_id == "final":
         # 成片文件
-        out_dir = proj / "output" / f"e{episode:02d}" / "final"
-        if not out_dir.exists():
-            out_dir = proj / "output" / f"e{episode:02d}"
+        out_dir = proj / "output" / f"e{episode:02d}"
         file_path = _safe_path(out_dir, filename)
     else:
         _check_id(shot_id, "shot_id")
@@ -1452,9 +1450,7 @@ def get_final_resources(episode: int):
     """获取成片资源状态"""
     _check_episode(episode)
     proj = _proj()
-    out_dir = proj / "output" / f"e{episode:02d}" / "final"
-    if not out_dir.exists():
-        out_dir = proj / "output" / f"e{episode:02d}"
+    out_dir = proj / "output" / f"e{episode:02d}"
     final_mp4 = out_dir / f"episode_{episode:02d}_final.mp4"
     if not final_mp4.exists():
         candidates = list(out_dir.glob("*final*.mp4"))

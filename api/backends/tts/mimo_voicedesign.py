@@ -77,6 +77,7 @@ class MimoVoiceDesign:
         self._api_key = config.get("api_key") or os.environ.get("MIMO_API_KEY", "")
         self._timeout = config.get("timeouts", {}).get("tts", 60)
         self._project_dir = config.get("project_dir", "")
+        self._client = httpx.Client(timeout=self._timeout)
 
     @property
     def name(self) -> str:
@@ -149,15 +150,14 @@ class MimoVoiceDesign:
             "messages": messages,
         }
 
-        with httpx.Client(timeout=self._timeout) as client:
-            r = client.post(
-                self.API_URL,
-                headers={"api-key": self._api_key,
-                         "Content-Type": "application/json"},
-                json=payload,
-            )
-            r.raise_for_status()
-            resp = r.json()
+        r = self._client.post(
+            self.API_URL,
+            headers={"api-key": self._api_key,
+                     "Content-Type": "application/json"},
+            json=payload,
+        )
+        r.raise_for_status()
+        resp = r.json()
 
         if resp.get("error"):
             raise RuntimeError(f"MiMo TTS API 错误: {resp['error']}")
@@ -190,7 +190,7 @@ class MimoVoiceDesign:
         return True, "API key 已配置"
 
     def shutdown(self) -> None:
-        pass
+        self._client.close()
 
 
 def _factory(config: dict) -> MimoVoiceDesign:
