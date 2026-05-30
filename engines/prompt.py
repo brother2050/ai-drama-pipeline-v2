@@ -101,7 +101,10 @@ _APPEARANCE_PROMPT_SYSTEM = """你是一位顶级 AI 绘画提示词工程师，
 
 
 def batch_generate_appearance_prompts(characters: list[dict], llm) -> dict[str, dict]:
-    """批量生成角色模型友好 prompt（一次 LLM 调用处理多个角色）
+    """批量生成角色模型友好 prompt（自动分批，按模型上下文动态调整）
+
+    自动估算每个角色的 token 开销，按模型可用上下文分批处理。
+    每批调用一次 LLM，结果合并返回。
 
     Args:
         characters: 角色数据列表，每项需有 id 和 appearance 字段
@@ -113,7 +116,60 @@ def batch_generate_appearance_prompts(characters: list[dict], llm) -> dict[str, 
     if not characters or not llm:
         return {}
 
-    # 构建批量 prompt：每个角色编号
+    # 估算模型上下文长度（优先读配置，兜底 32K）
+    max_ctx = _estimate_context_length(llm)
+    # 系统 prompt + 输出预留
+    system_overhead = 800
+    output_reserve = 2000  # 每批输出预留
+    available = max_ctx - system_overhead - output_reserve
+
+    # 按字符数分批（中文字符 ≈ 2 tokens，留余量按 3 算）
+    batches: list[list[dict]] = [[]]
+    batch_tokens = 0
+    for char in characters:
+        appearance = char.get("appearance", "")
+        char_tokens = len(appearance) * 3 + 200  # 描述 + id + 结构开销
+        if batch_tokens + char_tokens > available and batches[-1]:
+            batches.append([])
+            batch_tokens = 0
+        batches[-1].append(char)
+        batch_tokens += char_tokens
+
+    if len(batches) > 1:
+        logger.info(f"  角色 prompt 分批处理: {len(characters)} 个角色 → {len(batches)} 批")
+
+    # 逐批调用 LLM
+    all_mapping: dict[str, dict] = {}
+    for batch_idx, batch in enumerate(batches):
+        mapping = _generate_prompt_batch(batch, llm)
+        all_mapping.update(mapping)
+        if len(batches) > 1:
+            logger.info(f"  批次 {batch_idx + 1}/{len(batches)}: {len(mapping)} 个角色完成")
+
+    logger.info(f"  ✅ 批量 prompt 生成: {len(all_mapping)}/{len(characters)} 个角色")
+    return all_mapping
+
+
+def _estimate_context_length(llm) -> int:
+    """估算 LLM 可用上下文长度"""
+    # 尝试从 llm 对象读取配置
+    for attr in ("context_length", "num_ctx", "max_context", "context_window"):
+        val = getattr(llm, attr, None)
+        if val and isinstance(val, int) and val > 0:
+            return val
+    # 尝试从 config 读取
+    config = getattr(llm, "config", None) or getattr(llm, "_config", None)
+    if isinstance(config, dict):
+        for key in ("num_ctx", "context_length", "max_context_length"):
+            val = config.get(key)
+            if val and isinstance(val, int) and val > 0:
+                return val
+    # 兜底 32K
+    return 32768
+
+
+def _generate_prompt_batch(characters: list[dict], llm) -> dict[str, dict]:
+    """处理单批角色 prompt 生成"""
     parts = []
     for i, char in enumerate(characters):
         cid = char.get("id", f"char_{i}")
@@ -131,20 +187,15 @@ def batch_generate_appearance_prompts(characters: list[dict], llm) -> dict[str, 
             logger.warning(f"批量 prompt 生成返回无法解析")
             return {}
 
-        # 统一为列表处理
         if isinstance(result, dict):
             result = [result]
-
         if not isinstance(result, list):
-            logger.warning(f"批量 prompt 生成返回格式不正确: {type(result)}")
             return {}
 
-        # 映射回 char_id
         mapping: dict[str, dict] = {}
         for i, item in enumerate(result):
             if not isinstance(item, dict):
                 continue
-            # 从结果中提取 id，或按顺序匹配
             cid = item.get("id", "")
             if not cid and i < len(characters):
                 cid = characters[i].get("id", f"char_{i}")
@@ -155,8 +206,6 @@ def batch_generate_appearance_prompts(characters: list[dict], llm) -> dict[str, 
                     "side": item.get("side", ""),
                     "back": item.get("back", ""),
                 }
-
-        logger.info(f"  ✅ 批量 prompt 生成: {len(mapping)}/{len(characters)} 个角色")
         return mapping
 
     except Exception as e:
