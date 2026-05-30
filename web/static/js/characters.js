@@ -423,7 +423,7 @@ async function generateOutfit(charId, btnEl) {
     if (typeof TaskPanel !== "undefined") TaskPanel.trackTask(task_id, "服装 " + key);
     const result = await pollTask(task_id, info => { if (statusEl) _html(statusEl, `⏳ ${key}: ${info.message || '生成中...'} (${info.progress || 0}%)`); });
     if (result.status === 'success' && result.result?.status === 'done') {
-      toast(`✅ 服装「${key}」参考图已生成`);
+      toast(t('toast.outfit_done', { key }));
       // 更新 DOM 中的 data-imgs，确保后续保存不丢失
       const r = result.result;
       if (r.url && entry) {
@@ -452,7 +452,7 @@ async function generateAllOutfits(charId) {
     if (result.status === 'success' && result.result?.status === 'done') {
       const r = result.result;
       _html(status, `✅ 完成 (${r.success || 0}/${r.total || 0})`);
-      toast(`✅ 服装批量生成完成: ${r.success || 0}/${r.total || 0}`);
+      toast(t('toast.outfits_batch_done', { done: r.success || 0, total: r.total || 0 }));
       // 更新 DOM 中各服装的 data-imgs
       if (r.generated) {
         for (const g of r.generated) {
@@ -559,7 +559,7 @@ async function startLoraTraining(charId) {
       const r = result.result;
       _html(statusEl, `✅ ${t('train.done')} (${r.images} imgs, ${r.steps} steps)`);
       _html(progressEl, '');
-      toast(`✅ LoRA 训练完成: ${charId}`);
+      toast(t('toast.lora_done', { id: charId }));
       _loadLoraStatus(charId);
       invalidateCache('characters');
     } else {
@@ -653,17 +653,17 @@ async function _doBatchTrain() {
       });
       if (result.status === 'success') {
         const r = result.result;
-        if (r?.status === 'done') { done++; toast(`✅ ${cid} 训练完成`); }
+        if (r?.status === 'done') { done++; toast(t('toast.lora_done', { id: cid })); }
         else if (r?.status === 'skipped') { skipped++; }
-        else { failed++; toast(`⚠ ${cid}: ${r?.reason || '未知'}`, 'error'); }
-      } else { failed++; toast(`❌ ${cid}: ${result.error || '失败'}`, 'error'); }
+        else { failed++; toast(`⚠ ${cid}: ${r?.reason || 'unknown'}`, 'error'); }
+      } else { failed++; toast(`❌ ${cid}: ${result.error || 'failed'}`, 'error'); }
     } catch (e) { failed++; toast(`❌ ${cid}: ${e.message}`, 'error'); }
   }
 
   _html(progressEl, '');
   _html(statusEl, `<div style="padding:.5rem;background:var(--bg2);border-radius:6px;font-size:.9rem">批量训练完成: ${done}✅ ${skipped}⏭跳过 ${failed}❌失败 / 共${total}个</div>`);
   invalidateCache('characters');
-  toast(`批量训练完成: ${done}成功 ${failed}失败`);
+  toast(t('toast.lora_batch_done', { done, fail: failed }));
 }
 
 async function editChar(id) {

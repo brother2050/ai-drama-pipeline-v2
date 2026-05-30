@@ -154,7 +154,7 @@ async function dashInspireGen() {
     if (result.status === 'success' && result.result?.status === 'done') {
       const r = result.result;
       _html(statusEl, `✅ 生成 ${r.count} 个镜头，共 ${r.total_duration} 秒`);
-      toast(`✅ 已生成 ${r.count} 个镜头`);
+      toast(t('toast.gen_count', { n: r.count || 0 }));
       invalidateCache(`storyboard/${episode}`);
       invalidateCache('episodes');
       setTimeout(() => { ep = episode; navTo('storyboard'); }, 1200);

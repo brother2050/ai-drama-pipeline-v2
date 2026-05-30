@@ -13,9 +13,9 @@ async function _runAIGen(apiPath, body, statusId, overlayId, label, cacheKey, re
     const result = await pollTask(task_id, info => _html(statusEl, `⏳ ${info.message || 'AI 生成中...'} (${info.progress || 0}%)`));
     if (result.status === 'success' && result.result?.status === 'done') {
       const r = result.result;
-      const countLabel = r.count !== undefined ? `生成 ${r.count} 个` : '完成';
-      _html(statusEl, `✅ ${countLabel}`);
-      toast(`✅ 已${countLabel}`);
+      const count = r.count || 0;
+      _html(statusEl, t('toast.gen_count', { n: count }));
+      toast(t('toast.gen_count', { n: count }));
       invalidateCache(cacheKey);
       setTimeout(() => { document.getElementById(overlayId)?.remove(); reloadFn(); }, 1500);
     } else {
