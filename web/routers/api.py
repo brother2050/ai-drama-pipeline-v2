@@ -1115,7 +1115,7 @@ def save_storyboard(episode: int, data: dict):
 
     sb_path = _proj() / "storyboard" / "episodes.csv"
     from engines.storyboard import save_storyboard
-    save_storyboard(sb_path, shots, episode, append=False)
+    save_storyboard(sb_path, shots, episode, append=True)
 
     # 同步更新数据库 shots 表
     try:
@@ -1152,9 +1152,12 @@ def batch_delete_storyboard_shots(episode: int, req: StoryboardBatchDeleteReques
     remaining = [s for s in shots if not (int(s.get("episode", 0) or 0) == episode and s.get("shot_id") in ids_to_delete)]
     deleted_count = before_count - len(remaining)
 
+    # 只保留当前集的镜头传给 save_storyboard（append=True 会自动保留其他集）
+    ep_remaining = [s for s in remaining if int(s.get("episode", 0) or 0) == episode]
+
     # 保存回去
     from engines.storyboard import save_storyboard
-    save_storyboard(sb_path, remaining, episode, append=False)
+    save_storyboard(sb_path, ep_remaining, episode, append=True)
 
     # 同步删除数据库记录
     try:
