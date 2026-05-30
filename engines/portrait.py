@@ -51,14 +51,13 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
         char: 角色数据 dict（用于读取视角专属描述）
         project_dir: 项目目录全路径（用于生成唯一 ComfyUI 文件名 + AssetTracker）
     """
-    # 获取视角专属外貌描述（背面/侧面自动去除面部细节）
-    from engines.prompt import get_view_appearance, translate_appearance, translate_to_english
-    view_desc = get_view_appearance(char, shot_type) if char else appearance
-    # 如果视角描述为空或仍是中文，用专用翻译
-    if not view_desc or any(ord(c) > 127 for c in view_desc):
-        view_desc = translate_appearance(view_desc or appearance)
-        if any(ord(c) > 127 for c in view_desc):
-            view_desc = translate_to_english(view_desc, llm=None)
+    # 获取视角专属 prompt（prepare 阶段已生成）
+    from engines.prompt import get_view_appearance
+    view_desc = get_view_appearance(char, shot_type) if char else ""
+    if not view_desc:
+        view_desc = char.get("appearance_prompt_en", "") if char else ""
+    if not view_desc:
+        view_desc = appearance  # 最后兜底
 
     fake_shot = {"characters": char_id, "emotion": "neutral",
                  "shot_type": shot_type, "camera": "固定"}
@@ -234,7 +233,6 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
     comfyui = container.get("image")
 
     from engines.workflow_builder import WorkflowBuilder
-    from engines.prompt import translate_appearance, translate_to_english
 
     models = config.get("models", {})
     wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui, llm=None)
@@ -244,10 +242,8 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
     cover_path = portrait_dir / "cover.png"
     generation = char.get("portrait_generation", 0)
 
-    # 先翻译外貌描述（AI 绘图友好格式）
-    appearance_en = translate_appearance(appearance)
-    if any(ord(c) > 127 for c in appearance_en):
-        appearance_en = translate_to_english(appearance_en, llm=None)
+    # 读取模型友好 prompt（prepare 阶段已生成）
+    appearance_en = char.get("appearance_prompt_en", "")
 
     for outfit_idx, (outfit_key, outfit_val) in enumerate(outfits.items()):
         if not isinstance(outfit_val, dict):
@@ -263,10 +259,8 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
                 continue
 
         outfit_dir.mkdir(parents=True, exist_ok=True)
-        # 翻译服装描述
-        outfit_desc_en = outfit_desc
-        if any(ord(c) > 127 for c in outfit_desc_en):
-            outfit_desc_en = translate_to_english(outfit_desc_en, llm=None)
+        # 服装描述（prepare 阶段已翻译 description_en）
+        outfit_desc_en = outfit_val.get("description_en", "") or outfit_desc
         full_desc = f"{appearance_en}, wearing {outfit_desc_en}"
 
         # 服装图 seed（含 char_id + generation + outfit_index，不同角色完全隔离）

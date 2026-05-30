@@ -310,40 +310,26 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, forc
 
     from engines.shot_manager import ShotManager
     from engines.workflow_builder import WorkflowBuilder
-    from engines.prompt import translate_to_english
+    from engines.prompt import get_view_appearance
     from engines.multi_char import MultiCharacterHandler
 
     char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
     sm = ShotManager(str(Path(cfg.project_dir) / "storyboard" / "episodes.csv"),
                      str(Path(cfg.project_dir) / "config"))
 
-    # LLM 仅在预翻译字段缺失时使用（准备阶段已翻译则不需要）
-    llm = None
-    try:
-        if cfg.get("llm", {}).get("enabled"):
-            llm = cont.get("llm")
-    except Exception:
-        pass
-
-    # 优先读视角专属描述，回退到通用 appearance_en
-    from engines.prompt import get_view_appearance
+    # 读取 prompt_en（prepare 阶段已生成，无需 LLM）
     shot_type = shot.get("shot_type", "")
     char_descs = []
     for cid in char_ids:
         char = sm.get_character(cid)
         if char:
-            desc_en = get_view_appearance(char, shot_type) or char.get("appearance_en", "")
-            if desc_en:
-                char_descs.append(desc_en)
-            else:
-                char_descs.append(translate_to_english(char.get("appearance", ""), llm=llm))
+            desc = get_view_appearance(char, shot_type)
+            if desc:
+                char_descs.append(desc)
 
-    # 优先读预翻译的 description_en，无则回退到翻译
+    # 读取预翻译的 description_en
     scene = sm.get_scene(shot.get("scene", ""))
-    if scene:
-        scene_desc = scene.get("description_en", "") or translate_to_english(scene.get("description", ""), llm=llm)
-    else:
-        scene_desc = ""
+    scene_desc = scene.get("description_en", "") if scene else ""
 
     multi_char_prompt = ""
     if len(char_ids) > 1:
@@ -2067,7 +2053,7 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
         if translate:
             logger.warning(f"LLM 不可用，跳过翻译: {e}")
 
-    from engines.prompt import translate_to_english, batch_translate_to_english
+    from engines.prompt import translate_to_english, batch_translate_to_english, generate_appearance_prompt, generate_view_prompts
     from infra.config import save_yaml
 
     # 批量翻译开关（config: llm.batch_translate，默认 True）
@@ -2078,22 +2064,19 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
         logger.info("  批量翻译模式: OFF")
 
     result = {
-        "translated_chars": 0, "translated_scenes": 0, "translated_shots": 0,
-        "view_split_chars": 0,
+        "prompt_chars": 0, "translated_scenes": 0, "translated_shots": 0,
     }
 
     def _single(text: str) -> str:
         return translate_to_english(text, llm=llm)
 
-    # ── 1. 翻译角色描述 ──
+    # ── 1. 生成角色模型友好 prompt（替代翻译） ──
     if translate and llm:
         self.update_state(state="PROGRESS", meta={
-            "step": "prepare", "progress": 10, "message": "翻译角色描述..."})
+            "step": "prepare", "progress": 10, "message": "生成角色 prompt..."})
 
         char_dir = project_dir / "config" / "characters"
         if char_dir.exists():
-            # 收集待翻译: [(file, data, field_path, text)]
-            pending: list[tuple[Path, dict, list[str], str]] = []
             all_char_files: list[tuple[Path, dict]] = []
 
             for f in char_dir.glob("*.yaml"):
@@ -2110,9 +2093,61 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                 all_char_files.append((f, data))
 
                 appearance = char.get("appearance", "")
-                if appearance and (not char.get("appearance_en") or force):
-                    if any(ord(c) > 127 for c in appearance):
-                        pending.append((f, data, ["appearance_en"], appearance))
+                if not appearance:
+                    continue
+                # 需要生成：无 prompt_en 或 force 模式
+                need_prompt = not char.get("appearance_prompt_en") or force
+                need_views = not all(char.get(f"appearance_{v}_prompt_en") for v in ("front", "side", "back")) or force
+
+                if not need_prompt and not need_views:
+                    continue
+
+                # 生成通用 prompt_en
+                if need_prompt:
+                    prompt_en = generate_appearance_prompt(appearance, llm)
+                    if prompt_en:
+                        char["appearance_prompt_en"] = prompt_en
+                        result["prompt_chars"] += 1
+                        logger.info(f"  ✅ prompt_en {char['id']}: {prompt_en[:60]}...")
+
+                # 生成视角专属 prompt_en
+                if need_views:
+                    view_prompts = generate_view_prompts(appearance, llm)
+                    if view_prompts:
+                        char["appearance_front_prompt_en"] = view_prompts["front"]
+                        char["appearance_side_prompt_en"] = view_prompts["side"]
+                        char["appearance_back_prompt_en"] = view_prompts["back"]
+                        logger.info(f"  ✅ 视角 prompt {char['id']}: front/side/back")
+
+                data["character"] = char
+
+            # 批量保存
+            for f, data in all_char_files:
+                save_yaml(f, data)
+            logger.info(f"  生成角色 prompt: {result['prompt_chars']} 个")
+
+    # ── 1b. 翻译角色其他字段（voice、outfits） ──
+    if translate and llm:
+        self.update_state(state="PROGRESS", meta={
+            "step": "prepare", "progress": 20, "message": "翻译角色附属字段..."})
+
+        char_dir = project_dir / "config" / "characters"
+        if char_dir.exists():
+            pending: list[tuple[Path, dict, list[str], str]] = []
+            all_char_files: list[tuple[Path, dict]] = []
+
+            for f in char_dir.glob("*.yaml"):
+                if f.stem.endswith(".example"):
+                    continue
+                try:
+                    with open(f, encoding="utf-8") as fh:
+                        data = yaml.safe_load(fh) or {}
+                except Exception:
+                    continue
+                char = data.get("character", {})
+                if not char.get("id"):
+                    continue
+                all_char_files.append((f, data))
 
                 voice = char.get("voice", {})
                 if isinstance(voice, dict):
@@ -2142,7 +2177,6 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                         obj = obj.setdefault(key, {}) if isinstance(obj, dict) else obj
                     if isinstance(obj, dict):
                         obj[field_path[-1]] = translated
-                    result["translated_chars"] += 1
 
                 seen: set[str] = set()
                 for f, data in all_char_files:
@@ -2150,43 +2184,6 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                     if sp not in seen:
                         seen.add(sp)
                         save_yaml(f, data)
-                logger.info(f"  翻译角色: {result['translated_chars']} 条")
-
-    # ── 1b. 生成视角专属外貌描述（逐条，不批量） ──
-    if translate and llm:
-        self.update_state(state="PROGRESS", meta={
-            "step": "prepare", "progress": 20, "message": "生成视角专属描述..."})
-
-        from engines.prompt import generate_view_prompts
-
-        char_dir = project_dir / "config" / "characters"
-        if char_dir.exists():
-            for f in char_dir.glob("*.yaml"):
-                if f.stem.endswith(".example"):
-                    continue
-                try:
-                    with open(f, encoding="utf-8") as fh:
-                        data = yaml.safe_load(fh) or {}
-                except Exception:
-                    continue
-                char = data.get("character", {})
-                if not char.get("id"):
-                    continue
-
-                appearance = char.get("appearance", "")
-                has_view_prompts = all(char.get(f"appearance_{v}_en") for v in ("front", "side", "back"))
-
-                if appearance and (not has_view_prompts or force):
-                    if any(ord(c) > 127 for c in appearance):
-                        view_prompts = generate_view_prompts(appearance, llm)
-                        if view_prompts:
-                            char["appearance_front_en"] = view_prompts["front"]
-                            char["appearance_side_en"] = view_prompts["side"]
-                            char["appearance_back_en"] = view_prompts["back"]
-                            data["character"] = char
-                            save_yaml(f, data)
-                            result["view_split_chars"] += 1
-                            logger.info(f"  视角拆分 {char.get('id')}: front/side/back")
 
     # ── 2. 翻译场景描述 ──
     if translate and llm:
@@ -2287,6 +2284,6 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
     self.update_state(state="PROGRESS", meta={
         "step": "prepare", "progress": 100, "message": "准备完成"})
 
-    total = result["translated_chars"] + result["translated_scenes"] + result["translated_shots"] + result["view_split_chars"]
+    total = result["prompt_chars"] + result["translated_scenes"] + result["translated_shots"]
     logger.info(f"准备阶段完成: {result}")
     return {"status": "done", **result, "total_operations": total}

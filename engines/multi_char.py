@@ -14,11 +14,11 @@ class MultiCharacterHandler:
             return ""
         if len(characters) <= 1:
             char = characters[0] if characters else {}
-            return char.get("appearance_en", char.get("appearance", ""))
+            return char.get("appearance_prompt_en", char.get("appearance", ""))
 
         parts = []
         for i, char in enumerate(characters):
-            desc = char.get("appearance_en", char.get("appearance", ""))
+            desc = char.get("appearance_prompt_en", char.get("appearance", ""))
             if layout == "side_by_side":
                 pos = "on the left" if i % 2 == 0 else "on the right"
             else:

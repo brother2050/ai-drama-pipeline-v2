@@ -43,9 +43,13 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
         char: 角色数据 dict（用于读取视角专属描述）
         project_dir: 项目目录全路径（用于唯一文件名 + AssetTracker）
     """
-    # 获取视角专属外貌描述（背面/侧面自动去除面部细节）
+    # 获取视角专属 prompt（prepare 阶段已生成）
     from engines.prompt import get_view_appearance
-    view_desc = get_view_appearance(char, shot_type) if char else appearance
+    view_desc = get_view_appearance(char, shot_type) if char else ""
+    if not view_desc:
+        view_desc = char.get("appearance_prompt_en", "") if char else ""
+    if not view_desc:
+        view_desc = appearance  # 最后兜底
 
     fake_shot = {"characters": char_id, "emotion": "neutral",
                  "shot_type": shot_type, "camera": "固定"}
@@ -79,22 +83,22 @@ def _generate_outfit(char_id: str, appearance: str, outfit_key: str,
                      outfit_desc: str, base_dir: Path, comfyui, wb, llm,
                      seed: int | None = None,
                      ref_image: str | None = None,
-                     project_dir: str = "") -> bool:
+                     project_dir: str = "",
+                     appearance_prompt_en: str = "") -> bool:
     """为指定服装生成参考图，成功返回 True
 
     Args:
         seed: 指定 seed 保持一致性
         ref_image: IP-Adapter 参考图路径（用 cover 保持面部一致）
         project_dir: 项目目录全路径（用于唯一文件名 + AssetTracker）
+        appearance_prompt_en: 模型友好外貌 prompt（prepare 阶段生成）
     """
-    from engines.prompt import translate_to_english
-
     outfit_dir = base_dir / outfit_key
     outfit_dir.mkdir(parents=True, exist_ok=True)
 
-    full_desc = f"{appearance}, wearing {outfit_desc}"
-    if any(ord(c) > 127 for c in full_desc):
-        full_desc = translate_to_english(full_desc, llm=llm)
+    # 优先用 prompt_en，兜底用原始 appearance
+    char_desc = appearance_prompt_en or appearance
+    full_desc = f"{char_desc}, wearing {outfit_desc}"
 
     fake_shot = {"characters": char_id, "emotion": "neutral",
                  "shot_type": "全身", "camera": "固定"}
@@ -197,6 +201,7 @@ def run_portraits(
             continue
 
         appearance = char.get("appearance", "")
+        appearance_prompt_en = char.get("appearance_prompt_en", "")
 
         try:
             comfyui = cont.get("image")
@@ -275,7 +280,7 @@ def run_portraits(
                 for outfit_idx, (outfit_key, outfit_val) in enumerate(outfits.items()):
                     if not isinstance(outfit_val, dict):
                         continue
-                    outfit_desc = outfit_val.get("description", "")
+                    outfit_desc = outfit_val.get("description_en", "") or outfit_val.get("description", "")
                     if not outfit_desc:
                         continue
 
@@ -296,7 +301,8 @@ def run_portraits(
                             char_id, appearance, outfit_key, outfit_desc,
                             portrait_dir, comfyui, wb, llm,
                             seed=outfit_seed, ref_image=ref,
-                            project_dir=cfg.project_dir)
+                            project_dir=cfg.project_dir,
+                            appearance_prompt_en=appearance_prompt_en)
                         if ok:
                             outfit_url = f"/api/assets/characters/{char_id}/{outfit_key}/cover.png"
                             outfit_val.setdefault("reference_images", [])
