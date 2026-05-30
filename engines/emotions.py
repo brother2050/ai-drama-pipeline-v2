@@ -1,7 +1,6 @@
 """情绪分析引擎 — 从台词/动作提取情绪标签"""
 from __future__ import annotations
 
-import json
 import logging
 import re
 

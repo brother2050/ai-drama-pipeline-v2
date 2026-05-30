@@ -171,7 +171,6 @@ def test_step_lipsync_no_video(test_project):
 def test_step_lipsync_no_audio(test_project):
     """口型任务: 音频不存在"""
     from pipeline.tasks import step_lipsync
-    import shutil
 
     # 创建视频文件但不创建音频
     video_path = f"{test_project}/output/e01/s001/video.mp4"

@@ -73,7 +73,7 @@ class FFmpeg:
         if transition == "none":
             list_file = output + ".list.txt"
             try:
-                with open(list_file, "w") as f:
+                with open(list_file, "w", encoding="utf-8") as f:
                     for p in inputs:
                         # ffmpeg concat 协议要求: 单引号需转义为 '\''
                         escaped = os.path.abspath(p).replace("'", "'\\''")
