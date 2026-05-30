@@ -138,7 +138,11 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
             # 读取预翻译的 description_en
             scene_id = shot.get("scene", "")
             scene = sm.get_scene(scene_id)
-            scene_desc = scene.get("description_en", "") if scene else ""
+            scene_desc = ""
+            if scene:
+                scene_desc = scene.get("description_en", "")
+                if not scene_desc and scene.get("description"):
+                    raise RuntimeError(f"场景 '{scene_id}' 尚未生成英文描述，请先执行准备阶段: drama prepare <集数>")
 
             multi_char_prompt = ""
             if len(char_ids) > 1:

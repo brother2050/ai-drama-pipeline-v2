@@ -331,7 +331,12 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *, forc
 
     # 读取预翻译的 description_en
     scene = sm.get_scene(shot.get("scene", ""))
-    scene_desc = scene.get("description_en", "") if scene else ""
+    scene_desc = ""
+    if scene:
+        scene_desc = scene.get("description_en", "")
+        if not scene_desc and scene.get("description"):
+            return _err(shot_id, "first_frame",
+                        f"场景 '{shot.get('scene', '')}' 尚未生成英文描述，请先执行准备阶段: drama prepare <集数>")
 
     multi_char_prompt = ""
     if len(char_ids) > 1:
@@ -841,9 +846,14 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
         return {"status": "error", "reason": f"角色 {char_id} 没有名为 '{outfit_key}' 的服装，可用: {available}"}
 
     outfit_val = outfits[outfit_key]
-    outfit_desc = outfit_val.get("description_en", "") or outfit_val.get("description", "")
-    if not outfit_desc:
+    outfit_desc_en = outfit_val.get("description_en", "")
+    outfit_desc_zh = outfit_val.get("description", "")
+    if not outfit_desc_en and not outfit_desc_zh:
         return {"status": "error", "reason": f"角色 {char_id} 的服装 '{outfit_key}' 描述为空"}
+    if not outfit_desc_en and outfit_desc_zh:
+        return {"status": "error",
+                "reason": f"角色 {char_id} 的服装 '{outfit_key}' 尚未生成英文描述，请先执行准备阶段: drama prepare <集数>"}
+    outfit_desc = outfit_desc_en
 
     try:
         comfyui = cont.get("image")

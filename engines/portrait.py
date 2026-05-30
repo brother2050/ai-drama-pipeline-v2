@@ -262,7 +262,11 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
 
         outfit_dir.mkdir(parents=True, exist_ok=True)
         # 服装描述（prepare 阶段已翻译 description_en）
-        outfit_desc_en = outfit_val.get("description_en", "") or outfit_desc
+        outfit_desc_en = outfit_val.get("description_en", "")
+        if not outfit_desc_en:
+            if outfit_desc:
+                logger.error(f"角色 '{char_id}' 的服装 '{outfit_key}' 尚未生成英文描述，请先执行: drama prepare <集数>")
+            continue
         full_desc = f"{appearance_en}, wearing {outfit_desc_en}"
 
         # 服装图 seed（含 char_id + generation + outfit_index，不同角色完全隔离）

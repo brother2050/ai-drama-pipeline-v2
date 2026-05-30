@@ -282,9 +282,14 @@ def run_portraits(
                 for outfit_idx, (outfit_key, outfit_val) in enumerate(outfits.items()):
                     if not isinstance(outfit_val, dict):
                         continue
-                    outfit_desc = outfit_val.get("description_en", "") or outfit_val.get("description", "")
-                    if not outfit_desc:
+                    outfit_desc_en = outfit_val.get("description_en", "")
+                    outfit_desc_zh = outfit_val.get("description", "")
+                    if not outfit_desc_en and not outfit_desc_zh:
                         continue
+                    if not outfit_desc_en and outfit_desc_zh:
+                        logger.warning(f"      ⚠ {outfit_key}: 尚未生成英文描述，请先执行: drama prepare <集数>")
+                        continue
+                    outfit_desc = outfit_desc_en
 
                     outfit_dir = portrait_dir / outfit_key
                     outfit_existing = list(outfit_dir.glob("*.png")) + list(outfit_dir.glob("*.jpg"))
