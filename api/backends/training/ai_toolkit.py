@@ -419,7 +419,7 @@ class AIToolkitTrainer:
 
     def train_lora(self, char_id: str, images_dir: str, *,
                    trigger_word: str = "",
-                   steps: int = 1000,
+                   steps: int = 600,
                    learning_rate: float = 1e-4,
                    rank: int = 16,
                    resolution: str = "512x768",

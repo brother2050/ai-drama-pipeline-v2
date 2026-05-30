@@ -1890,7 +1890,7 @@ def seko_import_task(
 
 @app.task(bind=True, name="pipeline.train_lora", soft_time_limit=7200)
 def train_lora_task(self, config_path: str, char_id: str, *,
-                    trigger_word: str = "", steps: int = 1000,
+                    trigger_word: str = "", steps: int = 600,
                     learning_rate: float = 1e-4, rank: int = 16,
                     resolution: str = "512x768", force: bool = False) -> dict:
     """为角色训练 LoRA 模型（异步）"""
