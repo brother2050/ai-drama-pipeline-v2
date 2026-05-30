@@ -26,7 +26,7 @@ EMOTION_MAP = {
 
 # 景别→英文描述
 SHOT_TYPE_MAP = {
-    "特写": "extreme close-up shot, detailed face",
+    "特写": "extreme close-up shot, detailed face, looking at viewer",
     "近景": "close-up shot, head and shoulders",
     "中景": "medium shot, waist up",
     "过肩": "over-the-shoulder shot",
@@ -34,8 +34,8 @@ SHOT_TYPE_MAP = {
     "全景": "wide shot, full scene",
     "远景": "extreme wide shot, establishing shot",
     "双人全景": "two-shot, both characters visible",
-    "侧面特写": "side profile close-up shot, detailed side view of face",
-    "背面特写": "back view close-up shot, from behind",
+    "侧面特写": "side profile close-up shot, detailed side view of face, looking left, from the side",
+    "背面特写": "back view close-up shot, seen from behind, back of head, facing away from viewer",
 }
 
 # 运镜→英文描述
@@ -181,10 +181,13 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
             scene_desc = translate_to_english(scene_desc, llm=llm)
         parts.append(scene_desc)
 
-    # 角色（已是英文则直接用，否则翻译）
+    # 角色（已是英文则直接用，否则用专用翻译）
     if character_desc:
         if any(ord(c) > 127 for c in character_desc):
-            character_desc = translate_to_english(character_desc, llm=llm)
+            character_desc = translate_appearance(character_desc)
+            # 映射不足时回退到通用翻译
+            if any(ord(c) > 127 for c in character_desc):
+                character_desc = translate_to_english(character_desc, llm=llm)
         parts.append(character_desc)
 
     # 动作：优先读预翻译的 action_en，否则翻译 action
@@ -219,7 +222,170 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
 
 # 常见中文外貌描述→英文映射（兜底用，覆盖常见词）
 _TRANSLATE_API = "https://shanhe.kim/api/fany/fanyi.php"
+
+# 中文外貌特征 → AI 绘图模型友好英文映射
+_APPEARANCE_MAP = {
+    # 年龄/性别
+    "年轻女性": "1girl, young woman",
+    "年轻男性": "1boy, young man",
+    "少女": "1girl, teenage girl",
+    "少年": "1boy, teenage boy",
+    "成年女性": "1woman, adult woman",
+    "成年男性": "1man, adult man",
+    # 发型
+    "长发": "long hair",
+    "短发": "short hair",
+    "中长发": "medium-length hair",
+    "及肩长发": "shoulder-length hair",
+    "长发及肩": "shoulder-length hair",
+    "马尾": "ponytail",
+    "双马尾": "twintails",
+    "丸子头": "messy bun",
+    "卷发": "curly hair",
+    "直发": "straight hair",
+    "刘海": "bangs",
+    "齐刘海": "blunt bangs",
+    "侧分刘海": "side-swept bangs",
+    "黑色头发": "black hair",
+    "棕色头发": "brown hair",
+    "金色头发": "blonde hair",
+    "红色头发": "red hair",
+    "白色头发": "white hair",
+    "银色头发": "silver hair",
+    "粉色头发": "pink hair",
+    "蓝色头发": "blue hair",
+    "渐变色头发": "gradient hair",
+    # 五官
+    "大眼睛": "big eyes, detailed eyes",
+    "小眼睛": "small eyes",
+    "丹凤眼": "almond-shaped eyes",
+    "杏眼": "round eyes",
+    "柳叶眉": "thin arched eyebrows",
+    "剑眉": "thick straight eyebrows",
+    "浓眉": "thick eyebrows",
+    "高鼻梁": "high nose bridge",
+    "挺鼻": "straight nose",
+    "薄唇": "thin lips",
+    "厚唇": "full lips",
+    "樱桃小嘴": "small rosy lips",
+    "瓜子脸": "oval face, V-shaped face",
+    "圆脸": "round face",
+    "方脸": "square face",
+    "鹅蛋脸": "oval face",
+    "酒窝": "dimples",
+    "美人痣": "beauty mark",
+    # 体型
+    "体型偏瘦": "slender, slim body",
+    "体型匀称": "athletic build, well-proportioned",
+    "体型丰满": "curvy body",
+    "身材高挑": "tall and slender",
+    "娇小": "petite",
+    "肌肉发达": "muscular",
+    # 肤色
+    "皮肤白皙": "fair skin, light skin",
+    "皮肤黝黑": "tanned skin, dark skin",
+    "小麦色皮肤": "olive skin, warm skin tone",
+    # 配饰
+    "戴眼镜": "wearing glasses",
+    "戴帽子": "wearing hat",
+    "戴耳环": "wearing earrings",
+    "戴项链": "wearing necklace",
+    "纹身": "tattoo",
+    "雀斑": "freckles",
+}
+
+# 性别标记，用于自动添加触发词
+_GENDER_MARKERS = {
+    "女性": "1girl", "女": "1girl", "woman": "1girl", "girl": "1girl", "female": "1girl",
+    "男性": "1boy", "男": "1boy", "man": "1boy", "boy": "1boy", "male": "1boy",
+}
 _translate_cache: dict[str, str] = {}
+
+
+def translate_appearance(chinese_desc: str) -> str:
+    """将中文外貌描述转为 AI 绘图模型友好的英文 prompt
+
+    不是字面翻译，而是按 Stable Diffusion / Flux / Cosmos 的 prompt 格式重组。
+    优先查本地映射表，剩余部分用 LLM 或 HTTP 翻译兜底。
+
+    Args:
+        chinese_desc: 中文外貌描述
+
+    Returns:
+        英文 prompt 字符串，逗号分隔的短语
+    """
+    if not chinese_desc:
+        return ""
+    # 已是英文直接返回
+    if all(ord(c) < 128 for c in chinese_desc):
+        return chinese_desc
+
+    result_parts = []
+    remaining = chinese_desc
+
+    # 1. 从描述中提取性别标记（添加到最前面）
+    gender_added = False
+    gender_span: tuple[int, int] | None = None
+    for zh, en in _GENDER_MARKERS.items():
+        idx = remaining.find(zh)
+        if idx >= 0:
+            result_parts.append(en)
+            gender_added = True
+            gender_span = (idx, idx + len(zh))
+            break
+
+    # 2. 逐个匹配映射表（按长度降序，避免短词误匹配长词）
+    sorted_keys = sorted(_APPEARANCE_MAP.keys(), key=len, reverse=True)
+    matched_spans: list[tuple[int, int]] = []
+    if gender_span:
+        matched_spans.append(gender_span)
+
+    for zh_key in sorted_keys:
+        idx = remaining.find(zh_key)
+        if idx >= 0:
+            # 跳过与性别标记重复的项
+            en_val = _APPEARANCE_MAP[zh_key]
+            if gender_added and en_val in ("1girl", "1boy", "1woman", "1man"):
+                continue
+            # 检查是否与已匹配区域重叠或被包含
+            end = idx + len(zh_key)
+            overlap = False
+            for ms, me in matched_spans:
+                # 完全包含或重叠
+                if (idx >= ms and end <= me) or (idx < me and end > ms):
+                    overlap = True
+                    break
+            if not overlap:
+                result_parts.append(en_val)
+                matched_spans.append((idx, end))
+
+    # 3. 提取未匹配的数字信息（如 "22岁", "165cm", "180cm"）
+    import re
+    for m in re.finditer(r'(\d+)\s*(岁|cm|米|m)', remaining):
+        start, end = m.span()
+        overlap = any(not (end <= ms or start >= me) for ms, me in matched_spans)
+        if not overlap:
+            num = m.group(1)
+            unit = m.group(2)
+            if unit == "岁":
+                result_parts.append(f"{num} years old")
+            elif unit in ("cm", "米", "m"):
+                result_parts.append(f"{num}cm tall")
+            matched_spans.append((start, end))
+
+    # 4. 如果映射表覆盖了大部分内容，直接用映射结果
+    matched_len = sum(me - ms for ms, me in matched_spans)
+    total_len = len(remaining)
+
+    if matched_len / max(total_len, 1) > 0.5:
+        # 映射覆盖超过 50%，用映射结果
+        return ", ".join(result_parts)
+
+    # 5. 映射覆盖不足，回退到 LLM/HTTP 翻译
+    return chinese_desc  # 交给调用方的 translate_to_english 处理
+
+
+
 _translate_cache_lock = __import__("threading").Lock()
 _CACHE_MAX_SIZE = 4096
 

@@ -22,8 +22,12 @@ _THREE_VIEWS = [
 
 
 def _view_seed(char_id: str, generation: int, view_index: int) -> int:
-    """三视图 seed：同角色同代不同视角，不同角色完全隔离"""
-    h = hashlib.md5(f"{char_id}:gen{generation}:view{view_index}".encode("utf-8")).hexdigest()
+    """三视图 seed：同角色同代不同视角，不同角色完全隔离
+
+    注意：为保持三视图人物一致性，所有视角使用相同 seed。
+    view_index 保留用于未来需要差异化时扩展。
+    """
+    h = hashlib.md5(f"{char_id}:gen{generation}:portrait".encode("utf-8")).hexdigest()
     return int(h[:16], 16)
 
 
@@ -48,8 +52,13 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
         project_dir: 项目目录全路径（用于生成唯一 ComfyUI 文件名 + AssetTracker）
     """
     # 获取视角专属外貌描述（背面/侧面自动去除面部细节）
-    from engines.prompt import get_view_appearance
+    from engines.prompt import get_view_appearance, translate_appearance, translate_to_english
     view_desc = get_view_appearance(char, shot_type) if char else appearance
+    # 如果视角描述为空或仍是中文，用专用翻译
+    if not view_desc or any(ord(c) > 127 for c in view_desc):
+        view_desc = translate_appearance(view_desc or appearance)
+        if any(ord(c) > 127 for c in view_desc):
+            view_desc = translate_to_english(view_desc, llm=None)
 
     fake_shot = {"characters": char_id, "emotion": "neutral",
                  "shot_type": shot_type, "camera": "固定"}
@@ -225,7 +234,7 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
     comfyui = container.get("image")
 
     from engines.workflow_builder import WorkflowBuilder
-    from engines.prompt import translate_to_english
+    from engines.prompt import translate_appearance, translate_to_english
 
     models = config.get("models", {})
     wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui, llm=None)
@@ -234,6 +243,11 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
     # 使用 cover.png 作为所有服装图的 IP-Adapter 参考（保持角色面部一致性）
     cover_path = portrait_dir / "cover.png"
     generation = char.get("portrait_generation", 0)
+
+    # 先翻译外貌描述（AI 绘图友好格式）
+    appearance_en = translate_appearance(appearance)
+    if any(ord(c) > 127 for c in appearance_en):
+        appearance_en = translate_to_english(appearance_en, llm=None)
 
     for outfit_idx, (outfit_key, outfit_val) in enumerate(outfits.items()):
         if not isinstance(outfit_val, dict):
@@ -249,9 +263,11 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
                 continue
 
         outfit_dir.mkdir(parents=True, exist_ok=True)
-        full_desc = f"{appearance}, wearing {outfit_desc}"
-        if any(ord(c) > 127 for c in full_desc):
-            full_desc = translate_to_english(full_desc, llm=None)
+        # 翻译服装描述
+        outfit_desc_en = outfit_desc
+        if any(ord(c) > 127 for c in outfit_desc_en):
+            outfit_desc_en = translate_to_english(outfit_desc_en, llm=None)
+        full_desc = f"{appearance_en}, wearing {outfit_desc_en}"
 
         # 服装图 seed（含 char_id + generation + outfit_index，不同角色完全隔离）
         outfit_seed = _outfit_seed(char_id, generation, outfit_idx)
