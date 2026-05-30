@@ -176,12 +176,15 @@ def ensure_portrait(char_id: str, config: dict, container=None, force: bool = Fa
             else:
                 logger.warning(f"  ⚠ {label}视图生成失败")
 
-        # 回写 reference_images
+        # 回写 reference_images（只保留三视图，移除旧的 cover/side/back）
         if generated_urls:
             char.setdefault("reference_images", [])
             prefix = f"/api/assets/characters/{char_id}/"
-            char["reference_images"] = [u for u in char["reference_images"]
-                                        if not u.startswith(prefix) or any(u.endswith(f"/{fn}") for fn, *_ in _THREE_VIEWS)]
+            view_filenames = {fn for fn, *_ in _THREE_VIEWS}
+            char["reference_images"] = [
+                u for u in char["reference_images"]
+                if not u.startswith(prefix) or u.rsplit("/", 1)[-1] not in view_filenames
+            ]
             # 去重后追加
             existing_set = set(char["reference_images"])
             for url in generated_urls:

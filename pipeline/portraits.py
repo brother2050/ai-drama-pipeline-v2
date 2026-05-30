@@ -258,9 +258,10 @@ def run_portraits(
                 char.setdefault("reference_images", [])
                 prefix = f"/api/assets/characters/{char_id}/"
                 # 保留非本角色的引用 + 本角色的三视图引用
+                view_filenames = {fn for fn, _, _ in _THREE_VIEWS}
                 char["reference_images"] = [
                     u for u in char["reference_images"]
-                    if not u.startswith(prefix) or any(u.endswith(f"/{fn}") for fn, _, _ in _THREE_VIEWS)
+                    if not u.startswith(prefix) or u.rsplit("/", 1)[-1] not in view_filenames
                 ]
                 existing_set = set(char["reference_images"])
                 for url in view_urls:

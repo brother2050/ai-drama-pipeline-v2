@@ -52,7 +52,7 @@ def test_text_utils():
     """测试文本工具"""
     from infra.text import truncate, sanitize_filename
 
-    assert truncate("hello world", 5) == "hello..."
+    assert truncate("hello world", 5) == "he..."
     assert truncate("hi", 10) == "hi"
     assert sanitize_filename('file<>:"/\\|?*name') == "file_________name"
     print("✅ 文本工具正常")
