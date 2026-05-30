@@ -97,8 +97,14 @@ def _cfg() -> dict:
     cfg_path = _cfg_path()
     try:
         data = Config(cfg_path).data
+    except FileNotFoundError:
+        # 配置文件不存在，回退到空配置
+        data = {}
+    except ValueError:
+        # 必填字段校验失败（如 project.name 缺失），向上传递让 API 返回有意义的错误
+        raise
     except Exception:
-        # 回退：直接读文件
+        # 其他异常（如 YAML 格式错误），回退到直接读文件
         if os.path.isfile(cfg_path):
             with open(cfg_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
@@ -502,6 +508,11 @@ def generate_character_portrait(char_id: str):
     char_yaml_path = _proj() / "config" / "characters" / f"{char_id}.yaml"
     if not char_yaml_path.exists():
         raise HTTPException(404, f"角色 {char_id} 不存在")
+    # 预检 ComfyUI 可用性，避免提交后才发现不可用
+    cfg = _merged_cfg()
+    comfyui_check = _check_tool("comfyui", cfg)
+    if not comfyui_check.get("available"):
+        raise HTTPException(503, f"ComfyUI 不可用: {comfyui_check.get('reason', '未知')}")
     from pipeline.tasks import portrait_single_task
     return _submit_task(portrait_single_task, _cfg_path(), char_id)
 
@@ -662,6 +673,27 @@ def update_config(req: ConfigUpdate):
     except Exception:
         existing = {}
     merged = _deep_merge(existing, data)
+    # 校验合并后的配置合法性（必填字段 + 数值范围）
+    from infra.config import Config
+    import tempfile
+    try:
+        fd, tmp = tempfile.mkstemp(suffix=".yaml", dir=str(Path(cfg_path).parent))
+        os.close(fd)
+        save_config(tmp, merged)
+        Config(tmp)  # 触发 _validate
+        os.unlink(tmp)
+    except ValueError as e:
+        # 清理临时文件
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise HTTPException(400, f"配置校验失败: {e}")
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
     save_config(cfg_path, merged)
     # 注意: Container 在每次请求/任务时按需创建，下次会自动读取新配置
     return {"status": "ok"}
@@ -731,6 +763,7 @@ def switch_project(req: ProjectSwitch):
 
 @router.delete("/projects/{name}")
 def delete_project(name: str):
+    global _proj_cache
     if not re.match(r"^[a-zA-Z0-9_\-\u4e00-\u9fff]+$", name):
         raise HTTPException(400, "无效的项目名")
     if name == "default":
@@ -741,6 +774,9 @@ def delete_project(name: str):
         delete_project(name, ROOT, Console())
     except Exception as e:
         raise HTTPException(400, str(e))
+    # 清除项目目录缓存，避免后续请求读到已删除目录
+    with _proj_cache_lock:
+        _proj_cache = None
     return {"status": "ok", "name": name}
 
 
@@ -951,13 +987,31 @@ async def upload_entity_image(entity_type: str, entity_id: str, file: UploadFile
     if ext not in allowed:
         raise HTTPException(400, f"不支持的文件类型: {ext}，允许: {', '.join(allowed)}")
 
+    # 读取文件内容并校验 magic bytes（防伪造扩展名）
+    content = await file.read()
+    if len(content) < 8:
+        raise HTTPException(400, "文件过小，不是有效的图片")
+    _MAGIC = {
+        b"\x89PNG": ".png",
+        b"\xff\xd8\xff": ".jpg",
+        b"RIFF": ".webp",
+        b"GIF8": ".gif",
+    }
+    detected = ""
+    for magic, mime_ext in _MAGIC.items():
+        if content[:len(magic)] == magic:
+            detected = mime_ext
+            break
+    if not detected:
+        raise HTTPException(400, "文件内容不是有效的图片格式")
+
     # 保存到 assets 目录
     asset_dir = _proj() / "assets" / entity_type / entity_id
     asset_dir.mkdir(parents=True, exist_ok=True)
     filename = f"cover{ext}"
     dest = asset_dir / filename
     with open(dest, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        f.write(content)
 
     # 更新 YAML 中的 reference_images
     yaml_dir = "characters" if entity_type == "characters" else "scenes"

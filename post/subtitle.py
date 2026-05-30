@@ -9,6 +9,16 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+def _sanitize_dialogue(text: str) -> str:
+    """清理台词中的特殊字符，防止破坏 SRT 格式"""
+    # 换行符替换为空格（SRT 用空行分隔条目，换行会破坏格式）
+    text = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    # 合并连续空格
+    import re
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
 def generate_srt(shots: list[dict], output: str, *,
                  transition_duration: float = 0.0) -> str:
     """从分镜表生成 SRT 字幕
@@ -24,7 +34,7 @@ def generate_srt(shots: list[dict], output: str, *,
     current_time = 0.0
 
     for i, shot in enumerate(shots):
-        dialogue = shot.get("dialogue", "").strip()
+        dialogue = _sanitize_dialogue(shot.get("dialogue", ""))
         try:
             duration = float(shot.get("duration", 4))
         except (ValueError, TypeError):
@@ -49,7 +59,6 @@ def generate_srt(shots: list[dict], output: str, *,
         lines.append(f"{idx}\n{start_str} --> {end_str}\n{dialogue}\n")
         idx += 1
 
-    Path(output).parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(Path(output).parent), suffix=".srt.tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:

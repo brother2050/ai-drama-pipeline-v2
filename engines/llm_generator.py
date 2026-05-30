@@ -360,9 +360,16 @@ def _postprocess_shots(shots: list[dict], episode: int) -> list[dict]:
         except (ValueError, TypeError):
             logger.warning(f"镜头 {shot.get('shot_id', '?')} duration 格式无效，使用默认值 4")
             shot["duration"] = 4
-        # 清理 dialogue / action_en / dialogue_en 中的引号
+        # 清理 dialogue / action_en / dialogue_en 中的多余引号
+        # 只去除首尾成对的引号，保留内容中有意义的引号
         for _k in ("dialogue", "action_en", "dialogue_en"):
-            if shot.get(_k):
-                shot[_k] = shot[_k].strip('"\'')
+            val = shot.get(_k, "")
+            if val:
+                # 去除首尾成对引号: "..." → ... / '...' → ...
+                if len(val) >= 2 and val[0] == '"' and val[-1] == '"':
+                    val = val[1:-1]
+                elif len(val) >= 2 and val[0] == "'" and val[-1] == "'":
+                    val = val[1:-1]
+                shot[_k] = val
         result.append(shot)
     return result

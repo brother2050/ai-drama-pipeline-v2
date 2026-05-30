@@ -35,6 +35,16 @@ class PgPool:
             except Exception:
                 pass
             conn = self._pool.getconn()
+        # 活性检查：连接可能被服务端关闭（idle timeout），验证是否可用
+        try:
+            conn.poll()
+        except Exception:
+            # 连接已断开，丢弃并获取新连接
+            try:
+                self._pool.putconn(conn, close=True)
+            except Exception:
+                pass
+            conn = self._pool.getconn()
         return conn
 
     def release(self, conn):

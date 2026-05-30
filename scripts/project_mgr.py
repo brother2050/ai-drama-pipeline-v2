@@ -281,5 +281,85 @@ def delete_project(name: str, root: Path, console):
     active = _active(root)
     if active.resolve() == d.resolve():
         (projects_dir / ".active").write_text(str(projects_dir / DEFAULT_PROJECT), encoding="utf-8")
+
+    # 清理数据库中属于该项目的记录（避免孤立数据干扰重建同名项目）
+    _cleanup_project_db(d)
+
     shutil.rmtree(d)
     console.print(f"[green]✅ 项目 '{name}' 已删除[/green]")
+
+
+def _cleanup_project_db(project_dir: Path) -> None:
+    """清理数据库中属于该项目的所有记录"""
+    try:
+        import os
+        os.environ.setdefault("AI_DRAMA_DB_DSN", "")
+        dsn = os.environ.get("AI_DRAMA_DB_DSN", "")
+        if not dsn:
+            return
+        import psycopg2
+        conn = psycopg2.connect(dsn, connect_timeout=3)
+        try:
+            cur = conn.cursor()
+            # 按项目配置目录匹配角色/场景（YAML 文件删除前执行）
+            proj_str = str(project_dir)
+
+            # 清理 comfyui_assets（按 project_dir 匹配）
+            cur.execute("DELETE FROM comfyui_assets WHERE project_dir = %s", (proj_str,))
+
+            # 清理 characters/scenes/shots/generation_status
+            # 通过读取项目 YAML 文件获取 ID 列表
+            chars_dir = project_dir / "config" / "characters"
+            if chars_dir.exists():
+                for f in chars_dir.glob("*.yaml"):
+                    if f.stem.endswith(".example"):
+                        continue
+                    try:
+                        import yaml
+                        with open(f, encoding="utf-8") as fh:
+                            data = yaml.safe_load(fh) or {}
+                        cid = data.get("character", {}).get("id", f.stem)
+                        cur.execute("DELETE FROM characters WHERE id = %s", (cid,))
+                    except Exception:
+                        pass
+
+            scenes_dir = project_dir / "config" / "scenes"
+            if scenes_dir.exists():
+                for f in scenes_dir.glob("*.yaml"):
+                    if f.stem.endswith(".example"):
+                        continue
+                    try:
+                        import yaml
+                        with open(f, encoding="utf-8") as fh:
+                            data = yaml.safe_load(fh) or {}
+                        sid = data.get("scene", {}).get("id", f.stem)
+                        cur.execute("DELETE FROM scenes WHERE id = %s", (sid,))
+                    except Exception:
+                        pass
+
+            # 清理 shots 和 generation_status（按 episode 匹配）
+            sb_path = project_dir / "storyboard" / "episodes.csv"
+            if sb_path.exists():
+                import csv as _csv
+                episodes_seen = set()
+                try:
+                    with open(sb_path, encoding="utf-8") as fh:
+                        for row in _csv.DictReader(fh):
+                            try:
+                                ep = int(row.get("episode", 0) or 0)
+                                if ep > 0:
+                                    episodes_seen.add(ep)
+                            except (ValueError, TypeError):
+                                pass
+                except Exception:
+                    pass
+                for ep in episodes_seen:
+                    cur.execute("DELETE FROM shots WHERE episode = %s", (ep,))
+                    cur.execute("DELETE FROM generation_status WHERE episode = %s", (ep,))
+
+            conn.commit()
+            cur.close()
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.debug(f"数据库清理跳过（DB 不可用）: {e}")

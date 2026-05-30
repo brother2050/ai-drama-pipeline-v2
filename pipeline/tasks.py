@@ -49,12 +49,13 @@ def _load_shots(config_path: str, episode: int) -> list[dict]:
 
 
 # ── 分镜表缓存（同一次生产周期内只读一次 CSV）──
-_sb_cache: dict[str, tuple[float, list[dict]]] = {}
+_sb_cache: dict[str, tuple[float, float, list[dict]]] = {}  # (mtime, access_time, data)
 _SB_CACHE_MAX = 8  # 最多缓存不同项目的分镜表数量
 
 
 def _load_all_shots_cached(config_path: str) -> list[dict]:
-    """加载全部分镜（带 mtime 缓存）。同一次 produce/preview 内只读一次 CSV。"""
+    """加载全部分镜（带 mtime 缓存）。返回深拷贝，防止调用方修改缓存数据。"""
+    import copy as _copy
     sb = Path(config_path).resolve().parent.parent / "storyboard" / "episodes.csv"
     if not sb.exists():
         return []
@@ -62,15 +63,17 @@ def _load_all_shots_cached(config_path: str) -> list[dict]:
     mtime = sb.stat().st_mtime
     cached = _sb_cache.get(sb_str)
     if cached and cached[0] == mtime:
-        return cached[1]
+        # 更新访问时间，供 LRU 淘汰使用
+        _sb_cache[sb_str] = (cached[0], time.time(), cached[2])
+        return _copy.deepcopy(cached[2])
     with open(sb, encoding="utf-8") as f:
         all_shots = [dict(r) for r in csv.DictReader(f)]
-    # 缓存数量上限：淘汰最旧的条目，防止 worker 长期运行时内存泄漏
+    # 缓存数量上限：淘汰最久未访问的条目，防止 worker 长期运行时内存泄漏
     if len(_sb_cache) >= _SB_CACHE_MAX and sb_str not in _sb_cache:
-        oldest_key = min(_sb_cache, key=lambda k: _sb_cache[k][0])
+        oldest_key = min(_sb_cache, key=lambda k: _sb_cache[k][1])
         _sb_cache.pop(oldest_key, None)
-    _sb_cache[sb_str] = (mtime, all_shots)
-    return all_shots
+    _sb_cache[sb_str] = (mtime, time.time(), all_shots)
+    return _copy.deepcopy(all_shots)
 
 
 def _find_shot(config_path: str, episode: int, shot_id: str) -> dict | None:
@@ -181,8 +184,29 @@ def _try_mark_running_atomic(config_path: str, episode: int, shot_id: str, step:
                 cur.close()
     except Exception:
         # 数据库不可用时回退到非原子版本
-        # 注意: _check_step_running 不检查 updated_at，崩溃的任务可能永久阻塞
-        # 这里直接放行，依赖 _prepare 后续的工具检查和任务逻辑兜底
+        # 尝试检查是否有过期的 running 状态（崩溃任务残留）
+        try:
+            from infra.database.pool import get_pool
+            from infra.database.generation import get_shot_status
+            pool = get_pool()
+            with pool.connection() as conn:
+                cur = conn.cursor()
+                try:
+                    from infra.database.pool import placeholder
+                    cur.execute(f"""
+                        SELECT status, EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - updated_at))
+                        FROM generation_status
+                        WHERE episode={placeholder()} AND shot_id={placeholder()} AND stage={placeholder()}
+                    """, (episode, shot_id, step))
+                    row = cur.fetchone()
+                    if row:
+                        status, age = row[0], row[1] or 0
+                        if status == "running" and age < 600:
+                            return False
+                finally:
+                    cur.close()
+        except Exception:
+            pass  # DB 完全不可用，跳过检查
         try:
             _db_mark_running(config_path, episode, shot_id, step)
         except Exception:
@@ -2200,7 +2224,8 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
             if chars_to_process:
                 prompt_results = batch_generate_appearance_prompts(chars_to_process, llm)
 
-                # 回写结果
+                # 回写结果（只保存实际被修改的文件）
+                modified_files: set[str] = set()
                 for f, data in char_files:
                     char = data.get("character", {})
                     cid = char.get("id", "")
@@ -2216,10 +2241,12 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                             char["appearance_back_prompt_en"] = pr["back"]
                         data["character"] = char
                         result["prompt_chars"] += 1
+                        modified_files.add(str(f))
 
-                # 批量保存
+                # 只保存实际被修改的文件
                 for f, data in char_files:
-                    save_yaml(f, data)
+                    if str(f) in modified_files:
+                        save_yaml(f, data)
                 logger.info(f"  生成角色 prompt: {result['prompt_chars']} 个")
 
     # ── 1b. 批量翻译角色附属字段（voice、outfits） ──
