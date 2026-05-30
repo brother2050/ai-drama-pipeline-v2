@@ -65,7 +65,7 @@ image_backends:
     workflow: "cosmos_predict2_2B_t2i.json"
     default_params:
       width: 1024
-      height: 1024
+      height: 576
       steps: 35
       cfg_scale: 4
 
