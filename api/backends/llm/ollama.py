@@ -67,7 +67,7 @@ registry.register(BackendMeta(name="ollama", service_type="llm", factory=_f,
 class OpenAICompatLLM:
     # 常见模型上下文长度映射（模型名关键词 → context_length）
     _MODEL_CTX_MAP = {
-        "qwen3": 32768, "qwen2.5": 32768, "qwen2": 32768, "qwen": 32768,
+        "qwen3": 131072, "qwen2.5": 32768, "qwen2": 32768, "qwen": 32768,
         "deepseek-v3": 65536, "deepseek-r1": 65536, "deepseek": 32768,
         "gpt-4o": 128000, "gpt-4-turbo": 128000, "gpt-4": 8192,
         "gpt-3.5": 16384,
