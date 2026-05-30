@@ -25,6 +25,7 @@ training:
   enabled: false
   backend: ai-toolkit
   api_url: http://127.0.0.1:7860
+  api_key: ''
   poll_interval: 10
   defaults:
     steps: 1000

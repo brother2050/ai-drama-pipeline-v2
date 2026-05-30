@@ -41,6 +41,7 @@ LoRA 文件命名规范:
 from __future__ import annotations
 
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -62,7 +63,8 @@ class AIToolkitTrainer:
                          or config.get("training", {}).get("api_url", "")
                          or "http://127.0.0.1:8675")
         self._api_key = (config.get("api_key")
-                         or config.get("training", {}).get("api_key", ""))
+                         or config.get("training", {}).get("api_key", "")
+                         or os.environ.get("AI_TOOLKIT_API_KEY", ""))
         self._gpu_ids = str(config.get("gpu_ids")
                             or config.get("training", {}).get("gpu_ids", "0"))
         self._timeout = config.get("timeout", 3600)
