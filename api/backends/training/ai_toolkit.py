@@ -80,8 +80,14 @@ class AIToolkitTrainer:
             defaults.get("resolution", 512))
         self._default_learning_rate = str(defaults.get("learning_rate", "1e-4"))
         self._default_network_dim = int(defaults.get("network_dim", 16))
+        self._default_conv_dim = int(defaults.get("conv_dim", 16))
         self._default_steps = int(defaults.get("steps", 1000))
         self._base_model = str(defaults.get("base_model", "black-forest-labs/FLUX.1-dev"))
+        self._arch = str(defaults.get("arch", ""))
+        self._quantize_type = str(defaults.get("quantize_type", "qfloat8"))
+        self._timestep_type = str(defaults.get("timestep_type", "sigmoid"))
+        self._save_format = str(defaults.get("save_format", "diffusers"))
+        self._use_ema = bool(defaults.get("use_ema", False))
 
     @property
     def name(self) -> str:
@@ -291,12 +297,60 @@ class AIToolkitTrainer:
 
     def _build_job_config(self, dataset_name: str, trigger_word: str,
                           lora_name: str, steps: int, learning_rate: str,
-                          rank: int, resolution: int) -> dict:
+                          rank: int, resolution: int,
+                          conv_rank: int = 0,
+                          sample_prompts: list[str] | None = None) -> dict:
         """构建 AI Toolkit 训练配置（与 Web UI 的 New Job 表单一致）
+
+        支持 Flex.1-alpha / FLUX.1-dev 等模型，自动适配 arch、量化、conv LoRA 等。
 
         Returns:
             AI Toolkit YAML 配置结构（dict），可直接作为 job_config 提交
         """
+        # Conv LoRA：rank > 0 时启用
+        network_cfg: dict[str, Any] = {
+            "type": "lora",
+            "linear": rank,
+            "linear_alpha": rank,
+        }
+        if conv_rank > 0:
+            network_cfg["conv"] = conv_rank
+            network_cfg["conv_alpha"] = conv_rank
+
+        # 模型配置：区分 Flex.1 vs FLUX.1
+        model_cfg: dict[str, Any] = {
+            "name_or_path": self._base_model,
+            "quantize": True,
+            "qtype": self._quantize_type,
+            "quantize_te": True,
+            "qtype_te": self._quantize_type,
+        }
+        # 自动检测 arch（Flex.1-alpha → flex1，FLUX.1-dev → flux）
+        arch = self._arch
+        if not arch:
+            if "flex" in self._base_model.lower():
+                arch = "flex1"
+            else:
+                arch = "flux"
+        model_cfg["arch"] = arch
+        # Flex.1 需要 bypass_guidance_embedding
+        is_flex = arch == "flex1"
+
+        # 采样 prompt 列表
+        if not sample_prompts:
+            sample_prompts = [
+                f"{trigger_word} portrait, cinematic lighting",
+                f"{trigger_word} casual outfit, outdoor",
+                f"{trigger_word} close-up, studio lighting",
+            ]
+        samples = [{"prompt": p} for p in sample_prompts]
+
+        # 多桶分辨率：单值 → 三档相同；数组 → 原样使用
+        if isinstance(resolution, int):
+            res_buckets = [resolution, resolution, resolution]
+        else:
+            res_buckets = list(resolution) if resolution else [512, 768, 1024]
+
         return {
             "job": "extension",
             "config": {
@@ -306,15 +360,12 @@ class AIToolkitTrainer:
                     "training_folder": "output",
                     "device": "cuda:0",
                     "trigger_word": trigger_word,
-                    "network": {
-                        "type": "lora",
-                        "linear": rank,
-                        "linear_alpha": rank,
-                    },
+                    "network": network_cfg,
                     "save": {
-                        "dtype": "float16",
+                        "dtype": "bf16",
                         "save_every": max(1, steps // 4),
-                        "max_step_saves_to_keep": 2,
+                        "max_step_saves_to_keep": 4,
+                        "save_format": self._save_format,
                     },
                     "datasets": [{
                         "folder_path": dataset_name,
@@ -322,7 +373,7 @@ class AIToolkitTrainer:
                         "caption_dropout_rate": 0.05,
                         "shuffle_tokens": False,
                         "cache_latents_to_disk": True,
-                        "resolution": [resolution, resolution, resolution],
+                        "resolution": res_buckets,
                     }],
                     "train": {
                         "batch_size": 1,
@@ -333,21 +384,26 @@ class AIToolkitTrainer:
                         "gradient_checkpointing": True,
                         "noise_scheduler": "flowmatch",
                         "optimizer": "adamw8bit",
+                        "timestep_type": self._timestep_type,
+                        "optimizer_params": {"weight_decay": 0.0001},
                         "lr": float(learning_rate),
-                        "ema_config": {"use_ema": True, "ema_decay": 0.99},
+                        "ema_config": {"use_ema": self._use_ema, "ema_decay": 0.99},
                         "dtype": "bf16",
+                        "loss_type": "mse",
+                        "bypass_guidance_embedding": is_flex,
                     },
-                    "model": {
-                        "name_or_path": self._base_model,
-                        "is_flux": True,
-                        "quantize": True,
-                    },
+                    "model": model_cfg,
                     "sample": {
                         "sampler": "flowmatch",
-                        "sample_every": steps,  # 只在最后采样一次
-                        "width": resolution,
-                        "height": resolution,
-                        "samples": [{"prompt": f"{trigger_word} portrait"}],
+                        "sample_every": max(1, steps // 4),
+                        "width": res_buckets[0],
+                        "height": res_buckets[1],
+                        "samples": samples,
+                        "neg": "",
+                        "seed": 42,
+                        "walk_seed": True,
+                        "guidance_scale": 4,
+                        "sample_steps": 30,
                     },
                     "logging": {
                         "log_every": 1,
@@ -435,6 +491,7 @@ class AIToolkitTrainer:
         job_config = self._build_job_config(
             dataset_name, trigger_word, output_name,
             steps, lr_str, rank, res_val,
+            conv_rank=self._default_conv_dim,
         )
 
         # ── 4. 创建训练作业 ──
