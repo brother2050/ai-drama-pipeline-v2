@@ -37,7 +37,7 @@ class WorkflowBuilder:
     """ComfyUI 工作流构建器"""
 
     def __init__(self, config: dict, models: dict, project_dir: str,
-                 wf_dir: str = "", registry=None, comfyui=None, llm=None,
+                 wf_dir: str = "", registry=None, comfyui=None,
                  force: bool = False):
         self.config = config
         self.models = models
@@ -45,7 +45,6 @@ class WorkflowBuilder:
         self.wf_dir = wf_dir or os.path.join(project_dir, "workflows")
         self.registry = registry
         self.comfyui = comfyui
-        self.llm = llm
         self.force = force
         self.first_frame_wf: dict = {}
         self.video_wf: dict = {}
@@ -234,8 +233,7 @@ class WorkflowBuilder:
         style = self.config.get("project", {}).get("style", "cinematic")
         genre = self.config.get("project", {}).get("genre", "urban")
         positive = build_prompt(shot, character_desc=character_desc,
-                                scene_desc=scene_desc, style=style, genre=genre,
-                                llm=self.llm)
+                                scene_desc=scene_desc, style=style, genre=genre)
         if multi_char_prompt:
             positive = f"{positive}, {multi_char_prompt}"
 
@@ -668,7 +666,7 @@ class WorkflowBuilder:
             # outfit 目录为空，尝试触发 ensure_portrait（auto_outfit 会补充 outfit 图）
             portrait = ensure_portrait(char_id, self.config,
                                        _SimpleContainer(self.comfyui) if self.comfyui else None,
-                                       llm=self.llm, force=self.force)
+                                       force=self.force)
             # 重新检查 outfit 目录
             if outfit_dir.exists():
                 for ext in ("*.png", "*.jpg", "*.jpeg"):
@@ -687,7 +685,7 @@ class WorkflowBuilder:
         # 3. 尝试自动定妆照（主图也不存在时）
         portrait = ensure_portrait(char_id, self.config,
                                    _SimpleContainer(self.comfyui) if self.comfyui else None,
-                                   llm=self.llm, force=self.force)
+                                   force=self.force)
         if portrait:
             return [portrait]
 

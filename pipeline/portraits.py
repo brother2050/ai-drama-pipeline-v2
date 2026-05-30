@@ -79,7 +79,7 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
 
 
 def _generate_outfit(char_id: str, appearance: str, outfit_key: str,
-                     outfit_desc: str, base_dir: Path, comfyui, wb, llm,
+                     outfit_desc: str, base_dir: Path, comfyui, wb,
                      seed: int | None = None,
                      ref_image: str | None = None,
                      project_dir: str = "",
@@ -163,14 +163,6 @@ def run_portraits(
         logger.warning(f"无法创建容器: {e}")
         cont = None
 
-    llm = None
-    if cont:
-        try:
-            llm = cont.get("llm")
-            logger.info(f"LLM 后端: {type(llm).__name__}")
-        except Exception as e:
-            logger.warning(f"无 LLM 可用: {e}")
-
     if char_ids is not None:
         char_files = []
         for cid in char_ids:
@@ -209,7 +201,7 @@ def run_portraits(
             comfyui = cont.get("image")
             from engines.workflow_builder import WorkflowBuilder
             models = cfg.get("models", {})
-            wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=comfyui, llm=llm, force=force)
+            wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=comfyui, force=force)
             wb.load_workflows()
 
             # ── 1. 生成三视图 ──
@@ -306,7 +298,7 @@ def run_portraits(
                     try:
                         ok = _generate_outfit(
                             char_id, appearance, outfit_key, outfit_desc,
-                            portrait_dir, comfyui, wb, llm,
+                            portrait_dir, comfyui, wb,
                             seed=outfit_seed, ref_image=ref,
                             project_dir=cfg.project_dir,
                             appearance_prompt_en=appearance_prompt_en)

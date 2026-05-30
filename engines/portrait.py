@@ -87,7 +87,7 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
     return str(target)
 
 
-def ensure_portrait(char_id: str, config: dict, container=None, llm=None, force: bool = False) -> str:
+def ensure_portrait(char_id: str, config: dict, container=None, force: bool = False) -> str:
     """确保角色有定妆照（三视图），没有则生成
 
     生成三张图：
@@ -110,7 +110,7 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None, force:
     if all_views_exist:
         auto_outfit = config.get("portraits", {}).get("auto_outfit", False)
         if auto_outfit and container:
-            _ensure_outfit_images(char_id, config, container, llm, project_dir, portrait_dir)
+            _ensure_outfit_images(char_id, config, container, project_dir, portrait_dir)
         return str(portrait_dir / "cover.png")
 
     # 重入保护（检查 + 标记必须在同一把锁内，避免间隙导致重复生成）
@@ -139,7 +139,7 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None, force:
         comfyui = container.get("image")
         from engines.workflow_builder import WorkflowBuilder
         models = config.get("models", {})
-        wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui, llm=llm, force=force)
+        wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui, force=force)
         wb.load_workflows()
 
         # 读取代数计数器（force 时递增，得到不同的生成结果）
@@ -194,7 +194,7 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None, force:
         # outfit 图
         auto_outfit = config.get("portraits", {}).get("auto_outfit", False)
         if auto_outfit:
-            _ensure_outfit_images(char_id, config, container, llm, project_dir, portrait_dir)
+            _ensure_outfit_images(char_id, config, container, project_dir, portrait_dir)
 
         return str(portrait_dir / "cover.png") if (portrait_dir / "cover.png").exists() else ""
 
@@ -206,7 +206,7 @@ def ensure_portrait(char_id: str, config: dict, container=None, llm=None, force:
             _generating.discard(char_id)
 
 
-def _ensure_outfit_images(char_id: str, config: dict, container, llm,
+def _ensure_outfit_images(char_id: str, config: dict, container,
                           project_dir: str, portrait_dir: Path) -> None:
     """为角色的各 outfit 生成参考图（如果尚未存在）
 
@@ -234,7 +234,7 @@ def _ensure_outfit_images(char_id: str, config: dict, container, llm,
     from engines.workflow_builder import WorkflowBuilder
 
     models = config.get("models", {})
-    wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui, llm=None)
+    wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui)
     wb.load_workflows()
 
     # 使用 cover.png 作为所有服装图的 IP-Adapter 参考（保持角色面部一致性）

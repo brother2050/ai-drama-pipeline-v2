@@ -237,12 +237,10 @@ def get_view_appearance(char: dict, shot_type: str) -> str:
 
 
 def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
-                 style: str = "cinematic", genre: str = "urban",
-                 llm=None) -> str:
+                 style: str = "cinematic", genre: str = "urban") -> str:
     """从镜头数据构建 ComfyUI Prompt
 
     character_desc 应为已准备好的英文 prompt（prepare 阶段生成的 appearance_prompt_en）。
-    llm 参数已废弃（翻译由 prepare 阶段统一处理），保留签名兼容性。
     """
     parts = []
 
