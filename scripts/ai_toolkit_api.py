@@ -61,7 +61,7 @@ async def train(
     resolution: str = Form("512"),
     max_train_epochs: int = Form(16),
     num_repeats: int = Form(10),
-    base_model: str = Form("black-forest-labs/FLUX.1-dev"),
+    base_model: str = Form("ostris/Flex.1-alpha"),
 ):
     task_id = str(uuid.uuid4())[:8]
     task_dir = _OUTPUT_DIR / task_id
