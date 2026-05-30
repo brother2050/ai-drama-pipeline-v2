@@ -136,6 +136,9 @@ async function doImport() {
 
   if (!newShots.length) { _html(statusEl, `❌ ${t('sb.import_parse_err')}`); return; }
 
+  // 确保导入的镜头带有正确的 episode 字段（导出 CSV 不含此列）
+  newShots.forEach(s => { if (!s.episode) s.episode = String(ep); });
+
   const finalShots = mode === 'overwrite' ? newShots : [...(await api(`/storyboard/${ep}`)).shots, ...newShots];
   try {
     await api(`/storyboard/${ep}`, { method: 'POST', body: { shots: finalShots } });
