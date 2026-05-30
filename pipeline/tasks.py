@@ -2265,7 +2265,9 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                 texts = [p[3] for p in pending]
                 translations = batch_translate_to_english(texts, llm=llm)
 
-                for (_, file_data, field_path, _), translated in zip(pending, translations):
+                # 跟踪哪些文件实际被修改（避免重复保存未修改文件）
+                modified_files: set[str] = set()
+                for (f, file_data, field_path, _), translated in zip(pending, translations):
                     if not translated:
                         continue
                     obj = file_data.get("character", file_data)
@@ -2273,12 +2275,12 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                         obj = obj.setdefault(key, {}) if isinstance(obj, dict) else obj
                     if isinstance(obj, dict):
                         obj[field_path[-1]] = translated
+                    modified_files.add(str(f))
 
-                seen: set[str] = set()
+                # 只保存实际被修改的文件（同一文件可能有多个翻译字段，
+                # 内存中已累积，此处每文件只保存一次）
                 for f, data in all_char_files:
-                    sp = str(f)
-                    if sp not in seen:
-                        seen.add(sp)
+                    if str(f) in modified_files:
                         save_yaml(f, data)
 
     # ── 2. 翻译场景描述 ──
@@ -2318,18 +2320,17 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                 texts = [p[3] for p in pending]
                 translations = batch_translate_to_english(texts, llm=llm)
 
-                for (_, file_data, field_path, _), translated in zip(pending, translations):
+                modified_files: set[str] = set()
+                for (f, file_data, field_path, _), translated in zip(pending, translations):
                     if not translated:
                         continue
                     scene_obj = file_data.get("scene", file_data)
                     scene_obj[field_path[-1]] = translated
                     result["translated_scenes"] += 1
+                    modified_files.add(str(f))
 
-                seen: set[str] = set()
                 for f, data in all_scene_files:
-                    sp = str(f)
-                    if sp not in seen:
-                        seen.add(sp)
+                    if str(f) in modified_files:
                         save_yaml(f, data)
                 logger.info(f"  翻译场景: {result['translated_scenes']} 条")
 
