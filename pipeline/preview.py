@@ -49,10 +49,21 @@ def run_preview(config_path: str, episode: int, level: str = "draft", force: boo
         return
 
     # 预设参数 — 基于 generation config，按质量档位缩放
+    # 未配置 generation 段时，使用后端原生默认值（从模型注册表读取）
     from infra.gpu import get_generation_config
+    from flow.model_registry import ModelRegistry
     gen = get_generation_config(cfg)
-    base_steps = gen.get("image_steps", 20)
-    base_res = gen.get("resolution", [512, 512])
+
+    # 获取当前后端的原生默认参数
+    models = cfg.get("models", {})
+    img_backend = models.get("image_backend", "sd15")
+    registry = ModelRegistry(cfg.path)
+    backend_defaults = registry.get_image_defaults(img_backend)
+    fallback_steps = backend_defaults.get("steps", 28)
+    fallback_res = [backend_defaults.get("width", 1024), backend_defaults.get("height", 576)]
+
+    base_steps = gen.get("image_steps") or fallback_steps
+    base_res = gen.get("resolution") or fallback_res
 
     presets = {
         "draft": {"steps": max(4, base_steps // 3), "resolution": [max(256, base_res[0] // 2), max(144, base_res[1] // 2)]},

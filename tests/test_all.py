@@ -85,8 +85,10 @@ def test_generation_config():
     cfg = get_generation_config()
     assert "resolution" in cfg
     assert "image_steps" in cfg
-    assert cfg["resolution"] == [512, 512]
-    print("✅ 生成参数配置读取正常（默认值）")
+    # 未配置 generation 段时，resolution 和 image_steps 为 None（不覆盖后端默认值）
+    assert cfg["resolution"] is None
+    assert cfg["image_steps"] is None
+    print("✅ 生成参数配置读取正常（未配置时返回 None，不覆盖后端默认值）")
 
 
 # ── infra/retry.py ──
