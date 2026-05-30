@@ -84,9 +84,11 @@ function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, 
     // 多图 gallery（三视图）或单图回退
     let existingImg;
     if (imgs.length > 1) {
+      const viewLabels = ['正面', '侧面', '背面'];
       const gallery = imgs.map((url, i) =>
         `<div class="upload-preview" style="display:inline-block;margin-right:.4rem;position:relative">
-          <img src="${esc(url)}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;cursor:pointer" onclick="previewImage('${esc(url)}')">
+          <img src="${esc(url)}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;cursor:pointer" onclick="previewImage('${esc(url)}')" title="${viewLabels[i] || '参考图'}">
+          <span style="position:absolute;bottom:2px;left:2px;background:rgba(0,0,0,.7);color:#fff;font-size:.6rem;padding:1px 4px;border-radius:3px">${viewLabels[i] || i+1}</span>
           <button class="btn btn-xs btn-danger upload-remove" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;padding:0;font-size:.65rem;line-height:1" onclick="${p}RemoveImgAt('${id}',${i})">✕</button>
         </div>`
       ).join('') + `<div class="upload-area" style="display:inline-flex;width:80px;height:80px;cursor:pointer" onclick="document.getElementById('${p}-file').click()"><span class="upload-icon" style="font-size:1.2rem">📷</span></div>`;
@@ -199,7 +201,8 @@ async function loadCharacters() {
     extraButtons: (items) => items.length ? `<button class="btn btn-outline btn-sm" onclick="batchTrainLora()" id="batch-train-btn">🏋 批量训练 LoRA</button>` : '',
     card: c => {
       const avatar = c.appearance ? esc(c.appearance.substring(0, 2)) : '👤';
-      const thumb = (c.reference_images?.length) ? `<img src="${esc(c.reference_images[0])}" loading="lazy">` : avatar;
+      const imgCount = c.reference_images?.length || 0;
+      const thumb = imgCount > 0 ? `<img src="${esc(c.reference_images[0])}" loading="lazy">${imgCount > 1 ? `<span style="position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,.7);color:#fff;font-size:.6rem;padding:1px 4px;border-radius:3px">${imgCount}图</span>` : ''}` : avatar;
       return `<div class="entity-card" onclick="editChar('${esc(c.id)}')"><div class="entity-card-thumb">${thumb}</div><div class="entity-card-body"><h3>${esc(c.name || c.id)}</h3><p>${esc(c.appearance || '')}</p></div><div class="entity-card-footer"><span class="entity-card-id">${esc(c.id)}</span><span>${c.gender === 'male' ? '♂' : c.gender === 'female' ? '♀' : ''} <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteChar('${esc(c.id)}')" title="${t('btn.delete')}">🗑</button></span></div></div>`;
     }
   });
