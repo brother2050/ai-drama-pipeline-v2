@@ -1111,11 +1111,11 @@ def _run_subtitle(config_path: str, episode: int) -> dict:
     from post.subtitle import generate_srt
     sb = _cfg_dir(config_path, "storyboard", "episodes.csv")
     if not sb.exists():
-        return {"error": "分镜表不存在"}
+        return {"status": "error", "reason": "分镜表不存在"}
     with open(sb, encoding="utf-8") as f:
         shots = [dict(r) for r in csv.DictReader(f) if _safe_int(r.get("episode", 0)) == episode]
     if not shots:
-        return {"error": f"第{episode}集没有镜头"}
+        return {"status": "error", "reason": f"第{episode}集没有镜头"}
     out_dir = _cfg_dir(config_path, "output", f"e{episode:02d}")
     out_dir.mkdir(parents=True, exist_ok=True)
     srt = str(out_dir / f"episode_{episode:02d}.srt")
