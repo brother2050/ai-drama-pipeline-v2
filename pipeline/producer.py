@@ -91,7 +91,6 @@ def run_produce(config_path: str, episode: int, force: bool = False):
 
 def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool = False):
     """生产单个镜头"""
-    from engines.prompt import translate_to_english
 
     char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
 
