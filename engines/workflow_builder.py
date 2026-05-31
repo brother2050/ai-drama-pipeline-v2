@@ -637,6 +637,12 @@ class WorkflowBuilder:
         """
         wf = copy.deepcopy(wf)
 
+        # 0. 检查主角色是否有参考图（无参考图则跳过注入，避免 LoadImage 空路径导致 ComfyUI 报错）
+        primary_refs = self._get_character_refs(char_ids[0], outfit=outfit) if char_ids else []
+        if not primary_refs:
+            logger.warning(f"角色 '{char_ids[0] if char_ids else '?'}' 无定妆照，跳过 PuLID-Flux 注入")
+            return wf
+
         # 1. 找模型加载节点和 KSampler
         model_source = (find_first_node(wf, "UNETLoader")
                         or find_first_node(wf, "CheckpointLoaderSimple"))
