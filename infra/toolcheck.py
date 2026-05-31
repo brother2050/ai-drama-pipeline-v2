@@ -120,10 +120,8 @@ def _check_tool_inner(name: str, cfg: dict) -> dict:
     # 4. 后端名（如 "mimo-voicedesign"）→ 遍历所有服务类型匹配
     for service_type in service_types:
         cfg_key = registry.get_service_cfg_key(service_type)
-        if service_type == "llm":
-            backend_name = _get_cfg_value(cfg, "llm.backend") or registry.get_defaults().get(cfg_key, "")
-        else:
-            backend_name = _get_cfg_value(cfg, f"models.{cfg_key}") or registry.get_defaults().get(cfg_key, "")
+        config_path = registry.get_config_path(service_type)
+        backend_name = _get_cfg_value(cfg, config_path) or registry.get_defaults().get(cfg_key, "")
         if backend_name == name:
             hc = registry.get_health_check(service_type, backend_name)
             if hc:
@@ -263,11 +261,9 @@ def _check_service_type_backend(service_type: str, cfg: dict, registry) -> dict:
     cfg_key = registry.get_service_cfg_key(service_type)
     default_backend = registry.get_defaults().get(cfg_key, "")
 
-    # LLM 的配置路径特殊：llm.backend 而非 models.llm_backend
-    if service_type == "llm":
-        backend_name = _get_cfg_value(cfg, "llm.backend") or default_backend
-    else:
-        backend_name = _get_cfg_value(cfg, f"models.{cfg_key}") or default_backend
+    # 统一从注册表 config_paths 读取后端名
+    config_path = registry.get_config_path(service_type)
+    backend_name = _get_cfg_value(cfg, config_path) or default_backend
 
     if not backend_name:
         return _result(service_type, False, service_type, "unknown",

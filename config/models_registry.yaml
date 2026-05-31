@@ -11,6 +11,14 @@ defaults:
   image_backend: "sd15"
   video_backend: "animatediff"
   llm_backend: "openai"
+  # 服务类型 → 配置读取路径（统一 toolcheck 查询逻辑）
+  config_paths:
+    tts: "models.tts_backend"
+    lipsync: "models.lip_sync_backend"
+    llm: "llm.backend"
+    music: "models.music_backend"
+    image: "models.image_backend"
+    video: "models.video_backend"
 
 # ══════════════════════════════════════════════════════════
 #  TTS 后端

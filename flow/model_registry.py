@@ -33,6 +33,14 @@ def _builtin_defaults() -> dict:
             "image_backend": "sd15",
             "video_backend": "animatediff",
             "llm_backend": "openai",
+            "config_paths": {
+                "tts": "models.tts_backend",
+                "lipsync": "models.lip_sync_backend",
+                "llm": "llm.backend",
+                "music": "models.music_backend",
+                "image": "models.image_backend",
+                "video": "models.video_backend",
+            },
         },
         "image_backends": {
             "sd15": {"workflow": "01_first_frame_sd15.json", "prompt_style": "tag",
@@ -383,6 +391,19 @@ class ModelRegistry:
             if st == service_type:
                 return cfg_key
         return f"{service_type}_backend"
+
+    def get_config_path(self, service_type: str) -> str:
+        """返回服务类型在配置文件中的读取路径
+
+        例: 'tts' → 'models.tts_backend', 'llm' → 'llm.backend'
+        用于统一 toolcheck 的配置查询逻辑，消除 if service_type == "llm" 分支。
+        """
+        paths = self._data.get("defaults", {}).get("config_paths", {})
+        if service_type in paths:
+            return paths[service_type]
+        # 兜底: 按惯例拼接
+        cfg_key = self.get_service_cfg_key(service_type)
+        return f"models.{cfg_key}"
 
     def get_service_meta(self, name: str) -> dict | None:
         """返回辅助服务的完整元数据（从 services 段读取）

@@ -17,7 +17,7 @@ try:
     if _env.exists():
         load_dotenv(_env, override=False)
 except ImportError:
-    logger.debug(f"{type(e).__name__}: {e}")
+    pass
 
 logger = logging.getLogger(__name__)
 
