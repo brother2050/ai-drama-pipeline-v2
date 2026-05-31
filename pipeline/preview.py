@@ -58,7 +58,7 @@ def run_preview(config_path: str, episode: int, level: str = "draft", force: boo
     # 获取当前后端的原生默认参数
     models = cfg.get("models", {})
     registry = ModelRegistry(cfg.path)
-    default_img = registry.get_defaults().get("image_backend", "sd15")
+    default_img = registry.get_defaults().get("image_backend")
     img_backend = models.get("image_backend", default_img)
     backend_defaults = registry.get_image_defaults(img_backend)
     fallback_steps = backend_defaults.get("steps", 28)

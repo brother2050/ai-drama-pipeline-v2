@@ -309,7 +309,7 @@ def test_tool(name: str):
         _defaults = _reg.get_defaults()
 
         if name == "tts":
-            backend = cfg.get("models", {}).get("tts_backend", _defaults.get("tts_backend", "mimo-voicedesign"))
+            backend = cfg.get("models", {}).get("tts_backend", _defaults.get("tts_backend"))
             if "mimo" in backend:
                 backend_key = backend.replace("-", "_")
                 cfg_key = cfg.get("models", {}).get(backend_key, {}).get("api_key", "")
@@ -333,7 +333,7 @@ def test_tool(name: str):
             return {"ok": True, "name": name, "message": msg, **result}
 
         elif name == "lipsync":
-            backend = cfg.get("models", {}).get("lip_sync_backend", _defaults.get("lip_sync_backend", "musetalk"))
+            backend = cfg.get("models", {}).get("lip_sync_backend", _defaults.get("lip_sync_backend"))
             api_url = cfg.get("models", {}).get(backend.replace("-", "_"), {}).get("api_url", "")
             import httpx
             r = httpx.get(api_url, timeout=5)

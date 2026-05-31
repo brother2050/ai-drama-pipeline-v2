@@ -73,17 +73,17 @@ class WorkflowBuilder:
             self.registry = ModelRegistry(
                 os.path.join(self.project_dir, "config", "project.yaml"))
 
-        # 从注册表读取默认后端名（替代硬编码）
+        # 从注册表读取默认后端名（注册表是唯一真相来源）
         defaults = self.registry.get_defaults()
-        default_img = defaults.get("image_backend", "sd15")
-        default_video = defaults.get("video_backend", "animatediff")
+        default_img = defaults.get("image_backend")
+        default_video = defaults.get("video_backend")
 
         # 首帧工作流
         img_backend = self.models.get("image_backend", default_img)
         wf_name = self.registry.get_image_workflow(img_backend)
         if not wf_name:
             logger.warning(f"未知 image_backend '{img_backend}'，回退到 {default_img}")
-            wf_name = self.registry.get_image_workflow(default_img) or "01_first_frame_sd15.json"
+            wf_name = self.registry.get_image_workflow(default_img)
         self.first_frame_wf = self._load_wf(wf_name)
         self.first_frame_wf = resolve_node_aliases(self.first_frame_wf, available_nodes)
 
@@ -245,7 +245,7 @@ class WorkflowBuilder:
         style = self.config.get("project", {}).get("style", "cinematic")
         genre = self.config.get("project", {}).get("genre", "urban")
         defaults = self.registry.get_defaults()
-        img_backend = self.models.get("image_backend", defaults.get("image_backend", "sd15"))
+        img_backend = self.models.get("image_backend", defaults.get("image_backend"))
         positive = build_prompt(shot, character_desc=character_desc,
                                 scene_desc=scene_desc, style=style, genre=genre,
                                 image_backend=img_backend, registry=self.registry)
@@ -981,7 +981,7 @@ class WorkflowBuilder:
 
         # 获取当前视频后端的 fps
         reg_defaults = self.registry.get_defaults()
-        video_backend = self.models.get("video_backend", reg_defaults.get("video_backend", "animatediff"))
+        video_backend = self.models.get("video_backend", reg_defaults.get("video_backend"))
         model_fps = 8  # 默认
         if self.registry:
             defaults = self.registry.get_video_defaults(video_backend)

@@ -242,11 +242,11 @@ def status():
     from flow.model_registry import ModelRegistry as _MR
     try:
         _reg = _MR(cfg_path)
-        _default_tts = _reg.get_defaults().get("tts_backend", "mimo-voicedesign")
+        _default_tts = _reg.get_defaults().get("tts_backend")
     except Exception:
-        _default_tts = "mimo-voicedesign"
+        _default_tts = None
     tts = cfg.get("models", {}).get("tts_backend", _default_tts)
-    if "mimo" in tts:
+    if tts and "mimo" in tts:
         key = os.environ.get("MIMO_API_KEY", "")
         table.add_row("MiMo TTS", "[green]✅[/green]" if key else "[yellow]⚠ 未配置[/yellow]",
                        "云 API", "语音合成（免费）")

@@ -267,9 +267,9 @@ class Config:
         "project": {"episodes": 1, "fps": 24,
                      "style": "cinematic", "genre": "urban"},
         "comfyui": {"url": "http://127.0.0.1:8188", "api_key": ""},
-        "models": {"tts_backend": "mimo-voicedesign", "lip_sync_backend": "musetalk",
-                   "music_backend": "template", "image_backend": "sd15", "video_backend": "animatediff"},
-        "llm": {"enabled": False, "backend": "openai", "base_url": "https://api.siliconflow.cn",
+        # models 和 llm 的默认值来自 models_registry.yaml，不在此硬编码
+        "models": {},
+        "llm": {"enabled": False, "base_url": "https://api.siliconflow.cn",
                 "model": "Qwen/Qwen2.5-7B-Instruct", "api_key": "",
                 "batch_translate": True, "context_length": 0},
         "portraits": {"auto_outfit": True},
@@ -342,13 +342,19 @@ class Config:
     def _merge(self, path: str) -> dict:
         """合并默认配置 + 注册表默认值 + 系统全局配置 + 项目配置"""
         merged = copy.deepcopy(self.DEFAULTS)
-        # 0. 从 models_registry.yaml 读取默认后端名（替代硬编码的 DEFAULTS.models）
+        # 0. 从 models_registry.yaml 读取默认后端名（注册表是唯一真相来源）
         try:
             from flow.model_registry import ModelRegistry
             reg = ModelRegistry(path or str(Path(__file__).resolve().parent.parent / "config" / "project.yaml"))
             reg_defaults = reg.get_defaults()
             if reg_defaults:
-                merged.setdefault("models", {}).update(reg_defaults)
+                # 注入 models 段的后端默认值（tts_backend, image_backend 等）
+                models_defaults = {k: v for k, v in reg_defaults.items()
+                                   if k.endswith("_backend") and k != "llm_backend"}
+                merged.setdefault("models", {}).update(models_defaults)
+                # 注入 llm.backend（llm 段独立于 models）
+                if "llm_backend" in reg_defaults:
+                    merged.setdefault("llm", {})["backend"] = reg_defaults["llm_backend"]
         except Exception as e:
             logger.debug(f"注册表不可用，使用 DEFAULTS 兜底: {e}")
         # 1. 合并系统全局配置
