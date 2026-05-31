@@ -208,7 +208,7 @@ def _check_tool_inner(name: str, cfg: dict) -> dict:
         if not comfyui_ok:
             return {"available": False, "backend": "pulid-flux", "type": "gpu",
                     "reason": "ComfyUI 不可达"}
-        model = pulid_cfg.get("model", "fpulid_flux.safetensors")
+        model = pulid_cfg.get("model", "pulid_flux_v0.9.0.safetensors")
         return {"available": True, "backend": "pulid-flux", "type": "gpu",
                 "model": model, "reason": f"PuLID-Flux ({model})"}
 

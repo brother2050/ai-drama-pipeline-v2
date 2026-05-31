@@ -78,7 +78,7 @@ ip_adapter_models:
 pulid_flux_models:
   fpulid_flux:
     description: "PuLID Flux — Flux 面部一致性（推荐 weight=0.8-0.95）"
-    file: "fpulid_flux.safetensors"
+    file: "pulid_flux_v0.9.0.safetensors"
     folder: "pulid"
     requires:
       - name: "AntelopeV2"

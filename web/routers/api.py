@@ -396,7 +396,7 @@ def test_tool(name: str):
             pulid_cfg = cfg.get("pulid_flux", {})
             if not pulid_cfg.get("enabled", True):
                 return {"ok": False, "name": name, "message": "PuLID-Flux 未启用", **result}
-            model = pulid_cfg.get("model", "fpulid_flux.safetensors")
+            model = pulid_cfg.get("model", "pulid_flux_v0.9.0.safetensors")
             weight = pulid_cfg.get("weight", 0.9)
             comfyui_check = _check_tool("comfyui", cfg)
             if not comfyui_check.get("available"):

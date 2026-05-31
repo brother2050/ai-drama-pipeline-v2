@@ -410,7 +410,7 @@ flowchart LR
 
     subgraph pulid["PuLID-Flux 链"]
         direction TB
-        pid["LoadPuLIDFluxModel<br/>fpulid_flux.safetensors"]
+        pid["LoadPuLIDFluxModel<br/>pulid_flux_v0.9.0.safetensors"]
         face["LoadInsightFace<br/>AntelopeV2"]
         eva["LoadEvaClip<br/>EVA02-CLIP-L-14-336"]
         apply["ApplyPuLIDFlux<br/>weight=0.9<br/>fusion=mean"]
@@ -435,7 +435,7 @@ flowchart LR
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `pulid_flux.model` | `fpulid_flux.safetensors` | PuLID Flux 模型 |
+| `pulid_flux.model` | `pulid_flux_v0.9.0.safetensors` | PuLID Flux 模型 |
 | `pulid_flux.weight` | `0.9` | 面部权重（推荐 0.8-0.95，1.0 过拟合） |
 | `pulid_flux.fusion` | `mean` | 多图融合: mean / concat / max / train_weight |
 | `pulid_flux.use_gray` | `true` | 灰度优化（边缘轮廓更自然） |

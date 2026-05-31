@@ -362,8 +362,8 @@ git clone https://github.com/balazik/ComfyUI-PuLID-Flux.git
 ```bash
 # 1. PuLID Flux 模型 → ComfyUI/models/pulid/
 mkdir -p ComfyUI/models/pulid/
-wget -O ComfyUI/models/pulid/fpulid_flux.safetensors \
-  https://huggingface.co/huchenlei/ipadapter_pulid/resolve/main/fpulid_flux.safetensors
+wget -O ComfyUI/models/pulid/pulid_flux_v0.9.0.safetensors \
+  "https://huggingface.co/guozinan/PuLID/resolve/main/pulid_flux_v0.9.0.safetensors"
 
 # 2. InsightFace AntelopeV2（5 个文件）→ ComfyUI/models/insightface/models/antelopev2/
 mkdir -p ComfyUI/models/insightface/models/antelopev2/
@@ -379,7 +379,7 @@ PuLID-Flux 默认已启用，配置在 `config/system.yaml` 中：
 ```yaml
 pulid_flux:
   enabled: true
-  model: "fpulid_flux.safetensors"
+  model: "pulid_flux_v0.9.0.safetensors"
   weight: 0.9              # 推荐 0.8-0.95（1.0 过拟合）
   fusion: "mean"           # 多图融合方法: mean / concat / max / train_weight
   use_gray: true           # 灰度优化（边缘轮廓更自然）

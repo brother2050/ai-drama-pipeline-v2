@@ -89,8 +89,8 @@ ip_adapter:
 pulid_flux:
   enabled: true
   # PuLID Flux 模型（放入 ComfyUI/models/pulid/）
-  # 下载: https://huggingface.co/huchenlei/ipadapter_pulid/resolve/main/fpulid_flux.safetensors
-  model: "fpulid_flux.safetensors"
+  # 下载: https://huggingface.co/guozinan/PuLID/resolve/main/pulid_flux_v0.9.0.safetensors
+  model: "pulid_flux_v0.9.0.safetensors"
   # 面部一致性权重（推荐 0.8-0.95，1.0 过拟合）
   weight: 0.9
   # PuLID 生效的去噪范围

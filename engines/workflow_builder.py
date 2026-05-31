@@ -663,7 +663,7 @@ class WorkflowBuilder:
         # 4. LoadPuLIDFluxModel
         wf[pulid_model_node] = {
             "class_type": "LoadPuLIDFluxModel",
-            "inputs": {"pulid_file": pulid_config.get("model", "fpulid_flux.safetensors")}
+            "inputs": {"pulid_file": pulid_config.get("model", "pulid_flux_v0.9.0.safetensors")}
         }
 
         # 5. LoadInsightFace (PuLID Flux)
