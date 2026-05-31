@@ -571,7 +571,12 @@ def gen_characters(desc, config_path):
     console.print(f"\n[bold cyan]👤 生成角色配置[/bold cyan]")
     console.print(f"[dim]共 {len(desc)} 个角色描述[/dim]\n")
 
-    chars = generate_characters(llm, list(desc))
+    try:
+        chars = generate_characters(llm, list(desc))
+    except RuntimeError as e:
+        console.print(f"[red]❌ {e}[/red]")
+        sys.exit(1)
+
     if not chars:
         console.print("[red]❌ 生成失败[/red]")
         sys.exit(1)
@@ -602,7 +607,12 @@ def gen_scenes(desc, config_path):
     console.print(f"\n[bold cyan]🏔️ 生成场景配置[/bold cyan]")
     console.print(f"[dim]共 {len(desc)} 个场景描述[/dim]\n")
 
-    scene_list = generate_scenes(llm, list(desc))
+    try:
+        scene_list = generate_scenes(llm, list(desc))
+    except RuntimeError as e:
+        console.print(f"[red]❌ {e}[/red]")
+        sys.exit(1)
+
     if not scene_list:
         console.print("[red]❌ 生成失败[/red]")
         sys.exit(1)

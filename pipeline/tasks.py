@@ -1356,8 +1356,10 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                     logger.warning(f"DB 写入跳过: {e}")
                 generated_chars.append(new_id)
                 logger.info(f"  ✅ 角色: {char_name} ({old_id} → {new_id})")
+        except RuntimeError as e:
+            return {"status": "error", "reason": str(e)}
         except Exception as e:
-            logger.warning(f"  ⚠ 角色生成失败: {e}")
+            return {"status": "error", "reason": f"角色生成异常: {e}"}
 
     # ── 4. 批量生成场景 ──
     if scene_ids:
@@ -1433,8 +1435,10 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                     logger.warning(f"DB 写入跳过: {e}")
                 generated_scenes.append(new_id)
                 logger.info(f"  ✅ 场景: {scene_name} ({old_id} → {new_id})")
+        except RuntimeError as e:
+            return {"status": "error", "reason": str(e)}
         except Exception as e:
-            logger.warning(f"  ⚠ 场景生成失败: {e}")
+            return {"status": "error", "reason": f"场景生成异常: {e}"}
 
     # ── 5. 回写分镜：旧 ID → hash ID ──
     if id_remap:
@@ -1467,27 +1471,10 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
 
     total_sec = sum(int(s.get("duration", 4)) for s in shots)
 
-    # 构建结果摘要
-    warnings = []
-    if char_ids and not generated_chars:
-        warnings.append(f"角色生成全部失败（{len(char_ids)} 个），请检查 LLM 服务后重新生成")
-    elif len(generated_chars) < len(char_ids):
-        failed = len(char_ids) - len(generated_chars)
-        warnings.append(f"{failed} 个角色生成失败")
-    if scene_ids and not generated_scenes:
-        warnings.append(f"场景生成全部失败（{len(scene_ids)} 个），请检查 LLM 服务后重新生成")
-    elif len(generated_scenes) < len(scene_ids):
-        failed = len(scene_ids) - len(generated_scenes)
-        warnings.append(f"{failed} 个场景生成失败")
-
-    result = {"status": "done", "episode": episode, "count": len(shots),
-              "total_duration": total_sec, "shots": shots,
-              "generated_characters": generated_chars,
-              "generated_scenes": generated_scenes}
-    if warnings:
-        result["warnings"] = warnings
-        logger.warning(f"分镜生成完成但有问题: {'; '.join(warnings)}")
-    return result
+    return {"status": "done", "episode": episode, "count": len(shots),
+            "total_duration": total_sec, "shots": shots,
+            "generated_characters": generated_chars,
+            "generated_scenes": generated_scenes}
 
 
 @app.task(bind=True, name="pipeline.ai.characters", soft_time_limit=300)
@@ -1505,10 +1492,12 @@ def ai_characters_task(self, config_path: str, descriptions: list[str]) -> dict:
 
     try:
         chars = generate_characters(llm, descriptions)
+    except RuntimeError as e:
+        return {"status": "error", "reason": str(e)}
     except Exception as e:
         return {"status": "error", "reason": f"生成失败: {e}"}
 
-    if not chars or all(c is None for c in chars):
+    if not chars:
         return {"status": "error", "reason": "LLM 未能生成有效角色"}
 
     # 保存
@@ -1549,10 +1538,12 @@ def ai_scenes_task(self, config_path: str, descriptions: list[str]) -> dict:
 
     try:
         scene_list = generate_scenes(llm, descriptions)
+    except RuntimeError as e:
+        return {"status": "error", "reason": str(e)}
     except Exception as e:
         return {"status": "error", "reason": f"生成失败: {e}"}
 
-    if not scene_list or all(s is None for s in scene_list):
+    if not scene_list:
         return {"status": "error", "reason": "LLM 未能生成有效场景"}
 
     paths = _paths(config_path)
@@ -2304,7 +2295,10 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
 
             # 批量调用 LLM（一次调用处理所有角色）
             if chars_to_process:
-                prompt_results = batch_generate_appearance_prompts(chars_to_process, llm)
+                try:
+                    prompt_results = batch_generate_appearance_prompts(chars_to_process, llm)
+                except RuntimeError as e:
+                    return {"status": "error", "reason": str(e)}
 
                 # 回写结果（只保存实际被修改的文件）
                 modified_files: set[str] = set()
