@@ -140,8 +140,8 @@ wget -O ComfyUI/models/checkpoints/v1-5-pruned-emaonly.safetensors \
 
 # 2. AnimateDiff 运动模块（视频生成必须）→ ComfyUI/models/animatediff/
 mkdir -p ComfyUI/models/animatediff/
-wget -O ComfyUI/models/animatediff/mm_sd_v15_v2.safetensors \
-  https://huggingface.co/guoyww/animatediff/resolve/main/mm_sd_v15_v2.safetensors
+wget -O ComfyUI/models/animatediff/mm_sd_v15_v2.ckpt \
+  https://huggingface.co/guoyww/animatediff/resolve/main/mm_sd_v15_v2.ckpt
 ```
 
 > SD1.5 的 CLIP 和 VAE 内嵌在 Checkpoint 中，无需单独下载。
@@ -157,7 +157,7 @@ ComfyUI/models/
 ├── checkpoints/          # SD1.5 Checkpoint
 │   └── v1-5-pruned-emaonly.safetensors
 ├── animatediff/          # AnimateDiff 运动模块（SD1.5 视频生成）
-│   └── mm_sd_v15_v2.safetensors
+│   └── mm_sd_v15_v2.ckpt
 ├── clip/                 # 文本编码器
 │   ├── clip_l.safetensors            # Flux
 │   ├── t5xxl_fp16.safetensors        # Flux

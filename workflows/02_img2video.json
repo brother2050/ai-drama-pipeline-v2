@@ -16,7 +16,7 @@
     "inputs": {
       "model": ["2", 0],
       "context_options": ["10", 0],
-      "motion_module": "mm_sd_v15_v2.safetensors",
+      "motion_module": "mm_sd_v15_v2.ckpt",
       "beta_schedule": "sqrt_linear (AnimateDiff)",
       "motion_scale": 1.0,
       "apply_v2_models_properly": false
