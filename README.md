@@ -139,6 +139,70 @@ drama serve
 > drama worker -c 4   # Web 操作较多时推荐
 > ```
 
+### 6. IP-Adapter Plus（角色面部一致性，可选但强烈推荐）
+
+> 基于 [ComfyUI_IPAdapter_plus](https://github.com/cubiq/ComfyUI_IPAdapter_plus) 实现跨镜头角色面部一致性。安装后定妆照的面部特征会通过 IP-Adapter 注入到每个镜头的首帧生成中，大幅提升同一角色在不同镜头间的辨识度。
+
+#### 6.1 安装 ComfyUI 自定义节点
+
+```bash
+cd ComfyUI/custom_nodes/
+git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus.git
+# 重启 ComfyUI
+```
+
+#### 6.2 下载模型文件
+
+需要下载 **1 个 IP-Adapter 模型** + **1 个 CLIP Vision 编码器**：
+
+```bash
+# 1. IP-Adapter 模型 → 放入 ComfyUI/models/ipadapter/
+#    目录不存在则手动创建: mkdir -p ComfyUI/models/ipadapter/
+wget -O ComfyUI/models/ipadapter/ip-adapter-plus-face_sd15.safetensors \
+  https://huggingface.co/h94/IP-Adapter/resolve/main/models/ip-adapter-plus-face_sd15.safetensors
+
+# 2. CLIP Vision 编码器 → 放入 ComfyUI/models/clip_vision/
+wget -O ComfyUI/models/clip_vision/CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors \
+  https://huggingface.co/h94/IP-Adapter/resolve/main/models/image_encoder/model.safetensors
+```
+
+<details>
+<summary>可选模型（按需下载）</summary>
+
+| 模型 | 说明 | 适用场景 |
+|------|------|----------|
+| `ip-adapter-plus-face_sd15.safetensors` | **默认推荐**，面部一致性最强 | 短剧角色，人物特写 |
+| `ip-adapter-plus_sd15.safetensors` | 通用 Plus，风格+内容保持 | 场景风格保持 |
+| `ip-adapter-full-face_sd15.safetensors` | 更强面部保持，可能过度拟合 | 需要极高面部相似度 |
+| `ip-adapter_sd15.safetensors` | 基础模型，影响最弱 | 轻度参考 |
+| `ip-adapter-plus-face_sdxl_vit-h.safetensors` | SDXL 面部模型 | 使用 SDXL 后端时 |
+
+SDXL 模型需搭配 `CLIP-ViT-bigG-14-laion2B-39B-b160k.safetensors` 编码器。
+
+</details>
+
+#### 6.3 配置
+
+IP-Adapter 默认已启用，配置在 `config/system.yaml` 中：
+
+```yaml
+ip_adapter:
+  enabled: true
+  model: "ip-adapter-plus-face_sd15.safetensors"   # 面部一致性最佳
+  clip_vision: "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+  weight: 0.75              # 参考图权重（官方建议 ≤0.8）
+  secondary_weight: 0.45    # 多角色时次要角色权重
+  embeds_scaling: "V only"  # 面部特征保持最佳的缩放模式
+```
+
+#### 6.4 验证
+
+启动后在 Web 工作台仪表盘查看 IP-Adapter 状态，或 CLI：
+
+```bash
+drama status   # 应显示 IP-Adapter Plus ✅
+```
+
 ### 三阶段架构（推荐工作流）
 
 ```
