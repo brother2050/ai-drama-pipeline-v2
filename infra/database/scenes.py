@@ -21,34 +21,43 @@ def _row_to_dict(row) -> dict:
 def get_all(pool) -> list[dict]:
     with pool.connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM scenes ORDER BY id")
-        return [_row_to_dict(r) for r in cur.fetchall()]
+        try:
+            cur.execute("SELECT * FROM scenes ORDER BY id")
+            return [_row_to_dict(r) for r in cur.fetchall()]
+        finally:
+            cur.close()
 
 
 def upsert(pool, scene_id: str, data: dict):
     with pool.connection() as conn:
         cur = conn.cursor()
-        # reference_images 在 YAML 中是 list，需 JSON 序列化后存入 TEXT 字段
-        ref_images = data.get("reference_images", [])
-        if isinstance(ref_images, list):
-            ref_images_json = json.dumps(ref_images, ensure_ascii=False)
-        else:
-            ref_images_json = ref_images if isinstance(ref_images, str) else "[]"
-        cur.execute("""
-            INSERT INTO scenes (id, name, description, lighting, reference_images, depth_map)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            ON CONFLICT (id) DO UPDATE SET
-                name=EXCLUDED.name, description=EXCLUDED.description,
-                lighting=EXCLUDED.lighting, reference_images=EXCLUDED.reference_images,
-                depth_map=EXCLUDED.depth_map
-        """, (scene_id, data.get("name", ""), data.get("description", ""),
-              data.get("lighting", ""), ref_images_json,
-              data.get("depth_map", "")))
-        conn.commit()
+        try:
+            # reference_images 在 YAML 中是 list，需 JSON 序列化后存入 TEXT 字段
+            ref_images = data.get("reference_images", [])
+            if isinstance(ref_images, list):
+                ref_images_json = json.dumps(ref_images, ensure_ascii=False)
+            else:
+                ref_images_json = ref_images if isinstance(ref_images, str) else "[]"
+            cur.execute("""
+                INSERT INTO scenes (id, name, description, lighting, reference_images, depth_map)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    name=EXCLUDED.name, description=EXCLUDED.description,
+                    lighting=EXCLUDED.lighting, reference_images=EXCLUDED.reference_images,
+                    depth_map=EXCLUDED.depth_map
+            """, (scene_id, data.get("name", ""), data.get("description", ""),
+                  data.get("lighting", ""), ref_images_json,
+                  data.get("depth_map", "")))
+            conn.commit()
+        finally:
+            cur.close()
 
 
 def delete(pool, scene_id: str):
     with pool.connection() as conn:
         cur = conn.cursor()
-        cur.execute("DELETE FROM scenes WHERE id = %s", (scene_id,))
-        conn.commit()
+        try:
+            cur.execute("DELETE FROM scenes WHERE id = %s", (scene_id,))
+            conn.commit()
+        finally:
+            cur.close()

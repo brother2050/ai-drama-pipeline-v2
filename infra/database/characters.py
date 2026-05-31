@@ -22,35 +22,47 @@ def _row_to_dict(row) -> dict:
 def get_all(pool) -> list[dict]:
     with pool.connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM characters ORDER BY id")
-        return [_row_to_dict(r) for r in cur.fetchall()]
+        try:
+            cur.execute("SELECT * FROM characters ORDER BY id")
+            return [_row_to_dict(r) for r in cur.fetchall()]
+        finally:
+            cur.close()
 
 
 def get_by_id(pool, char_id: str) -> dict | None:
     with pool.connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM characters WHERE id = %s", (char_id,))
-        row = cur.fetchone()
-        return _row_to_dict(row) if row else None
+        try:
+            cur.execute("SELECT * FROM characters WHERE id = %s", (char_id,))
+            row = cur.fetchone()
+            return _row_to_dict(row) if row else None
+        finally:
+            cur.close()
 
 
 def upsert(pool, char_id: str, data: dict):
     with pool.connection() as conn:
         cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO characters (id, name, appearance, voice_config, reference_images)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (id) DO UPDATE SET
-                name=EXCLUDED.name, appearance=EXCLUDED.appearance,
-                voice_config=EXCLUDED.voice_config, reference_images=EXCLUDED.reference_images
-        """, (char_id, data.get("name", ""), data.get("appearance", ""),
-              json.dumps(data.get("voice", {}), ensure_ascii=False),
-              json.dumps(data.get("reference_images", []), ensure_ascii=False)))
-        conn.commit()
+        try:
+            cur.execute("""
+                INSERT INTO characters (id, name, appearance, voice_config, reference_images)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    name=EXCLUDED.name, appearance=EXCLUDED.appearance,
+                    voice_config=EXCLUDED.voice_config, reference_images=EXCLUDED.reference_images
+            """, (char_id, data.get("name", ""), data.get("appearance", ""),
+                  json.dumps(data.get("voice", {}), ensure_ascii=False),
+                  json.dumps(data.get("reference_images", []), ensure_ascii=False)))
+            conn.commit()
+        finally:
+            cur.close()
 
 
 def delete(pool, char_id: str):
     with pool.connection() as conn:
         cur = conn.cursor()
-        cur.execute("DELETE FROM characters WHERE id = %s", (char_id,))
-        conn.commit()
+        try:
+            cur.execute("DELETE FROM characters WHERE id = %s", (char_id,))
+            conn.commit()
+        finally:
+            cur.close()

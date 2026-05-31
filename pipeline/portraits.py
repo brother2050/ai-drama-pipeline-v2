@@ -21,13 +21,13 @@ from engines.portrait import _view_seed, _outfit_seed
 
 logger = logging.getLogger(__name__)
 
-# 五视图配置: (文件名, 景别, 标签, view_key)
+# 五视图配置: (文件名, 景别, 运镜, 标签, view_key)
 _FIVE_VIEWS = [
-    ("cover.png",        "特写",     "正面",  "front"),
-    ("left_side.png",    "侧面特写", "左侧",  "left_side"),
-    ("right_side.png",   "侧面特写", "右侧",  "right_side"),
-    ("back.png",         "背面特写", "背面",  "back"),
-    ("three_quarter.png","特写",     "3/4侧", "three_quarter"),
+    ("cover.png",        "特写",     "固定", "正面",  "front"),
+    ("left_side.png",    "侧面特写", "固定", "左侧",  "left_side"),
+    ("right_side.png",   "侧面特写", "固定", "右侧",  "right_side"),
+    ("back.png",         "背面特写", "固定", "背面",  "back"),
+    ("three_quarter.png","特写",     "固定", "3/4侧", "three_quarter"),
 ]
 
 
@@ -227,7 +227,7 @@ def run_portraits(
 
             cover_path = portrait_dir / "cover.png"
             char_generated = 0
-            for i, (filename, shot_type, label, vk) in enumerate(_FIVE_VIEWS):
+            for i, (filename, shot_type, camera, label, vk) in enumerate(_FIVE_VIEWS):
                 view_path = portrait_dir / filename
                 if view_path.exists() and not force:
                     logger.info(f"    ⏭ {label}视图已存在: {filename}")
@@ -260,7 +260,7 @@ def run_portraits(
 
             # ── 2. 回写五视图 reference_images ──
             view_urls = []
-            for filename, _, _ in _FIVE_VIEWS:
+            for filename, _, _, _, _ in _FIVE_VIEWS:
                 if (portrait_dir / filename).exists():
                     view_urls.append(f"/api/assets/characters/{char_id}/{filename}")
 
@@ -268,7 +268,7 @@ def run_portraits(
                 char.setdefault("reference_images", [])
                 prefix = f"/api/assets/characters/{char_id}/"
                 # 保留非本角色的引用 + 本角色的五视图引用
-                view_filenames = {fn for fn, _, _ in _FIVE_VIEWS}
+                view_filenames = {fn for fn, _, _, _, _ in _FIVE_VIEWS}
                 char["reference_images"] = [
                     u for u in char["reference_images"]
                     if not u.startswith(prefix) or u.rsplit("/", 1)[-1] not in view_filenames

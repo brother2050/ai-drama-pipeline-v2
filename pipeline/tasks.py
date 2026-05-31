@@ -125,6 +125,19 @@ def _check_step_running(config_path: str, episode: int, shot_id: str, step: str)
         return False
 
 
+def _check_pending_shots(pool, episode: int, stage: str) -> list[str]:
+    """获取指定阶段未完成的镜头 ID"""
+    with pool.connection() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute("""SELECT DISTINCT shot_id FROM generation_status
+                            WHERE episode = %s AND stage = %s AND status != 'done'""",
+                        (episode, stage))
+            return [r['shot_id'] if hasattr(r, 'keys') else r[0] for r in cur.fetchall()]
+        finally:
+            cur.close()
+
+
 def _db_mark_running(config_path: str, episode: int, shot_id: str, step: str) -> None:
     try:
         from infra.database.pool import get_pool
