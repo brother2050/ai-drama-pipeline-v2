@@ -75,7 +75,7 @@ pip install -e ".[all]"
 # 1. UNet 模型 → ComfyUI/models/diffusion_models/（或 ComfyUI/models/unet/）
 mkdir -p ComfyUI/models/diffusion_models/
 wget -O ComfyUI/models/diffusion_models/flux1-dev.safetensors \
-  https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/flux1-dev.safetensors
+  https://huggingface.co/Comfy-Org/flux1-dev/resolve/main/flux1-dev.safetensors
 
 # 2. CLIP 模型 → ComfyUI/models/clip/
 mkdir -p ComfyUI/models/clip/
