@@ -60,7 +60,7 @@ def _get_cfg_value(cfg: dict, dot_path: str) -> str:
             return ""
         if val is None:
             return ""
-    return str(val) if val else ""
+    return str(val) if val is not None else ""
 
 
 def _resolve_auth(cfg: dict, api_key_from: str) -> dict | None:
