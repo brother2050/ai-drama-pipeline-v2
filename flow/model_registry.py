@@ -357,6 +357,62 @@ class ModelRegistry:
         self._data.setdefault("video_backends", {})[name] = {
             "workflow": workflow, "default_params": params, **kw}
 
+    # ══════════════════════════════════════════════════════════
+    #  服务类型元数据（toolcheck 等模块使用）
+    # ══════════════════════════════════════════════════════════
+
+    # 服务类型 → defaults 段中的 key 名
+    # 由 YAML defaults 段的 key 名反推：去掉 "_backend" 后缀即为服务类型名
+    # 例外: lip_sync_backend → lipsync（下划线转驼峰）
+    _BACKEND_KEY_TO_SERVICE_TYPE = {
+        "tts_backend": "tts",
+        "lip_sync_backend": "lipsync",
+        "music_backend": "music",
+        "image_backend": "image",
+        "video_backend": "video",
+        "llm_backend": "llm",
+    }
+
+    def get_service_cfg_key(self, service_type: str) -> str:
+        """返回服务类型在 defaults 段中的 key 名
+
+        例: 'tts' → 'tts_backend', 'lipsync' → 'lip_sync_backend'
+        """
+        # 反向查找
+        for cfg_key, st in self._BACKEND_KEY_TO_SERVICE_TYPE.items():
+            if st == service_type:
+                return cfg_key
+        return f"{service_type}_backend"
+
+    def get_service_meta(self, name: str) -> dict | None:
+        """返回辅助服务的完整元数据（从 services 段读取）
+
+        Returns:
+            {'description': '...', 'health_check': {...}, 'backend': '...', 'type': '...'}
+            或 None（返回副本）
+        """
+        svc = self._data.get("services", {}).get(name)
+        return copy.deepcopy(svc) if svc is not None else None
+
+    def get_registered_service_types(self) -> list[str]:
+        """返回所有已注册的服务类型名（后端注册表 + 辅助服务）
+
+        Returns:
+            ['tts', 'lipsync', 'llm', 'music', 'image', 'video', 'comfyui', 'redis', ...]
+        """
+        types = list(self._SECTION_MAP.keys())  # 后端类型
+        types.extend(self._data.get("services", {}).keys())  # 辅助服务
+        return types
+
+    def get_consistency_check_map(self) -> dict[str, dict]:
+        """返回一致性方案 → 健康检查配置映射（供 toolcheck 使用）
+
+        Returns:
+            {'ip_adapter': {'config_key': 'ip_adapter', ...}, 'pulid_flux': {...}}
+        """
+        return {name: meta for name, meta in self._data.get("consistency_methods", {}).items()
+                if name != "none"}
+
     def reload(self, config_path: str | None = None):
         if config_path:
             self._data = self._load(str(Path(config_path).resolve().parent / "models_registry.yaml"))

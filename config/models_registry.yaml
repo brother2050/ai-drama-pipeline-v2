@@ -282,6 +282,8 @@ pulid_flux_models:
 services:
   comfyui:
     description: "ComfyUI 图像/视频生成服务"
+    backend: "comfyui"
+    type: "gpu"
     health_check:
       type: "http"
       path: "/system_stats"
@@ -290,6 +292,8 @@ services:
 
   redis:
     description: "Redis 任务队列"
+    backend: "redis"
+    type: "infra"
     health_check:
       type: "port"
       host: "127.0.0.1"
@@ -297,17 +301,23 @@ services:
 
   celery:
     description: "Celery Worker"
+    backend: "celery"
+    type: "infra"
     health_check:
       type: "celery_active"
 
   ffmpeg:
     description: "FFmpeg 视频处理"
+    backend: "ffmpeg"
+    type: "local"
     health_check:
       type: "command"
       command: "ffmpeg"
 
   seko:
     description: "Seko 影视策划案"
+    backend: "seko"
+    type: "cloud"
     health_check:
       type: "api_key_env"
       env: "SEKO_API_KEY"
@@ -315,6 +325,8 @@ services:
 
   training:
     description: "AI Toolkit LoRA 训练"
+    backend: "ai-toolkit"
+    type: "gpu"
     health_check:
       type: "http"
       path: "/api/gpu"

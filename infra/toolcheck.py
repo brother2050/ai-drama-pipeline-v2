@@ -97,72 +97,42 @@ def check_tool(name: str, cfg: dict) -> dict:
 
 def _check_tool_inner(name: str, cfg: dict) -> dict:
     """内部检测逻辑（注册表驱动）"""
-    from flow.model_registry import ModelRegistry
-
-    # 特殊工具名映射（一致性方案 → 服务 or 后端）
-    _SPECIAL_MAP = {
-        "ip_adapter": ("consistency", "ip_adapter"),
-        "pulid_flux": ("consistency", "pulid_flux"),
-    }
-
-    if name in _SPECIAL_MAP:
-        return _check_consistency(name, cfg)
-
-    # 1. 尝试从辅助服务注册表查询
     registry = _get_registry()
+
+    # 1. 一致性方案（从注册表读取，不硬编码）
+    consistency_map = registry.get_consistency_check_map()
+    if name in consistency_map:
+        return _check_consistency(name, cfg, registry, consistency_map[name])
+
+    # 2. 辅助服务（从注册表 services 段查询）
     hc = registry.get_service_health_check(name)
     if hc:
-        backend_info = _get_service_backend_info(name)
-        return _execute_health_check(name, hc, cfg, **backend_info)
+        meta = registry.get_service_meta(name) or {}
+        return _execute_health_check(name, hc, cfg,
+                                     backend=meta.get("backend", name),
+                                     type=meta.get("type", "unknown"))
 
-    # 2. name 可能是服务类型名（如 "llm"、"tts"）或后端名（如 "mimo-voicedesign"）
-    #    优先精确匹配服务类型，再遍历所有后端
-    if name in _SERVICE_TYPE_TO_CFG_KEY:
+    # 3. 服务类型名（如 "tts"、"llm"）→ 查默认后端
+    service_types = registry.get_registered_service_types()
+    if name in service_types:
         return _check_service_type_backend(name, cfg, registry)
 
-    # 3. 遍历所有服务类型的当前后端，按后端名匹配
-    for service_type in ("tts", "lipsync", "llm", "music"):
-        cfg_key = _SERVICE_TYPE_TO_CFG_KEY.get(service_type)
-        if cfg_key:
-            default_backend = registry.get_defaults().get(cfg_key, "")
-            # LLM 的配置路径特殊：llm.backend 而非 models.llm_backend
-            if service_type == "llm":
-                backend_name = _get_cfg_value(cfg, "llm.backend") or default_backend
-            else:
-                backend_name = _get_cfg_value(cfg, f"models.{cfg_key}") or default_backend
-            if backend_name == name:
-                hc = registry.get_health_check(service_type, backend_name)
-                if hc:
-                    return _execute_health_check(
-                        name, hc, cfg,
-                        backend=backend_name, service_type=service_type)
+    # 4. 后端名（如 "mimo-voicedesign"）→ 遍历所有服务类型匹配
+    for service_type in service_types:
+        cfg_key = registry.get_service_cfg_key(service_type)
+        if service_type == "llm":
+            backend_name = _get_cfg_value(cfg, "llm.backend") or registry.get_defaults().get(cfg_key, "")
+        else:
+            backend_name = _get_cfg_value(cfg, f"models.{cfg_key}") or registry.get_defaults().get(cfg_key, "")
+        if backend_name == name:
+            hc = registry.get_health_check(service_type, backend_name)
+            if hc:
+                return _execute_health_check(
+                    name, hc, cfg,
+                    backend=backend_name, service_type=service_type)
 
     return {"available": False, "backend": "unknown", "type": "unknown",
             "reason": f"未注册的工具: {name}"}
-
-
-# 服务类型 → 配置中的后端键名
-_SERVICE_TYPE_TO_CFG_KEY = {
-    "tts": "tts_backend",
-    "lipsync": "lip_sync_backend",
-    "llm": "llm_backend",
-    "music": "music_backend",
-    "image": "image_backend",
-    "video": "video_backend",
-}
-
-
-def _get_service_backend_info(name: str) -> dict:
-    """返回辅助服务的默认后端信息"""
-    _SERVICE_INFO = {
-        "comfyui": {"backend": "comfyui", "type": "gpu"},
-        "redis": {"backend": "redis", "type": "infra"},
-        "celery": {"backend": "celery", "type": "infra"},
-        "ffmpeg": {"backend": "ffmpeg", "type": "local"},
-        "seko": {"backend": "seko", "type": "cloud"},
-        "training": {"backend": "ai-toolkit", "type": "gpu"},
-    }
-    return _SERVICE_INFO.get(name, {"backend": name, "type": "unknown"})
 
 
 def _execute_health_check(name: str, hc: dict, cfg: dict,
@@ -253,14 +223,8 @@ def _execute_health_check(name: str, hc: dict, cfg: dict,
     return _result(name, False, result_backend, "unknown", f"未知检查类型: {check_type}")
 
 
-def _check_consistency(name: str, cfg: dict) -> dict:
-    """检测一致性方案的可用性"""
-    registry = _get_registry()
-
-    method = registry.get_consistency_method(name)
-    if not method:
-        return _result(name, False, name, "gpu", f"未注册的一致性方案: {name}")
-
+def _check_consistency(name: str, cfg: dict, registry, method: dict) -> dict:
+    """检测一致性方案的可用性（从注册表读取配置，不硬编码）"""
     config_key = method.get("config_key", "")
     if config_key:
         # 检查配置中是否显式禁用
@@ -268,12 +232,13 @@ def _check_consistency(name: str, cfg: dict) -> dict:
         if isinstance(method_cfg, dict) and method_cfg.get("enabled") is False:
             return _result(name, False, name, "gpu", f"{name} 已禁用")
 
-    # 检查 ComfyUI 是否可达
-    comfyui_cfg = cfg.get("comfyui", {})
-    url = comfyui_cfg.get("url", "http://127.0.0.1:8188")
-    api_key = comfyui_cfg.get("api_key", "")
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
-    comfyui_ok = _url_ok(url, "/system_stats", headers=headers)
+    # 检查 ComfyUI 是否可达（从注册表读取 URL，不硬编码）
+    comfyui_meta = registry.get_service_meta("comfyui") or {}
+    comfyui_hc = comfyui_meta.get("health_check", {})
+    comfyui_url = _get_cfg_value(cfg, comfyui_hc.get("config_key", "comfyui.url")) or "http://127.0.0.1:8188"
+    comfyui_key_from = comfyui_hc.get("api_key_from", "comfyui.api_key")
+    headers = _resolve_auth(cfg, comfyui_key_from)
+    comfyui_ok = _url_ok(comfyui_url, "/system_stats", headers=headers)
     if not comfyui_ok:
         return _result(name, False, name, "gpu", "ComfyUI 不可达")
 
@@ -295,7 +260,7 @@ def _check_service_type_backend(service_type: str, cfg: dict, registry) -> dict:
         cfg: 项目配置
         registry: ModelRegistry 实例
     """
-    cfg_key = _SERVICE_TYPE_TO_CFG_KEY.get(service_type)
+    cfg_key = registry.get_service_cfg_key(service_type)
     default_backend = registry.get_defaults().get(cfg_key, "")
 
     # LLM 的配置路径特殊：llm.backend 而非 models.llm_backend
@@ -326,12 +291,15 @@ _registry_instance = None
 
 
 def _get_registry():
-    """获取 ModelRegistry 单例"""
+    """获取 ModelRegistry 单例（使用统一的配置路径解析）"""
     global _registry_instance
     if _registry_instance is None:
         from flow.model_registry import ModelRegistry
-        # 从项目根目录加载
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        config_path = os.path.join(root, "config", "project.yaml")
+        from infra.config import resolve_project_config
+        try:
+            config_path = resolve_project_config()
+        except FileNotFoundError:
+            root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            config_path = os.path.join(root, "config", "project.yaml")
         _registry_instance = ModelRegistry(config_path)
     return _registry_instance
