@@ -369,7 +369,7 @@ def test_tool(name: str):
             return {"ok": True, "name": name, "message": f"{backend} 连接成功 (HTTP {r.status_code})", **result}
 
         elif name == "music":
-            backend = cfg.get("models", {}).get("music_backend", _defaults.get("music_backend", "template"))
+            backend = cfg.get("models", {}).get("music_backend", _defaults.get("music_backend"))
             # template 后端用 ffmpeg 本地检测（从注册表查询后端类型）
             backend_meta = _reg.get_backend("music", backend)
             is_local = backend_meta and backend_meta.get("health_check", {}).get("type") == "command"
@@ -452,7 +452,7 @@ def _test_llm(cfg: dict, result: dict) -> dict:
     from flow.model_registry import ModelRegistry as _MR
     _reg = _MR(_cfg_path())
     _defaults = _reg.get_defaults()
-    backend = llm_cfg.get("backend", _defaults.get("llm_backend", "openai"))
+    backend = llm_cfg.get("backend", _defaults.get("llm_backend"))
     api_key = llm_cfg.get("api_key", "")
 
     if not base_url:
@@ -696,7 +696,8 @@ def cancel_task(task_id: str):
 # ══════════════════════════════════════════════════════════
 
 def _sys_cfg_path() -> str:
-    return str(ROOT / "config" / "system.yaml")
+    from infra.config import SYSTEM_CONFIG_PATH
+    return SYSTEM_CONFIG_PATH
 
 
 @router.get("/system/config")
@@ -788,7 +789,9 @@ def list_projects():
     for d in sorted(projects_dir.iterdir()):
         if not d.is_dir() or d.name.startswith("."):
             continue
-        cfg = d / "config" / "project.yaml"
+        from infra.config import ProjectPaths
+        dp = ProjectPaths(d)
+        cfg = dp.project_yaml
         if cfg.exists():
             with open(cfg, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
@@ -797,7 +800,7 @@ def list_projects():
             name = d.name
         result.append({"name": name, "path": str(d), "active": active_path == str(d), "isDefault": d.name == "default"})
     default_name = "默认"
-    default_cfg = projects_dir / "default" / "config" / "project.yaml"
+    default_cfg = ProjectPaths(projects_dir / "default").project_yaml
     if default_cfg.exists():
         with open(default_cfg, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
@@ -834,7 +837,8 @@ def switch_project(req: ProjectSwitch):
     for d in projects_dir.iterdir():
         if not d.is_dir() or d.name.startswith("."):
             continue
-        cfg = d / "config" / "project.yaml"
+        from infra.config import ProjectPaths
+        cfg = ProjectPaths(d).project_yaml
         if cfg.exists():
             with open(cfg, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}

@@ -257,7 +257,9 @@ def switch_project(name: str, root: Path, console):
     console.print(f"[green]✅ 已切换到: {name}[/green]")
 
     # 显示项目概要
-    cfg = d / "config" / "project.yaml"
+    from infra.config import ProjectPaths
+    dp = ProjectPaths(d)
+    cfg = dp.project_yaml
     if cfg.exists():
         with open(cfg, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
@@ -267,7 +269,7 @@ def switch_project(name: str, root: Path, console):
         console.print(f"[dim]  集数: {proj.get('episodes', 1)}, 分辨率: {proj.get('resolution', [1280, 720])}[/dim]")
         console.print(f"[dim]  风格: {style}, 题材: {genre}[/dim]")
 
-    chars_dir = d / "config" / "characters"
+    chars_dir = dp.characters_dir
     if chars_dir.exists():
         chars = [f.stem for f in chars_dir.glob("*.yaml") if not f.stem.endswith(".example")]
         if chars:
@@ -276,7 +278,9 @@ def switch_project(name: str, root: Path, console):
 
 def show_current(root: Path, console):
     active = _active(root)
-    cfg = active / "config" / "project.yaml"
+    from infra.config import ProjectPaths
+    dp = ProjectPaths(active)
+    cfg = dp.project_yaml
     if cfg.exists():
         with open(cfg, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
@@ -287,11 +291,11 @@ def show_current(root: Path, console):
     console.print(f"[cyan]路径:[/cyan]     {active}")
 
     # 显示项目文件统计
-    chars_dir = active / "config" / "characters"
+    chars_dir = dp.characters_dir
     char_count = len([f for f in chars_dir.glob("*.yaml")]) if chars_dir.exists() else 0
-    scenes_dir = active / "config" / "scenes"
+    scenes_dir = dp.scenes_dir
     scene_count = len([f for f in scenes_dir.glob("*.yaml")]) if scenes_dir.exists() else 0
-    sb_path = active / "storyboard" / "episodes.csv"
+    sb_path = dp.storyboard_csv
     sb_count = 0
     if sb_path.exists():
         try:

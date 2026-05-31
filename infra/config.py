@@ -21,7 +21,11 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["Config", "ProjectPaths", "load_config", "save_config"]
+__all__ = ["Config", "ProjectPaths", "load_config", "save_config", "SYSTEM_CONFIG_PATH"]
+
+# 系统全局配置路径（单一数据源，避免各处重复拼接）
+_ROOT = Path(__file__).resolve().parent.parent
+SYSTEM_CONFIG_PATH = str(_ROOT / "config" / "system.yaml")
 
 
 class ProjectPaths:
@@ -346,11 +350,9 @@ class Config:
         self._mtimes: dict[str, float] = {}
         self._reloading = False
         self._path = path or self._find_config()
-        # 设置系统配置路径
+        # 设置系统配置路径（使用模块级常量，避免重复拼接）
         if Config.SYSTEM_CONFIG is None:
-            Config.SYSTEM_CONFIG = str(
-                Path(__file__).resolve().parent.parent / "config" / "system.yaml"
-            )
+            Config.SYSTEM_CONFIG = SYSTEM_CONFIG_PATH
         self._data = self._merge(self._path)
         self._project_dir = str(Path(self._path).resolve().parent.parent) if self._path else os.getcwd()
         # 注入 project_dir 供后端使用（Container._backend_config 依赖此键）

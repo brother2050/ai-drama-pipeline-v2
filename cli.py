@@ -215,10 +215,11 @@ def status():
 
     # ComfyUI（合并项目配置 + 系统配置，与 Config 类行为一致）
     import yaml
+    from infra.config import SYSTEM_CONFIG_PATH
     cfg_path = _resolve_config()
     with open(cfg_path) as f:
         cfg = yaml.safe_load(f) or {}
-    sys_cfg_path = ROOT / "config" / "system.yaml"
+    sys_cfg_path = Path(SYSTEM_CONFIG_PATH)
     if sys_cfg_path.exists():
         with open(sys_cfg_path, encoding="utf-8") as f:
             sys_cfg = yaml.safe_load(f) or {}
