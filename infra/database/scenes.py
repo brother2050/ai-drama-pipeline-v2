@@ -13,7 +13,7 @@ def _row_to_dict(row) -> dict:
             try:
                 d["reference_images"] = json.loads(d["reference_images"])
             except (json.JSONDecodeError, TypeError):
-                pass
+                logger.debug(f"{type(e).__name__}: {e}")
         return d
     return {}
 

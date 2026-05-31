@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import shutil
 import subprocess
 import threading
@@ -202,7 +201,7 @@ def _run_training(task_id: str, config_path: Path, task_dir: Path):
                                          message=f"Step {current}/{total}")
                             break
                 except (ValueError, IndexError):
-                    pass
+                    logger.debug(f"{type(e).__name__}: {e}")
 
         proc.wait()
 
@@ -228,7 +227,7 @@ def _run_training(task_id: str, config_path: Path, task_dir: Path):
             )
 
     except Exception as e:
-        logger.error(f"[{task_id}] 训练异常: {e}")
+        logger.error(f"[{task_id}] 训练异常: {e}", exc_info=True)
         _update_task(task_id, status="error", message=str(e))
 
 

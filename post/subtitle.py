@@ -68,7 +68,7 @@ def generate_srt(shots: list[dict], output: str, *,
         try:
             os.unlink(tmp)
         except OSError:
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")
         raise
     logger.info(f"字幕生成: {output} ({idx-1} 条)")
     return output

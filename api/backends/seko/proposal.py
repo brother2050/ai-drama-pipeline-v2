@@ -58,7 +58,7 @@ def generate_proposal(prompt: str, *, api_key: str = "", config: dict | None = N
         data = res.read()
         return json.loads(data.decode("utf-8"))
     except Exception as e:
-        logger.error(f"生成策划案失败: {e}")
+        logger.error(f"生成策划案失败: {e}", exc_info=True)
         return {"code": 500, "msg": str(e)}
     finally:
         conn.close()
@@ -190,7 +190,7 @@ def modify_proposal(
         data = res.read()
         return json.loads(data.decode("utf-8"))
     except Exception as e:
-        logger.error(f"修改策划案失败: {e}")
+        logger.error(f"修改策划案失败: {e}", exc_info=True)
         return {"code": 500, "msg": str(e)}
     finally:
         conn.close()

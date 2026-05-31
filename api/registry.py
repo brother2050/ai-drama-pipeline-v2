@@ -183,7 +183,7 @@ class Container:
                     try:
                         inst.shutdown()
                     except Exception:
-                        pass
+                        logger.debug(f"{type(e).__name__}: {e}")
             self._instances.clear()
             self._snapshots.clear()
 

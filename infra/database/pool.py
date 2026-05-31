@@ -15,7 +15,6 @@ class PgPool:
     """PostgreSQL 连接池"""
 
     def __init__(self, dsn: str):
-        import psycopg2
         from psycopg2 import pool as pg_pool
         self._pool = pg_pool.ThreadedConnectionPool(1, 20, dsn)
         # 初始化 schema
@@ -33,7 +32,7 @@ class PgPool:
             try:
                 self._pool.putconn(conn, close=True)
             except Exception:
-                pass
+                logger.debug(f"{type(e).__name__}: {e}")
             conn = self._pool.getconn()
         # 活性检查：连接可能被服务端关闭（idle timeout），验证是否可用
         try:
@@ -43,7 +42,7 @@ class PgPool:
             try:
                 self._pool.putconn(conn, close=True)
             except Exception:
-                pass
+                logger.debug(f"{type(e).__name__}: {e}")
             conn = self._pool.getconn()
         return conn
 
@@ -60,7 +59,7 @@ class PgPool:
             try:
                 conn.rollback()
             except Exception:
-                pass
+                logger.debug(f"{type(e).__name__}: {e}")
             raise
         finally:
             self.release(conn)

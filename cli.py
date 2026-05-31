@@ -193,7 +193,7 @@ def status():
             conn.close()
             pg_ok = True
         except Exception:
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")
     table.add_row("PostgreSQL", "[green]✅[/green]" if pg_ok else "[red]❌ 必选[/red]",
                    pg_dsn.split("@")[-1] if pg_dsn else "未配置", "数据库（必选）")
 
@@ -206,7 +206,7 @@ def status():
             active = insp.active()
             celery_ok = bool(active)
         except Exception:
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")
     table.add_row("Celery Worker", "[green]✅[/green]" if celery_ok else "[red]❌ 未启动[/red]",
                    "-", "异步任务处理（必选）")
 
@@ -354,7 +354,6 @@ def _run_via_celery(task_name: str, config_path: str, *args, **kwargs) -> bool:
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
     # 导入任务模块以注册
-    import pipeline.tasks  # noqa: F401
 
     task = app.send_task(task_name, args=[config_path, *args], kwargs=kwargs)
 
@@ -378,7 +377,7 @@ def _run_via_celery(task_name: str, config_path: str, *args, **kwargs) -> bool:
                     msg = info.get("message", "")
                     progress.update(ptask, completed=pct, description=msg or "处理中...")
             except Exception:
-                pass
+                logger.debug(f"{type(e).__name__}: {e}")
             import time; time.sleep(0.5)
 
         # 最终结果
@@ -424,7 +423,7 @@ def project_list():
 @click.option("--style", default="cinematic", help="视觉风格 (cinematic/anime/realistic/noir/fantasy/vintage/minimalist/cyberpunk 或自定义)")
 @click.option("--genre", default="urban", help="题材类型 (urban/suspense/romance/action/comedy/horror/scifi/historical/campus/family 或自定义)")
 def project_new(name, style, genre):
-    from scripts.project_mgr import create_project, STYLE_PRESETS, GENRE_PRESETS
+    from scripts.project_mgr import create_project
     # 验证：如果不在预设中，视为自定义（用 LLM 处理时不限制）
     create_project(name, ROOT, console, style=style, genre=genre)
 

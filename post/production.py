@@ -31,7 +31,7 @@ def _cleanup_intermediates(out_dir: Path, episode: int) -> None:
                 p.unlink()
                 logger.debug(f"清理遗留中间文件: {p.name}")
             except OSError:
-                pass
+                logger.debug(f"{type(e).__name__}: {e}")
 
 
 def run_post(config_path: str, episode: int, vertical: bool = False):
@@ -90,13 +90,13 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
                       transition=transition, duration=transition_duration)
         logger.info(f"拼接完成: {concat_out}")
     except Exception as e:
-        logger.error(f"拼接失败: {e}")
+        logger.error(f"拼接失败: {e}", exc_info=True)
         # 回退：简单拼接（无转场）
         try:
             FFmpeg.concat([str(v) for v in videos], str(concat_out), transition="none")
             logger.info(f"简单拼接完成: {concat_out}")
         except Exception as e2:
-            logger.error(f"简单拼接也失败: {e2}，跳过后期合成")
+            logger.error(f"简单拼接也失败: {e2}，跳过后期合成", exc_info=True)
             return
 
     # 添加字幕（如果有 SRT）
@@ -131,7 +131,7 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
             logger.info(f"横转竖完成: {vertical_out}")
             concat_out = vertical_out
         except Exception as e:
-            logger.error(f"横转竖失败: {e}")
+            logger.error(f"横转竖失败: {e}", exc_info=True)
 
     # 最终输出重命名为 final.mp4（统一命名，flow/episode.py 依赖此文件名）
     final_out = out_dir / f"episode_{episode:02d}_final.mp4"
@@ -160,7 +160,7 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
                 try:
                     intermediate.unlink()
                 except OSError:
-                    pass
+                    logger.debug(f"{type(e).__name__}: {e}")
 
     logger.info("后期合成完成")
 

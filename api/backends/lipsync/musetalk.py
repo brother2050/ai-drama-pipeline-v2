@@ -1,6 +1,6 @@
 """MuseTalk 口型同步 — HTTP API"""
 from __future__ import annotations
-import logging, os
+import logging
 from pathlib import Path
 import httpx
 from api.registry import BackendMeta, registry

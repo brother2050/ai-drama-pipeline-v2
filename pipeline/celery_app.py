@@ -75,4 +75,4 @@ def format_task_error(exc: Exception, task_name: str = "", task_id: str = "") ->
 # 全局失败回调 — 所有任务失败时自动记录日志
 @task_failure.connect
 def _on_task_failure(sender, task_id, exception, traceback, einfo, **kwargs):
-    logger.error(f"任务失败: {task_id} ({sender.name}): {exception} ({type(exception).__name__})")
+    logger.error(f"任务失败: {task_id} ({sender.name}): {exception} ({type(exception).__name__})", exc_info=True)

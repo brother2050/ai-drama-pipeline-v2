@@ -1,7 +1,6 @@
 """测试 — 基础功能验证"""
 from __future__ import annotations
 
-import json
 import os
 import sys
 import tempfile
@@ -296,7 +295,7 @@ def test_quality():
 
     # 不存在的文件
     result = check_video_format("/nonexistent/video.mp4")
-    assert result["valid"] is False
+    assert result["valid"] == False
     assert "不存在" in result["error"]
     print("✅ 质量检查正常")
 
@@ -372,7 +371,7 @@ def test_effects():
 
 def test_transitions():
     """测试转场"""
-    from infra.transitions import get_xfade_filter, TRANSITIONS
+    from infra.transitions import get_xfade_filter
 
     f = get_xfade_filter("crossfade", 10.0, 0.5)
     assert "xfade=transition=fade" in f
@@ -400,7 +399,7 @@ def test_music():
 
 def test_distributor():
     """测试分发"""
-    from post.distributor import distribute, PLATFORM_PRESETS, check_platform_compat, get_adapt_params
+    from post.distributor import distribute, check_platform_compat, get_adapt_params
 
     results = distribute("/tmp/test.mp4", ["douyin", "bilibili"])
     assert "douyin" in results
@@ -415,10 +414,10 @@ def test_distributor_compat():
     from post.distributor import check_platform_compat, get_adapt_params
 
     result = check_platform_compat("/nonexistent.mp4", "douyin")
-    assert result["compatible"] is False
+    assert result["compatible"] == False
 
     result = check_platform_compat("/tmp/test.mp4", "unknown_platform")
-    assert result["compatible"] is False
+    assert result["compatible"] == False
 
     params = get_adapt_params("/tmp/test.mp4", "douyin")
     assert "ffmpeg_args" in params
@@ -465,21 +464,21 @@ def test_web_schemas():
         StepRequest(episode=1, shot_id="../etc")
         assert False, "应该抛出异常"
     except Exception:
-        pass
+        logger.debug(f"{type(e).__name__}: {e}")
 
     # 非法 episode
     try:
         StepRequest(episode=0, shot_id="001")
         assert False, "应该抛出异常"
     except Exception:
-        pass
+        logger.debug(f"{type(e).__name__}: {e}")
 
     # 非法 character id
     try:
         CharacterData(id="../etc", name="bad")
         assert False, "应该抛出异常"
     except Exception:
-        pass
+        logger.debug(f"{type(e).__name__}: {e}")
 
     print("✅ Pydantic 模型校验正常")
 
@@ -565,8 +564,8 @@ def test_celery_app():
 
     assert app.main == "drama"
     assert "redis" in app.conf.broker_url
-    assert app.conf.task_track_started is True
-    assert app.conf.task_acks_late is True
+    assert app.conf.task_track_started == True
+    assert app.conf.task_acks_late == True
     assert app.conf.worker_prefetch_multiplier == 1
     print("✅ Celery 配置正常")
 
@@ -574,7 +573,6 @@ def test_celery_app():
 def test_celery_tasks_registered():
     """测试 Celery 任务注册"""
     from pipeline.celery_app import app
-    import pipeline.tasks  # noqa: F401 触发注册
 
     expected_tasks = [
         "pipeline.step.tts", "pipeline.step.first_frame", "pipeline.step.video",

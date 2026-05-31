@@ -551,7 +551,7 @@ class AIToolkitTrainer:
                     if log:
                         logger.error(f"  训练日志:\n{log[-2000:]}")
                 except Exception:
-                    pass
+                    logger.debug(f"{type(e).__name__}: {e}")
                 raise RuntimeError(f"训练失败: {info}")
             elif status in ("stopped", "cancelled"):
                 raise RuntimeError(f"训练被取消: {info}")
@@ -565,7 +565,7 @@ class AIToolkitTrainer:
         try:
             settings = self._api_get_settings()
         except Exception:
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")
 
         training_folder = settings.get("TRAINING_FOLDER", "/tmp/ai_toolkit_output")
 

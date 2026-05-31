@@ -250,7 +250,7 @@ def _generate_prompt_batch_with_retry(characters: list[dict], llm, max_retries: 
                 logger.warning(f"  prompt 批次失败（尝试 {attempt+1}/{max_retries}）: {e}，{wait}s 后重试")
                 _time.sleep(wait)
             else:
-                logger.error(f"  prompt 批次最终失败: {e}")
+                logger.error(f"  prompt 批次最终失败: {e}", exc_info=True)
 
     return {}
 

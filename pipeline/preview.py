@@ -97,7 +97,7 @@ def run_preview(config_path: str, episode: int, level: str = "draft", force: boo
         try:
             _process_shot(shot, cont, cfg, shot_out, preset, force=force)
         except Exception as e:
-            logger.error(f"  ❌ 镜头 {sid} 失败: {e}")
+            logger.error(f"  ❌ 镜头 {sid} 失败: {e}", exc_info=True)
             continue
 
     logger.info("预览完成")

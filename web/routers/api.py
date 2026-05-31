@@ -750,7 +750,7 @@ def update_config(req: ConfigUpdate):
             try:
                 os.unlink(tmp)
             except OSError:
-                pass
+                logger.debug(f"{type(e).__name__}: {e}")
     save_config(cfg_path, merged)
     # 注意: Container 在每次请求/任务时按需创建，下次会自动读取新配置
     return {"status": "ok"}
@@ -1289,7 +1289,7 @@ def batch_delete_storyboard_shots(episode: int, req: StoryboardBatchDeleteReques
             try:
                 db_delete_shot(pool, episode, sid)
             except Exception:
-                pass
+                logger.debug(f"{type(e).__name__}: {e}")
     except Exception as e:
         logger.debug(f"数据库同步跳过: {e}")
 
@@ -1647,7 +1647,7 @@ def training_status(char_id: str):
             data = yaml.safe_load(char_yaml.read_text(encoding="utf-8")) or {}
             lora_path_in_yaml = data.get("character", {}).get("lora_path", "")
         except Exception:
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")
     return {
         "char_id": char_id,
         "has_lora": has_lora,

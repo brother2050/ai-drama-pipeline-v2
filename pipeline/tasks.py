@@ -193,7 +193,7 @@ def _try_mark_running_atomic(config_path: str, episode: int, shot_id: str, step:
                     try:
                         cur.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
                     except Exception:
-                        pass
+                        logger.debug(f"{type(e).__name__}: {e}")
             finally:
                 cur.close()
     except Exception:
@@ -722,7 +722,7 @@ def _step_task(self, step: str, fn, config_path: str, episode: int, shot_id: str
         _db_record_step(config_path, episode, shot_id, step, {"status": "error", "reason": "执行超时"})
         return {"shot_id": shot_id, "step": step, "status": "error", "reason": "执行超时"}
     except Exception as e:
-        logger.error(f"[{shot_id}] {step} 异常: {e}")
+        logger.error(f"[{shot_id}] {step} 异常: {e}", exc_info=True)
         return {"shot_id": shot_id, "step": step, "status": "error", "reason": str(e)}
     if result.get("status") == "done":
         self.update_state(state="PROGRESS", meta={"step": step, "shot_id": shot_id, "progress": 100, "message": f"[{shot_id}] {step} 完成"})
@@ -803,7 +803,7 @@ def shot_task(self, config_path: str, episode: int, shot_data: dict, force: bool
             log = logger.info if result.get("status") == "done" else logger.warning if result.get("status") == "error" else logger.info
             log(f"[{shot_id}] {name}: {result.get('status')} — {result.get('reason', '')}")
         except Exception as e:
-            logger.error(f"[{shot_id}] {name}: 异常 — {e}")
+            logger.error(f"[{shot_id}] {name}: 异常 — {e}", exc_info=True)
             results[name] = {"status": "error", "reason": str(e)}
             _db_record_step(config_path, episode, shot_id, name, {"status": "error", "reason": str(e)})
 
@@ -850,7 +850,7 @@ def preview_task(self, config_path: str, episode: int, preset: str = "draft", fo
             try:
                 os.unlink(effective_cfg)
             except OSError:
-                pass
+                logger.debug(f"{type(e).__name__}: {e}")
 
 
 def _apply_preset(config_path: str, preset: str) -> str:
@@ -894,7 +894,7 @@ def produce_task(self, config_path: str, episode: int, vertical: bool = False, f
     try:
         _run_post(config_path, episode, vertical)
     except Exception as e:
-        logger.error(f"后期失败: {e}")
+        logger.error(f"后期失败: {e}", exc_info=True)
     return {"status": "done", "episode": episode, "shots": results}
 
 
@@ -905,7 +905,7 @@ def post_task(self, config_path: str, episode: int, vertical: bool = False) -> d
     try:
         _run_post(config_path, episode, vertical)
     except Exception as e:
-        logger.error(f"后期合成失败: {e}")
+        logger.error(f"后期合成失败: {e}", exc_info=True)
         return {"status": "error", "episode": episode, "reason": str(e)}
     return {"status": "done", "episode": episode, "vertical": vertical}
 
@@ -918,7 +918,7 @@ def portraits_task(self, config_path: str, force: bool = False) -> dict:
         from pipeline.portraits import run_portraits
         run_portraits(config_path, force=force)
     except Exception as e:
-        logger.error(f"定妆照生成失败: {e}")
+        logger.error(f"定妆照生成失败: {e}", exc_info=True)
         return {"status": "error", "reason": str(e)}
     return {"status": "done"}
 
@@ -942,7 +942,7 @@ def scene_images_task(self, config_path: str, force: bool = False) -> dict:
 
         return run_scene_images(config_path, force=force, progress_cb=on_progress)
     except Exception as e:
-        logger.error(f"场景图批量生成失败: {e}")
+        logger.error(f"场景图批量生成失败: {e}", exc_info=True)
         return {"status": "error", "reason": str(e)}
 
 
@@ -1065,7 +1065,7 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
         try:
             old_img.unlink()
         except OSError:
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")
 
     # 重命名为 cover.png
     cover_path = outfit_dir / "cover.png"
@@ -1650,7 +1650,7 @@ def ai_chat_edit_task(self, config_path: str, episode: int, message: str, curren
         return {"status": "error", "reason": "LLM 返回格式不正确"}
 
     except Exception as e:
-        logger.error(f"chat_edit 异常: {e}")
+        logger.error(f"chat_edit 异常: {e}", exc_info=True)
         return {"status": "error", "reason": f"LLM 执行失败: {e}"}
 
 
@@ -1811,7 +1811,7 @@ def _parse_seko_storyboard(steps: list[dict], episode: int) -> list[dict]:
                 d = int(duration_match.group(1))
                 duration = max(2, min(8, d))
             except (ValueError, TypeError):
-                pass
+                logger.debug(f"{type(e).__name__}: {e}")
 
         # 画面描述
         action_match = re.search(r"画面[：:]\s*\[(.+?)\]\s*(.+?)(?:\n运镜|$)", desc_raw, re.DOTALL)
@@ -2049,7 +2049,7 @@ def seko_import_task(
                                 entity_id = yd["character"]["id"]
                                 break
                         except Exception:
-                            pass
+                            logger.debug(f"{type(e).__name__}: {e}")
                 if not entity_id:
                     entity_id = "".join(c for c in name if c.isalnum() or c in ("-", "_")).strip() or f"char_{idx + 1:02d}"
                 img_dir = paths.character_asset_dir(entity_id)
@@ -2066,7 +2066,7 @@ def seko_import_task(
                                 entity_id = yd["scene"]["id"]
                                 break
                         except Exception:
-                            pass
+                            logger.debug(f"{type(e).__name__}: {e}")
                 if not entity_id:
                     entity_id = "".join(c for c in name if c.isalnum() or c in ("-", "_")).strip() or f"scene_{idx + 1:02d}"
                 img_dir = paths.scene_asset_dir(entity_id)
@@ -2214,7 +2214,7 @@ def train_lora_task(self, config_path: str, char_id: str, *,
             output_name=f"{char_id}_lora",
         )
     except Exception as e:
-        logger.error(f"LoRA 训练失败: {e}")
+        logger.error(f"LoRA 训练失败: {e}", exc_info=True)
         _db_record_step(config_path, 0, char_id, "train_lora",
                         {"status": "error", "reason": f"训练失败: {e}"})
         return {"status": "error", "reason": f"训练失败: {e}"}
@@ -2292,7 +2292,7 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
         if translate:
             logger.warning(f"LLM 不可用，跳过翻译: {e}")
 
-    from engines.prompt import translate_to_english, batch_translate_to_english, batch_generate_appearance_prompts
+    from engines.prompt import batch_translate_to_english, batch_generate_appearance_prompts
     from infra.config import save_yaml
 
     result = {

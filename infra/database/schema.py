@@ -127,4 +127,4 @@ def _migrate_characters_columns(cursor) -> None:
             if not cursor.fetchone():
                 cursor.execute(f"ALTER TABLE characters ADD COLUMN {col} {col_type}")
         except Exception:
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")

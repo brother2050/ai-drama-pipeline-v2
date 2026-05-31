@@ -79,7 +79,7 @@ def run_produce(config_path: str, episode: int, force: bool = False):
         try:
             _produce_shot(shot, sm, cont, cfg, shot_out, force=force)
         except Exception as e:
-            logger.error(f"  ❌ 镜头 {sid} 失败: {e}")
+            logger.error(f"  ❌ 镜头 {sid} 失败: {e}", exc_info=True)
             import traceback
             traceback.print_exc()
             continue
@@ -90,7 +90,7 @@ def run_produce(config_path: str, episode: int, force: bool = False):
         from post.production import run_post
         run_post(config_path, episode)
     except Exception as e:
-        logger.error(f"后期合成失败: {e}")
+        logger.error(f"后期合成失败: {e}", exc_info=True)
 
     logger.info("生产完成")
 
@@ -266,7 +266,7 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
                             else:
                                 tracker.untrack_image(video_server_url, server_filename)
                         except Exception:
-                            pass
+                            logger.debug(f"{type(e).__name__}: {e}")
                     if need_upload:
                         try:
                             video_comfyui.upload_image(str(frame_path), filename=server_filename)

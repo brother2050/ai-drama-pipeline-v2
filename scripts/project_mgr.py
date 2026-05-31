@@ -352,7 +352,7 @@ def _cleanup_project_db(project_dir: Path) -> None:
                         cid = data.get("character", {}).get("id", f.stem)
                         cur.execute("DELETE FROM characters WHERE id = %s", (cid,))
                     except Exception:
-                        pass
+                        logger.debug(f"{type(e).__name__}: {e}")
 
             scenes_dir = project_dir / "config" / "scenes"
             if scenes_dir.exists():
@@ -366,7 +366,7 @@ def _cleanup_project_db(project_dir: Path) -> None:
                         sid = data.get("scene", {}).get("id", f.stem)
                         cur.execute("DELETE FROM scenes WHERE id = %s", (sid,))
                     except Exception:
-                        pass
+                        logger.debug(f"{type(e).__name__}: {e}")
 
             # 清理 shots 和 generation_status（按 episode 匹配）
             sb_path = project_dir / "storyboard" / "episodes.csv"
@@ -381,9 +381,9 @@ def _cleanup_project_db(project_dir: Path) -> None:
                                 if ep > 0:
                                     episodes_seen.add(ep)
                             except (ValueError, TypeError):
-                                pass
+                                logger.debug(f"{type(e).__name__}: {e}")
                 except Exception:
-                    pass
+                    logger.debug(f"{type(e).__name__}: {e}")
 
             # 也从 episodes 表补充（CSV 可能已被清空/修改，但 DB 中仍有记录）
             try:
@@ -393,7 +393,7 @@ def _cleanup_project_db(project_dir: Path) -> None:
                     if ep and ep > 0:
                         episodes_seen.add(ep)
             except Exception:
-                pass
+                logger.debug(f"{type(e).__name__}: {e}")
 
             for ep in episodes_seen:
                 cur.execute("DELETE FROM generation_status WHERE episode = %s", (ep,))

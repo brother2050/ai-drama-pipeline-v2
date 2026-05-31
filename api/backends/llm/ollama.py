@@ -32,7 +32,7 @@ class OllamaLLM:
                         self._ctx = val
                         return val
         except Exception:
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")
         return 8192
 
     def chat(self, prompt: str, system: str = "", **kwargs) -> str:

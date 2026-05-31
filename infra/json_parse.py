@@ -37,7 +37,7 @@ def _repair_truncated_json(text: str) -> str | None:
         json.loads(cleaned)
         return cleaned
     except json.JSONDecodeError:
-        pass
+        logger.debug(f"{type(e).__name__}: {e}")
 
     # 逐字符跟踪结构，找到最后一个合法位置
     stack = []  # 记录未闭合的括号: '[' 或 '{'
@@ -77,7 +77,7 @@ def _repair_truncated_json(text: str) -> str | None:
             json.loads(candidate)
             return candidate
         except json.JSONDecodeError:
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")
 
     # 情况2：JSON 被截断，需要补全闭合括号
     if stack:
@@ -135,7 +135,7 @@ def parse_llm_json(text: str):
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        pass
+        logger.debug(f"{type(e).__name__}: {e}")
 
     # 2. 提取 markdown 代码块（```json ... ``` 或 ``` ... ```）
     m = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
@@ -143,7 +143,7 @@ def parse_llm_json(text: str):
         try:
             return json.loads(m.group(1).strip())
         except json.JSONDecodeError:
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")
 
     # 3. 提取第一个完整 JSON 数组/对象（深度匹配，非贪婪）
     for start_ch, end_ch in [('[', ']'), ('{', '}')]:
@@ -188,7 +188,7 @@ def parse_llm_json(text: str):
             import ast
             return ast.literal_eval(text)
         except (ValueError, SyntaxError):
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")
 
     # 5. 截断修复：LLM 输出因 token 限制被截断时，尝试补全闭合括号
     # 只尝试最外层的分隔符（第一个出现的 { 或 [），避免修复内层子结构
@@ -203,7 +203,7 @@ def parse_llm_json(text: str):
             try:
                 return json.loads(repaired)
             except json.JSONDecodeError:
-                pass
+                logger.debug(f"{type(e).__name__}: {e}")
 
     # 6. 全文修复（兜底）
     repaired = _repair_truncated_json(text)
@@ -211,7 +211,7 @@ def parse_llm_json(text: str):
         try:
             return json.loads(repaired)
         except json.JSONDecodeError:
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")
 
     logger.warning(f"无法从 LLM 回复中提取 JSON（前 200 字）: {text[:200]}")
     return None

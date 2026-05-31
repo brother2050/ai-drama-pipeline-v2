@@ -257,7 +257,7 @@ def run_portraits(
                     else:
                         logger.warning(f"    ⚠ {label}视图未生成")
                 except Exception as e:
-                    logger.error(f"    ❌ {label}视图失败: {e}")
+                    logger.error(f"    ❌ {label}视图失败: {e}", exc_info=True)
 
             if char_generated > 0:
                 generated += 1
@@ -327,7 +327,7 @@ def run_portraits(
                         else:
                             logger.warning(f"      ⚠ {outfit_key} 未生成")
                     except Exception as e:
-                        logger.error(f"      ❌ {outfit_key} 失败: {e}")
+                        logger.error(f"      ❌ {outfit_key} 失败: {e}", exc_info=True)
 
             # ── 4. 写回 YAML ──
             data["character"] = char
@@ -345,7 +345,7 @@ def run_portraits(
                     logger.debug(f"DB 写入跳过: {e}")
 
         except Exception as e:
-            logger.error(f"    ❌ 失败: {e}")
+            logger.error(f"    ❌ 失败: {e}", exc_info=True)
         finally:
             with _generating_lock:
                 _generating.discard(char_id)

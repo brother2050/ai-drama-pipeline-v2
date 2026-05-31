@@ -216,7 +216,7 @@ def ensure_portrait(char_id: str, config: dict, container=None, force: bool = Fa
         return str(portrait_dir / "cover.png") if (portrait_dir / "cover.png").exists() else ""
 
     except Exception as e:
-        logger.error(f"定妆照生成失败: {e}")
+        logger.error(f"定妆照生成失败: {e}", exc_info=True)
         return ""
     finally:
         with _generating_lock:

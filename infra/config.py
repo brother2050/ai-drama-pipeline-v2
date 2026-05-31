@@ -17,7 +17,7 @@ try:
     if _env.exists():
         load_dotenv(_env, override=False)
 except ImportError:
-    pass
+    logger.debug(f"{type(e).__name__}: {e}")
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +224,7 @@ def load_config(path: str, *, force: bool = False) -> dict[str, Any]:
             with open(abspath, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
         except yaml.YAMLError as e:
-            logger.error(f"配置文件 YAML 格式错误: {abspath}: {e}")
+            logger.error(f"配置文件 YAML 格式错误: {abspath}: {e}", exc_info=True)
             data = {}
         _cache[abspath] = (data, os.path.getmtime(abspath))
     return copy.deepcopy(data)
@@ -244,7 +244,7 @@ def save_yaml(path: str | Path, data: Any, *, sort_keys: bool = False) -> None:
         try:
             os.unlink(tmp)
         except OSError:
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")
         raise
 
 
@@ -414,7 +414,7 @@ class Config:
             try:
                 self._mtimes[p] = os.path.getmtime(p)
             except OSError:
-                pass
+                logger.debug(f"{type(e).__name__}: {e}")
 
     def _check_reload(self) -> bool:
         """检测源文件是否变化，变化则自动重载。返回是否发生了重载。"""
@@ -528,7 +528,7 @@ def resolve_project_config(root: Path | None = None) -> str:
                 if cfg.exists():
                     return str(cfg)
         except (OSError, ValueError):
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")
 
     # 2. 回退到默认项目
     cfg = root / "projects" / "default" / "config" / "project.yaml"
@@ -557,6 +557,6 @@ def get_active_project_dir(root: Path | None = None) -> Path:
                 if p.exists():
                     return p
         except (OSError, ValueError):
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")
 
     return root / "projects" / "default"

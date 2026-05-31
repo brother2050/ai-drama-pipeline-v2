@@ -31,7 +31,7 @@ def _url_ok(url: str, path: str = "/", headers: dict | None = None) -> bool:
             return r.status_code in (200, 401, 403)
         return retry(_check, max_retries=2, base_delay=0.5)
     except ImportError:
-        pass
+        logger.debug(f"{type(e).__name__}: {e}")
     except Exception:
         return False
     # httpx 不可用时用 urllib 回退
@@ -229,7 +229,7 @@ def _check_consistency(name: str, cfg: dict, registry, method: dict) -> dict:
     if config_key:
         # 检查配置中是否显式禁用
         method_cfg = cfg.get(config_key, {})
-        if isinstance(method_cfg, dict) and method_cfg.get("enabled") is False:
+        if isinstance(method_cfg, dict) and method_cfg.get("enabled") == False:
             return _result(name, False, name, "gpu", f"{name} 已禁用")
 
     # 检查 ComfyUI 是否可达（从注册表读取 URL，不硬编码）

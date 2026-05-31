@@ -1,10 +1,8 @@
 """LLM 内容生成引擎 — 从大纲生成分镜、角色、场景"""
 from __future__ import annotations
 
-import json
 import logging
 import re
-from typing import Any
 
 from infra.json_parse import parse_llm_json
 
@@ -127,7 +125,7 @@ def generate_storyboard(llm, outline: str, characters: list[dict] = None,
                 logger.warning(f"  ⚠ 分镜生成失败（尝试 {attempt+1}/3）: {e}，{wait}s 后重试")
                 _time.sleep(wait)
             else:
-                logger.error(f"  ❌ 分镜生成最终失败: {e}")
+                logger.error(f"  ❌ 分镜生成最终失败: {e}", exc_info=True)
 
     if not shots:
         logger.error("LLM 返回无法解析为镜头列表")
@@ -261,7 +259,7 @@ def generate_characters(llm, descriptions: list[str], expected_ids: list[str] | 
                     logger.warning(f"  ⚠ 角色 {i+1} 生成失败（尝试 {attempt+1}/3）: {e}，{wait}s 后重试")
                     _time.sleep(wait)
                 else:
-                    logger.error(f"  ❌ 角色 {i+1} 生成最终失败: {e}")
+                    logger.error(f"  ❌ 角色 {i+1} 生成最终失败: {e}", exc_info=True)
 
         if char and isinstance(char, dict):
             if expected_ids and i < len(expected_ids):
@@ -358,7 +356,7 @@ def generate_scenes(llm, descriptions: list[str], expected_ids: list[str] | None
                     logger.warning(f"  ⚠ 场景 {i+1} 生成失败（尝试 {attempt+1}/3）: {e}，{wait}s 后重试")
                     _time.sleep(wait)
                 else:
-                    logger.error(f"  ❌ 场景 {i+1} 生成最终失败: {e}")
+                    logger.error(f"  ❌ 场景 {i+1} 生成最终失败: {e}", exc_info=True)
 
         if scene and isinstance(scene, dict):
             if expected_ids and i < len(expected_ids):
@@ -411,7 +409,7 @@ def expand_outline(llm, outline: str) -> str:
     try:
         return llm.chat(outline, system=EXPAND_SYSTEM, max_tokens=2048)
     except Exception as e:
-        logger.error(f"大纲扩写失败: {e}")
+        logger.error(f"大纲扩写失败: {e}", exc_info=True)
         return outline
 
 

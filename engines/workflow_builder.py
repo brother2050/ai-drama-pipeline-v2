@@ -279,7 +279,7 @@ class WorkflowBuilder:
         if not ip_config:
             ip_config = self.config.get("ip_adapter", {})
         # 确保 ip_adapter 启用（未显式禁用即视为启用）
-        if ip_config.get("enabled") is False:
+        if ip_config.get("enabled") == False:
             ip_config = {}
 
         if char_ids:
@@ -328,7 +328,7 @@ class WorkflowBuilder:
                         # 方案已注册：检查是否启用 → 检查插件 → 注入
                         config_key = method_meta.get("config_key", "")
                         method_config = self.config.get(config_key, {}) if config_key else {}
-                        if method_config.get("enabled") is not False:
+                        if method_config.get("enabled") != False:
                             inject_fn_name = method_meta["inject_method"]
                             inject_fn = getattr(self, inject_fn_name, None)
                             if inject_fn:
@@ -976,7 +976,7 @@ class WorkflowBuilder:
         try:
             duration = int(shot.get("duration", 4))
         except (ValueError, TypeError):
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")
         duration = max(2, min(8, duration))
 
         # 获取当前视频后端的 fps

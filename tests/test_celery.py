@@ -9,7 +9,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -186,7 +186,6 @@ def test_step_lipsync_no_audio(test_project):
 
 def test_subtitle_task(test_project):
     """字幕生成"""
-    from pipeline.tasks import subtitle_task
 
     with patch("pipeline.tasks.subtitle_task.apply") as mock_apply:
         mock_apply.return_value.get.return_value = {"path": "test.srt", "count": 2}
@@ -211,8 +210,8 @@ def test_celery_app_config():
     from pipeline.celery_app import app, format_task_error
 
     assert app.main == "drama"
-    assert app.conf.task_track_started is True
-    assert app.conf.task_acks_late is True
+    assert app.conf.task_track_started == True
+    assert app.conf.task_acks_late == True
     assert app.conf.worker_prefetch_multiplier == 1
 
     # 统一错误格式
@@ -227,7 +226,6 @@ def test_celery_app_config():
 def test_celery_tasks_registered():
     """任务注册"""
     from pipeline.celery_app import app
-    import pipeline.tasks  # noqa: F401
 
     expected = [
         "pipeline.step.tts", "pipeline.step.first_frame", "pipeline.step.video",

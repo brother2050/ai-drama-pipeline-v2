@@ -33,7 +33,7 @@ def create_app() -> FastAPI:
             pool = get_pool()
             pool.close()
         except Exception:
-            pass
+            logger.debug(f"{type(e).__name__}: {e}")
         logger.info("🎬 工作台已关闭")
 
     app = FastAPI(title="AI 短剧工作台 v2", version="2.0", lifespan=lifespan)

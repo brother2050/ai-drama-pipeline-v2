@@ -104,8 +104,8 @@ def save_storyboard(path: Path, shots: list[dict], episode: int, append: bool = 
         except BaseException:
             try:
                 os.unlink(tmp_path)
-            except OSError:
-                pass
+            except OSError as e:
+                logger.debug(f"{type(e).__name__}: {e}")
             raise
     finally:
         if _USE_FCNTL:
@@ -113,8 +113,8 @@ def save_storyboard(path: Path, shots: list[dict], episode: int, append: bool = 
         elif _USE_MSVCRT:
             try:
                 msvcrt.locking(lock_fd.fileno(), msvcrt.LK_UNLCK, 1)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"{type(e).__name__}: {e}")
         lock_fd.close()
 
 

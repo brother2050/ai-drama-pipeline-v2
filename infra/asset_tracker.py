@@ -7,8 +7,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +84,7 @@ class AssetTracker:
                 else:
                     self.untrack_image(server_url, remote_name)
             except Exception:
-                pass
+                logger.debug(f"{type(e).__name__}: {e}")
 
         # 2) 上传 + 记录
         comfyui.upload_image(local_path, filename=remote_name)

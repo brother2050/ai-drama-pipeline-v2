@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
 from typing import Callable
 
 logger = logging.getLogger(__name__)
@@ -162,6 +161,6 @@ def run_scene_images(
             else:
                 logger.warning(f"  ⚠ 场景 {sname}: ComfyUI 未返回图片")
         except Exception as e:
-            logger.error(f"  ❌ 场景 {sname}: {e}")
+            logger.error(f"  ❌ 场景 {sname}: {e}", exc_info=True)
 
     return {"status": "done", "generated": generated, "total": total, "skipped": skipped}

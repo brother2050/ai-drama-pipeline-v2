@@ -14,7 +14,7 @@ def _row_to_dict(row) -> dict:
                 try:
                     d[json_field] = json.loads(d[json_field])
                 except (json.JSONDecodeError, TypeError):
-                    pass
+                    logger.debug(f"{type(e).__name__}: {e}")
         return d
     return {}
 
