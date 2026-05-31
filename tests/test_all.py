@@ -208,35 +208,6 @@ def test_storyboard():
 
 # ── engines/camera.py ──
 
-def test_camera():
-    """测试机位规范化"""
-    from engines.camera import normalize_camera, normalize_shot_type
-
-    assert normalize_camera("固定") == "固定"
-    assert normalize_camera("环绕摇镜头") == "环绕"
-    assert normalize_camera("") == "固定"
-    assert normalize_camera("无") == "固定"
-
-    assert normalize_shot_type("特写") == "特写"
-    assert normalize_shot_type("中景镜头") == "中景"
-    assert normalize_shot_type("") == "中景"
-    print("✅ 机位规范化正常")
-
-
-# ── engines/emotions.py ──
-
-def test_emotions():
-    """测试情绪分析"""
-    from engines.emotions import analyze_emotion
-
-    assert analyze_emotion("他愤怒地大吼") == "angry"
-    assert analyze_emotion("她开心地笑了") == "happy"
-    assert analyze_emotion("他悲伤地哭泣") == "sad"
-    assert analyze_emotion("普通文本") == "neutral"
-    assert analyze_emotion("他苦笑了一下") == "sad"  # 子串误判测试
-    print("✅ 情绪分析正常")
-
-
 # ── engines/prompt.py ──
 
 def test_prompt():

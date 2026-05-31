@@ -332,18 +332,6 @@ class ModelRegistry:
     def valid_video_backends(self) -> set[str]:
         return set(self._data.get("video_backends", {}).keys())
 
-    def valid_tts_backends(self) -> set[str]:
-        return set(self._data.get("tts_backends", {}).keys())
-
-    def valid_lipsync_backends(self) -> set[str]:
-        return set(self._data.get("lipsync_backends", {}).keys())
-
-    def valid_llm_backends(self) -> set[str]:
-        return set(self._data.get("llm_backends", {}).keys())
-
-    def valid_music_backends(self) -> set[str]:
-        return set(self._data.get("music_backends", {}).keys())
-
     def get_tts_backends(self) -> dict:
         """获取所有 TTS 后端及其描述（向后兼容，返回副本）"""
         return copy.deepcopy(self._data.get("tts_backends", {}))

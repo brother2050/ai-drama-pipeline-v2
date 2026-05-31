@@ -720,8 +720,6 @@ ai-drama-pipeline-v2/
 │   ├── video_consistency.py  # 视频一致性检查
 │   ├── storyboard.py         # 分镜表加载/验证
 │   ├── llm_generator.py      # 🤖 LLM 内容生成（分镜/角色/场景）
-│   ├── camera.py             # 机位/景别规范化
-│   ├── emotions.py           # 情绪分析
 │   ├── portrait.py           # 定妆照生成
 │   ├── multi_char.py         # 多人同框
 │   ├── quality.py            # 质量检查
@@ -750,7 +748,6 @@ ai-drama-pipeline-v2/
 │   ├── cache.py              # TTL 缓存
 │   ├── retry.py              # 指数退避重试
 │   ├── text.py               # 文本工具
-│   ├── redis_mgr.py          # Redis 连接管理
 │   └── database/             # PostgreSQL（必须）
 │       ├── schema.py         # 表结构定义
 │       ├── pool.py           # 连接池
