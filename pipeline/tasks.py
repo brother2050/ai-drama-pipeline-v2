@@ -773,14 +773,26 @@ def shot_task(self, config_path: str, episode: int, shot_data: dict, force: bool
         characters = sm.characters
         scenes = sm.scenes
     except Exception as e:
-        logger.debug(f"预加载角色/场景数据失败（不影响流程）: {e}")
+        logger.warning(f"预加载角色/场景数据失败（后续步骤可能受影响）: {e}")
 
     ctx = {"cfg": cfg, "cont": cont, "shot": shot_data,
            "characters": characters, "scenes": scenes}
 
+    # 步骤依赖链: tts / first_frame 无依赖 → video 需 first_frame → lipsync 需 video + tts
+    # 前置步骤失败时，跳过依赖它的后续步骤
     steps = [("tts", _run_tts), ("first_frame", _run_first_frame), ("video", _run_video), ("lipsync", _run_lipsync)]
+    _SKIP_DEPS = {"video": "first_frame", "lipsync": "video"}
     results = {}
     for i, (name, fn) in enumerate(steps):
+        # 检查前置依赖是否失败
+        dep = _SKIP_DEPS.get(name)
+        if dep and results.get(dep, {}).get("status") == "error":
+            results[name] = {"shot_id": shot_id, "step": name, "status": "skipped",
+                             "reason": f"前置步骤 {dep} 失败，跳过"}
+            _db_record_step(config_path, episode, shot_id, name, results[name])
+            logger.warning(f"[{shot_id}] {name}: 跳过（前置步骤 {dep} 失败）")
+            continue
+
         self.update_state(state="PROGRESS", meta={"step": name, "shot_id": shot_id, "progress": int((i + 1) / len(steps) * 100), "message": f"[{shot_id}] {name} ({i+1}/{len(steps)})"})
         try:
             t0 = time.time()
@@ -1615,6 +1627,23 @@ def ai_chat_edit_task(self, config_path: str, episode: int, message: str, curren
             return {"status": "error", "reason": result["error"]}
 
         if isinstance(result, list):
+            # 校验每个镜头的必填字段，防止 LLM 输出残缺数据污染分镜表
+            required = {"shot_id", "scene", "characters", "action", "dialogue"}
+            invalid = []
+            for i, shot in enumerate(result):
+                if not isinstance(shot, dict):
+                    invalid.append(f"第{i+1}项不是对象")
+                    continue
+                missing = required - set(shot.keys())
+                if missing:
+                    invalid.append(f"shot_id={shot.get('shot_id', '?')} 缺少: {', '.join(missing)}")
+            if invalid:
+                logger.warning(f"chat_edit 输出校验失败: {invalid[:5]}")
+                return {"status": "error",
+                        "reason": f"LLM 返回的分镜数据不完整（{len(invalid)} 处）: {'; '.join(invalid[:3])}"}
+            # 确保 episode 字段一致
+            for shot in result:
+                shot["episode"] = str(episode)
             self.update_state(state="PROGRESS", meta={"step": "chat_edit", "progress": 90, "message": "编辑完成"})
             return {"status": "done", "shots": result, "message": f"已修改 {len(result)} 个镜头"}
 
@@ -1774,6 +1803,15 @@ def _parse_seko_storyboard(steps: list[dict], episode: int) -> list[dict]:
         scene_match = re.search(r"场景[：:]\s*(.+?)(?:\n|$)", desc_raw)
         if scene_match:
             scene = scene_match.group(1).strip()
+
+        # 时长（支持 "时长：5秒"、"时长：5s"、"时长：5" 等格式）
+        duration_match = re.search(r"时长[：:]\s*(\d+)", desc_raw)
+        if duration_match:
+            try:
+                d = int(duration_match.group(1))
+                duration = max(2, min(8, d))
+            except (ValueError, TypeError):
+                pass
 
         # 画面描述
         action_match = re.search(r"画面[：:]\s*\[(.+?)\]\s*(.+?)(?:\n运镜|$)", desc_raw, re.DOTALL)

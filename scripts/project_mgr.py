@@ -370,9 +370,9 @@ def _cleanup_project_db(project_dir: Path) -> None:
 
             # 清理 shots 和 generation_status（按 episode 匹配）
             sb_path = project_dir / "storyboard" / "episodes.csv"
+            episodes_seen = set()
             if sb_path.exists():
                 import csv as _csv
-                episodes_seen = set()
                 try:
                     with open(sb_path, encoding="utf-8") as fh:
                         for row in _csv.DictReader(fh):
@@ -384,9 +384,21 @@ def _cleanup_project_db(project_dir: Path) -> None:
                                 pass
                 except Exception:
                     pass
-                for ep in episodes_seen:
-                    cur.execute("DELETE FROM shots WHERE episode = %s", (ep,))
-                    cur.execute("DELETE FROM generation_status WHERE episode = %s", (ep,))
+
+            # 也从 episodes 表补充（CSV 可能已被清空/修改，但 DB 中仍有记录）
+            try:
+                cur.execute("SELECT episode FROM episodes")
+                for row in cur.fetchall():
+                    ep = row[0] if not hasattr(row, 'keys') else row['episode']
+                    if ep and ep > 0:
+                        episodes_seen.add(ep)
+            except Exception:
+                pass
+
+            for ep in episodes_seen:
+                cur.execute("DELETE FROM generation_status WHERE episode = %s", (ep,))
+                cur.execute("DELETE FROM shots WHERE episode = %s", (ep,))
+                cur.execute("DELETE FROM episodes WHERE episode = %s", (ep,))
 
             conn.commit()
             cur.close()
