@@ -340,8 +340,17 @@ class Config:
         raise FileNotFoundError("未找到 config/project.yaml，请先初始化默认项目")
 
     def _merge(self, path: str) -> dict:
-        """合并默认配置 + 系统全局配置 + 项目配置"""
+        """合并默认配置 + 注册表默认值 + 系统全局配置 + 项目配置"""
         merged = copy.deepcopy(self.DEFAULTS)
+        # 0. 从 models_registry.yaml 读取默认后端名（替代硬编码的 DEFAULTS.models）
+        try:
+            from flow.model_registry import ModelRegistry
+            reg = ModelRegistry(path or str(Path(__file__).resolve().parent.parent / "config" / "project.yaml"))
+            reg_defaults = reg.get_defaults()
+            if reg_defaults:
+                merged.setdefault("models", {}).update(reg_defaults)
+        except Exception:
+            pass  # 注册表不可用时使用 DEFAULTS 中的硬编码兜底
         # 1. 合并系统全局配置
         sys_path = getattr(Config, 'SYSTEM_CONFIG', None)
         if sys_path and os.path.isfile(sys_path):

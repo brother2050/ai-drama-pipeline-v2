@@ -227,8 +227,14 @@ def status():
     table.add_row("ComfyUI", "[green]✅[/green]" if comfyui_ok else "[yellow]⚠[/yellow]",
                    comfyui_url, "图片/视频生成")
 
-    # TTS
-    tts = cfg.get("models", {}).get("tts_backend", "mimo-voicedesign")
+    # TTS（默认后端名从注册表读取）
+    from flow.model_registry import ModelRegistry as _MR
+    try:
+        _reg = _MR(cfg_path)
+        _default_tts = _reg.get_defaults().get("tts_backend", "mimo-voicedesign")
+    except Exception:
+        _default_tts = "mimo-voicedesign"
+    tts = cfg.get("models", {}).get("tts_backend", _default_tts)
     if "mimo" in tts:
         key = os.environ.get("MIMO_API_KEY", "")
         table.add_row("MiMo TTS", "[green]✅[/green]" if key else "[yellow]⚠ 未配置[/yellow]",

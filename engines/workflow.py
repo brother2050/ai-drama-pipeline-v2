@@ -153,7 +153,7 @@ def find_lora_nodes(wf: dict) -> list[tuple[str, str]]:
     return result
 
 
-def set_clip_text_prompts(wf: dict, positive: str, negative: str = "", backend: str = "sd15") -> dict:
+def set_clip_text_prompts(wf: dict, positive: str, negative: str = "", backend: str = "") -> dict:
     for nid, node in wf.items():
         if nid.startswith("_"):
             continue

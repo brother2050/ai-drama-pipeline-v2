@@ -73,21 +73,26 @@ class WorkflowBuilder:
             self.registry = ModelRegistry(
                 os.path.join(self.project_dir, "config", "project.yaml"))
 
+        # 从注册表读取默认后端名（替代硬编码）
+        defaults = self.registry.get_defaults()
+        default_img = defaults.get("image_backend", "sd15")
+        default_video = defaults.get("video_backend", "animatediff")
+
         # 首帧工作流
-        img_backend = self.models.get("image_backend", "sd15")
+        img_backend = self.models.get("image_backend", default_img)
         wf_name = self.registry.get_image_workflow(img_backend)
         if not wf_name:
-            logger.warning(f"未知 image_backend '{img_backend}'，回退到 sd15")
-            wf_name = self.registry.get_image_workflow("sd15") or "01_first_frame_sd15.json"
+            logger.warning(f"未知 image_backend '{img_backend}'，回退到 {default_img}")
+            wf_name = self.registry.get_image_workflow(default_img) or "01_first_frame_sd15.json"
         self.first_frame_wf = self._load_wf(wf_name)
         self.first_frame_wf = resolve_node_aliases(self.first_frame_wf, available_nodes)
 
         # 视频工作流
-        video_backend = self.models.get("video_backend", "animatediff")
+        video_backend = self.models.get("video_backend", default_video)
         video_wf_name = self.registry.get_video_workflow(video_backend)
         if not video_wf_name:
-            logger.warning(f"未知 video_backend '{video_backend}'，回退到 animatediff")
-            video_wf_name = self.registry.get_video_workflow("animatediff") or "02_img2video.json"
+            logger.warning(f"未知 video_backend '{video_backend}'，回退到 {default_video}")
+            video_wf_name = self.registry.get_video_workflow(default_video) or "02_img2video.json"
         self.video_wf = self._load_wf(video_wf_name)
         self.video_wf = resolve_node_aliases(self.video_wf, available_nodes)
 
@@ -239,10 +244,11 @@ class WorkflowBuilder:
         # 使用统一的 prompt 构建函数
         style = self.config.get("project", {}).get("style", "cinematic")
         genre = self.config.get("project", {}).get("genre", "urban")
-        img_backend = self.models.get("image_backend", "sd15")
+        defaults = self.registry.get_defaults()
+        img_backend = self.models.get("image_backend", defaults.get("image_backend", "sd15"))
         positive = build_prompt(shot, character_desc=character_desc,
                                 scene_desc=scene_desc, style=style, genre=genre,
-                                image_backend=img_backend)
+                                image_backend=img_backend, registry=self.registry)
         if multi_char_prompt:
             positive = f"{positive}, {multi_char_prompt}"
 
@@ -262,7 +268,6 @@ class WorkflowBuilder:
             return prompt, {}
 
         # 设置 prompt
-        img_backend = self.models.get("image_backend", "sd15")
         set_clip_text_prompts(wf, positive, negative, img_backend)
 
         # 注入角色参考图（IP-Adapter Plus）或 LoRA
@@ -283,16 +288,9 @@ class WorkflowBuilder:
             consistency = self.models.get("consistency_method",
                                           self.config.get("consistency_method", "auto"))
 
-            # auto 模式：根据后端自动选择
+            # auto 模式：从注册表查询该图像后端的默认一致性方案
             if consistency == "auto":
-                is_flux = img_backend.lower() == "flux"
-                is_sd = img_backend.lower() in ("sd15", "sdxl")
-                if is_flux:
-                    consistency = "pulid_flux"
-                elif is_sd:
-                    consistency = "ip_adapter"
-                else:
-                    consistency = "none"
+                consistency = self.registry.get_consistency_default(img_backend) or "none"
 
             # 为所有角色查找 LoRA，无 LoRA 的用一致性方案回退
             chars_with_lora = []
@@ -324,30 +322,35 @@ class WorkflowBuilder:
                         logger.warning(f"角色 '{cid}' 无定妆照，跳过一致性注入（请先执行: drama portraits 或在 Web 工作台生成定妆照）")
 
                 if chars_with_refs:
-                    if consistency == "pulid_flux":
-                        pulid_config = self.config.get("pulid_flux", {})
-                        if pulid_config.get("enabled", True):
-                            # 检查 ComfyUI 是否安装了 PuLID-Flux 插件
-                            if hasattr(self, 'available_nodes') and self.available_nodes and "PulidFluxModelLoader" not in self.available_nodes:
-                                logger.warning("ComfyUI 未安装 PuLID-Flux 插件（PulidFluxModelLoader 节点不存在），跳过面部一致性注入。安装: cd ComfyUI/custom_nodes && git clone https://github.com/balazik/ComfyUI-PuLID-Flux.git")
+                    # 从注册表查询一致性方案的元数据
+                    method_meta = self.registry.get_consistency_method(consistency)
+                    if method_meta and method_meta.get("inject_method"):
+                        # 方案已注册：检查是否启用 → 检查插件 → 注入
+                        config_key = method_meta.get("config_key", "")
+                        method_config = self.config.get(config_key, {}) if config_key else {}
+                        if method_config.get("enabled") is not False:
+                            inject_fn_name = method_meta["inject_method"]
+                            inject_fn = getattr(self, inject_fn_name, None)
+                            if inject_fn:
+                                # 检查所需的 ComfyUI 插件是否已安装
+                                required_node = method_meta.get("required_comfyui_node")
+                                if required_node and hasattr(self, 'available_nodes') and self.available_nodes:
+                                    if required_node not in self.available_nodes:
+                                        logger.warning(
+                                            f"ComfyUI 未安装 {consistency} 插件（{required_node} 节点不存在），"
+                                            f"跳过面部一致性注入。请参考注册表中的 install 说明")
+                                    else:
+                                        wf = inject_fn(wf, chars_with_refs, method_config, outfit=outfit)
+                                else:
+                                    wf = inject_fn(wf, chars_with_refs, method_config, outfit=outfit)
                             else:
-                                wf = self._inject_pulid_flux(wf, chars_with_refs, pulid_config, outfit=outfit)
+                                logger.warning(f"一致性方案 '{consistency}' 的注入方法 '{inject_fn_name}' 不存在")
                         else:
-                            logger.info("PuLID-Flux 已禁用，跳过一致性注入")
-                    elif consistency == "ip_adapter":
-                        ip_config = self.models.get("ip_adapter", {})
-                        if not ip_config:
-                            ip_config = self.config.get("ip_adapter", {})
-                        if ip_config.get("enabled") is not False:
-                            # 检查 ComfyUI 是否安装了 IP-Adapter 插件
-                            if hasattr(self, 'available_nodes') and self.available_nodes and "IPAdapterAdvanced" not in self.available_nodes:
-                                logger.warning("ComfyUI 未安装 ComfyUI_IPAdapter_plus 插件（IPAdapterAdvanced 节点不存在），跳过面部一致性注入。安装: cd ComfyUI/custom_nodes && git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus.git")
-                            else:
-                                wf = self._inject_character_refs(wf, chars_with_refs, ip_config, outfit=outfit)
-                        else:
-                            logger.info("IP-Adapter 已禁用，跳过一致性注入")
+                            logger.info(f"{consistency} 已禁用，跳过一致性注入")
+                    elif consistency == "none":
+                        logger.info(f"一致性方案: none，跳过面部一致性注入")
                     else:
-                        logger.info(f"一致性方案: {consistency}，跳过面部一致性注入")
+                        logger.warning(f"未注册的一致性方案: {consistency}")
 
         # 注入风格 LoRA（复用上方已读取的 genre）
         if genre:
@@ -977,7 +980,8 @@ class WorkflowBuilder:
         duration = max(2, min(8, duration))
 
         # 获取当前视频后端的 fps
-        video_backend = self.models.get("video_backend", "animatediff")
+        reg_defaults = self.registry.get_defaults()
+        video_backend = self.models.get("video_backend", reg_defaults.get("video_backend", "animatediff"))
         model_fps = 8  # 默认
         if self.registry:
             defaults = self.registry.get_video_defaults(video_backend)
@@ -997,31 +1001,23 @@ class WorkflowBuilder:
         self._set_video_frames(wf, video_frames, video_backend)
 
     def _set_video_frames(self, wf: dict, frames: int, backend: str) -> None:
-        """根据不同视频后端，将帧数设置到工作流的正确节点。
+        """将帧数设置到工作流的正确节点（注册表驱动）
 
-        后端帧数参数映射:
-        - animatediff: ADE_StandardStaticContextOptions.context_length
-        - cogvideox: EmptyLatentImage.batch_size
-        - cosmos / cosmos-video: CosmosPredict2ImageToVideoLatent.length
+        从 models_registry.yaml 读取视频后端的 frame_params 配置，
+        根据 node_class 和 input_name 注入帧数，不再硬编码后端名。
         """
+        frame_cfg = self.registry.get_frame_params(backend)
+        if not frame_cfg:
+            logger.warning(f"视频后端 '{backend}' 未声明 frame_params，跳过帧数注入")
+            return
+
+        target_class = frame_cfg["node_class"]
+        target_input = frame_cfg["input_name"]
+
         for nid, node in wf.items():
-            ct = node.get("class_type", "")
-            inp = node.get("inputs", {})
-
-            # AnimateDiff: context_length
-            if ct == "ADE_StandardStaticContextOptions" and "context_length" in inp:
-                inp["context_length"] = frames
-                logger.debug(f"  AnimateDiff: {nid}.context_length = {frames}")
-
-            # CogVideoX: EmptyLatentImage.batch_size（帧数 = batch_size）
-            if ct == "EmptyLatentImage" and backend == "cogvideox":
-                inp["batch_size"] = frames
-                logger.debug(f"  CogVideoX: {nid}.batch_size = {frames}")
-
-            # Cosmos: CosmosPredict2ImageToVideoLatent.length
-            if ct == "CosmosPredict2ImageToVideoLatent" and "length" in inp:
-                inp["length"] = frames
-                logger.debug(f"  Cosmos: {nid}.length = {frames}")
+            if node.get("class_type") == target_class:
+                node["inputs"][target_input] = frames
+                logger.debug(f"  {backend}: {nid}.{target_input} = {frames}")
 
     # ── 参考图上传映射 ──────────────────────────────────────
 

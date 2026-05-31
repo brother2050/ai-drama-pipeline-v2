@@ -296,8 +296,13 @@ def test_tool(name: str):
 
     # 工具可用，再做一次实际连接测试
     try:
+        # 从注册表获取默认后端名（替代硬编码）
+        from flow.model_registry import ModelRegistry
+        _reg = ModelRegistry(_cfg_path())
+        _defaults = _reg.get_defaults()
+
         if name == "tts":
-            backend = cfg.get("models", {}).get("tts_backend", "mimo-voicedesign")
+            backend = cfg.get("models", {}).get("tts_backend", _defaults.get("tts_backend", "mimo-voicedesign"))
             if "mimo" in backend:
                 backend_key = backend.replace("-", "_")
                 cfg_key = cfg.get("models", {}).get(backend_key, {}).get("api_key", "")
@@ -321,15 +326,18 @@ def test_tool(name: str):
             return {"ok": True, "name": name, "message": msg, **result}
 
         elif name == "lipsync":
-            backend = cfg.get("models", {}).get("lip_sync_backend", "musetalk")
+            backend = cfg.get("models", {}).get("lip_sync_backend", _defaults.get("lip_sync_backend", "musetalk"))
             api_url = cfg.get("models", {}).get(backend.replace("-", "_"), {}).get("api_url", "")
             import httpx
             r = httpx.get(api_url, timeout=5)
             return {"ok": True, "name": name, "message": f"{backend} 连接成功 (HTTP {r.status_code})", **result}
 
         elif name == "music":
-            backend = cfg.get("models", {}).get("music_backend", "template")
-            if backend == "template":
+            backend = cfg.get("models", {}).get("music_backend", _defaults.get("music_backend", "template"))
+            # template 后端用 ffmpeg 本地检测（从注册表查询后端类型）
+            backend_meta = _reg.get_backend("music", backend)
+            is_local = backend_meta and backend_meta.get("health_check", {}).get("type") == "command"
+            if is_local:
                 import subprocess
                 v = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, timeout=5)
                 ver = v.stdout.split("\n")[0] if v.returncode == 0 else "unknown"
@@ -416,18 +424,30 @@ def _test_llm(cfg: dict, result: dict) -> dict:
     name = "llm"
     llm_cfg = cfg.get("llm", {})
     base_url = llm_cfg.get("base_url", "")
-    backend = llm_cfg.get("backend", "ollama")
+    backend = llm_cfg.get("backend", "openai")
     api_key = llm_cfg.get("api_key", "")
 
     if not base_url:
         return {"ok": False, "name": name, "message": "未配置 API URL", **result}
-    if not api_key and backend != "ollama":
+    # 从注册表查询后端是否需要 API Key（替代硬编码 backend != "ollama"）
+    from flow.model_registry import ModelRegistry as _MR
+    _reg = _MR(_cfg_path())
+    backend_meta = _reg.get_backend("llm", backend)
+    needs_key = backend_meta.get("requires_api_key", True) if backend_meta else True
+
+    if not api_key and needs_key:
         return {"ok": False, "name": name, "message": "未配置 API Key", **result}
 
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
     import httpx
     try:
-        if backend == "ollama":
+        # 从注册表查询 LLM 后端的健康检查类型（替代硬编码 backend == "ollama"）
+        from flow.model_registry import ModelRegistry
+        _reg = ModelRegistry(_cfg_path())
+        hc = _reg.get_health_check("llm", backend)
+        hc_type = hc.get("type", "") if hc else ""
+
+        if hc_type == "ollama_tags":
             r = httpx.get(f"{base_url}/api/tags", timeout=5)
             models = [m.get("name", "") for m in r.json().get("models", [])]
             return {"ok": True, "name": name, "message": f"Ollama 连接成功 · {len(models)} 模型", "models": models, **result}

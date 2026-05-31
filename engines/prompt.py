@@ -344,14 +344,14 @@ def get_view_appearance(char: dict, shot_type: str) -> str:
 
 def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
                  style: str = "cinematic", genre: str = "urban",
-                 image_backend: str = "") -> str:
+                 image_backend: str = "", registry=None) -> str:
     """从镜头数据构建 ComfyUI Prompt
 
     character_desc 应为已准备好的英文 prompt（prepare 阶段生成的 appearance_prompt_en）。
 
     Args:
-        image_backend: 图像后端名（sd15/flux/cosmos/...）。Flux/Cosmos 使用 T5-XXL
-            编码器，输出自然语言段落；SD1.5/SDXL 使用 CLIP 编码器，输出逗号分隔 tag。
+        image_backend: 图像后端名（sd15/flux/cosmos/...）。prompt 风格从注册表查询。
+        registry: ModelRegistry 实例（可选，不传则自动创建）
     """
     # ── 收集各维度素材（两种风格共用） ──
     style_tag = f"{style} style" if style else ""
@@ -384,11 +384,16 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
     camera = shot.get("camera", "固定")
     camera_desc = CAMERA_MAP.get(camera, "static camera")
 
-    # ── 判断后端：Flux/Cosmos → 自然语言段落，其他 → 逗号 tag ──
-    backend_lower = image_backend.lower() if image_backend else ""
-    use_natural = backend_lower in ("flux", "cosmos")
+    # ── 判断后端 prompt 风格（从注册表查询，不硬编码后端名） ──
+    if registry is None:
+        from flow.model_registry import ModelRegistry
+        import os
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        registry = ModelRegistry(os.path.join(root, "config", "project.yaml"))
 
-    if use_natural:
+    prompt_style = registry.get_prompt_style(image_backend) if image_backend else "tag"
+
+    if prompt_style == "natural":
         return _build_natural_prompt(
             style_tag, genre_tag, scene_clean, char_clean,
             action, emotion, emotion_desc, shot_type_desc, camera_desc)

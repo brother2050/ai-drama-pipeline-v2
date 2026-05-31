@@ -207,12 +207,14 @@ consistency_methods:
     compatible_backends: ["sd15", "sdxl"]
     config_key: "ip_adapter"
     inject_method: "_inject_ip_adapter_plus"
+    required_comfyui_node: "IPAdapterAdvanced"
 
   pulid_flux:
     description: "PuLID-Flux（Flux 面部一致性）"
     compatible_backends: ["flux"]
     config_key: "pulid_flux"
     inject_method: "_inject_pulid_flux"
+    required_comfyui_node: "PulidFluxModelLoader"
 
   none:
     description: "无面部一致性（仅靠 LoRA + seed）"

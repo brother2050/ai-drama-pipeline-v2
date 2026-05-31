@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 class MusicGenerator:
     """配乐生成器 — 优先使用注册的音乐后端，回退到 ffmpeg 模板"""
-    def __init__(self, backend: str = "template", config: dict | None = None, timeouts: dict | None = None):
+    def __init__(self, backend: str = "", config: dict | None = None, timeouts: dict | None = None):
         self._backend = backend
         self._config = config or {}
         self._timeouts = timeouts or {}
