@@ -49,18 +49,25 @@ CAMERA_MAP = {
 
 
 def _strip_dialogue(text: str) -> str:
-    """清理 action 中的对话/台词内容，防止模型将文字渲染进画面"""
+    """清理 action 中的对话/台词内容，防止模型将文字渲染进画面
+
+    只清理紧跟对话动词的引号内容（说/道/喊/问/答/叫 等），
+    保留场景道具上的文字描述（如墙上"欢迎光临"、杯子上"Best Day Ever"）。
+    """
     if not text:
         return text
-    text = re.sub(r'(?:嘟囔|嘀咕|[说喊道问答呼吼叫骂叹])[着道了]?\s*[：:]\s*[""「].*?[""」]', '', text)
-    text = re.sub(r'(?:嘟囔|嘀咕|[说喊道问答呼吼叫骂叹])[着道了]?\s*[：:]\s*[^，。,.]{0,30}[，。,.]?\s*', '', text)
+    # 英文对话动词 + 引号内容
     _SPEECH = r'(?:says?|said|asks?|asked|answers?|answered|replies?|replied|shouts?|shouted|yells?|yelled|whispers?|whispered|mutters?|muttered|screams?|screamed|cries?|cried|exclaims?|exclaimed|responds?|responded|states?|stated|remarks?|remarked|calls?|called|begs?|begged|pleads?|pleaded|demands?|demanded|insists?|insisted|suggests?|suggested)'
     text = re.sub(rf'\b{_SPEECH}\s*[:：]\s*"[^"]*"', '', text, flags=re.IGNORECASE)
     text = re.sub(rf"\b{_SPEECH}\s*[:：]\s*'[^']*'", '', text, flags=re.IGNORECASE)
     text = re.sub(rf'\b{_SPEECH}\s*[:：]\s*[^,.]{{0,30}}[,.]?\s*', ' ', text, flags=re.IGNORECASE)
-    text = re.sub(r'[""「『].*?[""」』]', '', text)
-    text = re.sub(r'"[^"]*"', '', text)
-    text = re.sub(r"'[^']*'", '', text)
+    # 中文对话：冒号 + 引号内容（删除引号及内容），以及对话动词 + 直接引号
+    text = re.sub(r'[：:]\s*[""「].*?[""」]', '', text)
+    text = re.sub(r'[说喊道问答呼吼叫骂叹]\s*[""「].*?[""」]', '', text)
+    # 中文对话动词 + 无引号短句（到逗号/句号截止）
+    text = re.sub(
+        r'(?:嘟囔|嘀咕|[说喊道问答呼吼叫骂叹])[着道了口气声]*\s*[：:]\s*[^，。,.]{0,30}[，。,.]?\s*',
+        '', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
