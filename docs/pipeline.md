@@ -379,9 +379,70 @@ flowchart TB
 
 ---
 
-## 角色一致性 — IP-Adapter Plus
+## 角色面部一致性
 
-> 通过 `ip-adapter-plus-face` 模型实现跨镜头角色面部一致性
+> 通过 `consistency_method` 配置项选择一致性方案，与图像后端独立解耦
+
+### 配置
+
+```yaml
+# config/system.yaml
+consistency_method: auto   # auto / pulid_flux / ip_adapter / none
+```
+
+| 值 | 说明 | 适用后端 |
+|----|------|---------|
+| `auto` | 根据 image_backend 自动选择 | flux→pulid, sd15→ip_adapter, cosmos→none |
+| `pulid_flux` | PuLID-Flux 面部一致性 | Flux（DiT） |
+| `ip_adapter` | IP-Adapter Plus 面部一致性 | SD1.5/SDXL（UNet） |
+| `none` | 不使用一致性（仅 LoRA + seed） | 全部 |
+
+### PuLID-Flux（Flux 后端推荐）
+
+> InsightFace 检测人脸 → EVA CLIP 编码 → 注入 Flux DiT 注意力层
+
+```mermaid
+flowchart LR
+    subgraph input["输入"]
+        ref["📸 定妆照<br/>cover.png"]
+        prompt["📝 Prompt<br/>appearance_en"]
+    end
+
+    subgraph pulid["PuLID-Flux 链"]
+        direction TB
+        pid["LoadPuLIDFluxModel<br/>fpulid_flux.safetensors"]
+        face["LoadInsightFace<br/>AntelopeV2"]
+        eva["LoadEvaClip<br/>EVA02-CLIP-L-14-336"]
+        apply["ApplyPuLIDFlux<br/>weight=0.9<br/>fusion=mean"]
+        ref --> apply
+        pid --> apply
+        face --> apply
+        eva --> apply
+    end
+
+    subgraph gen["生成"]
+        ks["KSampler"]
+        out["🖼️ 首帧"]
+    end
+
+    prompt --> ks
+    apply -->|"model"| ks
+    ks --> out
+
+    style pulid fill:#1b2e4b,stroke:#2563eb,color:#e2e8f0
+    style gen fill:#1b3b2e,stroke:#059669,color:#6ee7b7
+```
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `pulid_flux.model` | `fpulid_flux.safetensors` | PuLID Flux 模型 |
+| `pulid_flux.weight` | `0.9` | 面部权重（推荐 0.8-0.95，1.0 过拟合） |
+| `pulid_flux.fusion` | `mean` | 多图融合: mean / concat / max / train_weight |
+| `pulid_flux.use_gray` | `true` | 灰度优化（边缘轮廓更自然） |
+
+### IP-Adapter Plus（SD1.5/SDXL 后端）
+
+> CLIP Vision 编码参考图 → IP-Adapter 注入 UNet cross-attention 层
 
 ```mermaid
 flowchart LR
@@ -420,21 +481,7 @@ flowchart LR
 | `ip_adapter.embeds_scaling` | `V only` | 面部特征保持最佳 |
 | `ip_adapter.secondary_weight` | `0.45` | 多角色时次要角色权重 |
 
-**模型选择建议**：
-- Flux 后端（推荐）：使用 **PuLID-Flux**（见下方），面部一致性更强
-- SD1.5 后端：`ip-adapter-plus-face_sd15` — 面部一致性最强
-- 通用场景：`ip-adapter-plus_sd15` — 风格+内容保持
-- SDXL：`ip-adapter-plus-face_sdxl_vit-h` — 高分辨率面部保持
-
-**多角色同框**：自动链式注入，主角色 weight=0.75，次要角色 weight=0.45，确保各自面部特征不混淆。
-
-**模型文件放置**：
-```
-ComfyUI/models/ipadapter/
-  └── ip-adapter-plus-face_sd15.safetensors
-ComfyUI/models/clip_vision/
-  └── CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors
-```
+**多角色同框**：两种方案均自动链式注入，主角色高权重，次要角色自动降权。
 
 ---
 

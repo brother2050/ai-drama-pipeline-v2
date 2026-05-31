@@ -345,7 +345,7 @@ drama status   # 应显示 IP-Adapter Plus ✅
 
 > 基于 [PuLID](https://github.com/ToTheBeginning/PuLID) 的 Flux 面部一致性方案。通过 InsightFace 检测人脸 + EVA CLIP 编码面部特征，将 ID embedding 注入 Flux DiT 注意力层，实现跨镜头角色面部一致性。
 
-#### 7.1 安装 ComfyUI 自定义节点
+#### 8.1 安装 ComfyUI 自定义节点
 
 ```bash
 cd ComfyUI/custom_nodes/
@@ -355,7 +355,7 @@ git clone https://github.com/balazik/ComfyUI-PuLID-Flux.git
 # 重启 ComfyUI
 ```
 
-#### 7.2 下载模型文件
+#### 8.2 下载模型文件
 
 需要下载 **3 类模型**：
 
@@ -372,7 +372,7 @@ mkdir -p ComfyUI/models/insightface/models/antelopev2/
 # 3. EVA02-CLIP-L-14-336 → 首次运行自动下载（或手动放到 ComfyUI/models/clip/）
 ```
 
-#### 7.3 配置
+#### 8.3 配置
 
 PuLID-Flux 默认已启用，配置在 `config/system.yaml` 中：
 
@@ -385,7 +385,7 @@ pulid_flux:
   use_gray: true           # 灰度优化（边缘轮廓更自然）
 ```
 
-#### 7.4 技巧
+#### 8.4 技巧
 
 - **参考图质量很重要**：使用清晰、正面、光线均匀的定妆照
 - **weight 推荐 0.8-0.95**：1.0 容易过拟合，面部僵硬
