@@ -17,7 +17,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from infra.config import Config
-from engines.portrait import _view_seed, _outfit_seed
+from engines.portrait import _view_seed, _outfit_seed, _generating, _generating_lock
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +214,10 @@ def run_portraits(
             wb = WorkflowBuilder(cfg.data, models, str(paths.root), comfyui=comfyui, force=force)
             wb.load_workflows()
 
+            # 标记角色正在生成，防止 build_first_frame → _get_character_refs → ensure_portrait 重入
+            with _generating_lock:
+                _generating.add(char_id)
+
             # ── 1. 生成五视图 ──
             # 读取代数计数器（force 时递增，得到不同的生成结果）
             generation = char.get("portrait_generation", 0)
@@ -342,6 +346,9 @@ def run_portraits(
 
         except Exception as e:
             logger.error(f"    ❌ 失败: {e}")
+        finally:
+            with _generating_lock:
+                _generating.discard(char_id)
 
     logger.info(f"定妆照生成完成 ({generated} 个角色)")
     return {"status": "done", "generated": generated, "total": len(char_files)}
