@@ -130,6 +130,12 @@ def _cfg_path() -> str:
     return str(_proj() / "config" / "project.yaml")
 
 
+def _paths():
+    """获取统一路径管理对象"""
+    from infra.config import ProjectPaths
+    return ProjectPaths(_proj())
+
+
 # ── 校验工具 ──
 
 _ID_RE = re.compile(r"^[a-zA-Z0-9_\-\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]+$")
@@ -462,7 +468,7 @@ def run_step_shot(req: StepRequest):
 
 
 def _find_shot_for_api(episode: int, shot_id: str) -> dict | None:
-    sb_path = _proj() / "storyboard" / "episodes.csv"
+    sb_path = _paths().storyboard_csv
     if not sb_path.exists():
         return None
     with open(sb_path, encoding="utf-8") as f:
@@ -505,7 +511,7 @@ def generate_character_portrait(char_id: str):
     """为单个角色 AI 生成定妆照（异步，强制重新生成）"""
     _check_id(char_id, "角色 ID")
     # 检查角色是否存在
-    char_yaml_path = _proj() / "config" / "characters" / f"{char_id}.yaml"
+    char_yaml_path = _paths().character_yaml(char_id)
     if not char_yaml_path.exists():
         raise HTTPException(404, f"角色 {char_id} 不存在")
     # 预检 ComfyUI 可用性，避免提交后才发现不可用
@@ -521,7 +527,7 @@ def generate_character_portrait(char_id: str):
 def generate_character_outfit(char_id: str, outfit_key: str = "default"):
     """为单个角色的指定服装（outfit）生成参考图（异步）"""
     _check_id(char_id, "角色 ID")
-    char_yaml_path = _proj() / "config" / "characters" / f"{char_id}.yaml"
+    char_yaml_path = _paths().character_yaml(char_id)
     if not char_yaml_path.exists():
         raise HTTPException(404, f"角色 {char_id} 不存在")
     from pipeline.tasks import outfit_single_task
@@ -532,7 +538,7 @@ def generate_character_outfit(char_id: str, outfit_key: str = "default"):
 def generate_character_outfits(char_id: str):
     """为单个角色的所有服装（outfit）批量生成参考图（异步）"""
     _check_id(char_id, "角色 ID")
-    char_yaml_path = _proj() / "config" / "characters" / f"{char_id}.yaml"
+    char_yaml_path = _paths().character_yaml(char_id)
     if not char_yaml_path.exists():
         raise HTTPException(404, f"角色 {char_id} 不存在")
     from pipeline.tasks import outfits_batch_task
@@ -965,7 +971,7 @@ def batch_delete_scenes(req: BatchDeleteRequest):
 def generate_scene_image(scene_id: str):
     """为单个场景 AI 生成参考图（异步，强制重新生成）"""
     _check_id(scene_id, "场景 ID")
-    scene_yaml_path = _proj() / "config" / "scenes" / f"{scene_id}.yaml"
+    scene_yaml_path = _paths().scene_yaml(scene_id)
     if not scene_yaml_path.exists():
         raise HTTPException(404, f"场景 {scene_id} 不存在")
     from pipeline.tasks import scene_image_single_task
@@ -1079,7 +1085,7 @@ def get_entity_sub_asset(entity_type: str, entity_id: str, sub_dir: str, filenam
 @router.get("/episodes")
 def get_episodes():
     """获取可用集数列表"""
-    sb_path = _proj() / "storyboard" / "episodes.csv"
+    sb_path = _paths().storyboard_csv
     if not sb_path.exists():
         return {"episodes": [1], "current": 1}
     ep_set = set()
@@ -1099,7 +1105,7 @@ def get_episodes():
 @router.get("/episodes/summary")
 def get_episodes_summary():
     """批量获取所有集数摘要（镜头数、资源进度），避免 N+1 查询"""
-    sb_path = _proj() / "storyboard" / "episodes.csv"
+    sb_path = _paths().storyboard_csv
     if not sb_path.exists():
         return {"episodes": []}
 
@@ -1141,7 +1147,7 @@ def get_episodes_summary():
 @router.get("/storyboard/{episode}")
 def get_storyboard(episode: int):
     _check_episode(episode)
-    sb_path = _proj() / "storyboard" / "episodes.csv"
+    sb_path = _paths().storyboard_csv
     if not sb_path.exists():
         return {"episode": episode, "shots": []}
     shots = []
@@ -1168,7 +1174,7 @@ def save_storyboard(episode: int, data: dict):
             _check_id(sid, "shot_id")
         shot["episode"] = str(episode)
 
-    sb_path = _proj() / "storyboard" / "episodes.csv"
+    sb_path = _paths().storyboard_csv
     from engines.storyboard import save_storyboard
     save_storyboard(sb_path, shots, episode, append=True)
 
@@ -1191,7 +1197,7 @@ def save_storyboard(episode: int, data: dict):
 def batch_delete_storyboard_shots(episode: int, req: StoryboardBatchDeleteRequest):
     """批量删除分镜镜头"""
     _check_episode(episode)
-    sb_path = _proj() / "storyboard" / "episodes.csv"
+    sb_path = _paths().storyboard_csv
     if not sb_path.exists():
         raise HTTPException(404, "分镜表不存在")
 
@@ -1542,7 +1548,7 @@ def train_lora(req: TrainingRequest):
     """为角色训练 LoRA 模型（异步）"""
     _check_id(req.char_id, "角色 ID")
     # 检查角色是否存在
-    char_yaml_path = _proj() / "config" / "characters" / f"{req.char_id}.yaml"
+    char_yaml_path = _paths().character_yaml(req.char_id)
     if not char_yaml_path.exists():
         raise HTTPException(404, f"角色 {req.char_id} 不存在")
     cfg = _cfg_path()

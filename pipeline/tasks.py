@@ -91,7 +91,8 @@ def _load_episode_shots_cached(config_path: str, episode: int) -> list[dict]:
 
 
 def _shot_dir(config_path: str, episode: int, shot_id: str) -> Path:
-    return _cfg_dir(config_path, "output", f"e{episode:02d}", f"s{shot_id}")
+    from infra.config import Config
+    return Config(config_path).paths.shot_dir(episode, shot_id)
 
 
 def _check_available(tool_name: str, config_path: str) -> tuple[bool, str]:
@@ -273,10 +274,16 @@ def _init_ctx(config_path: str):
 
 
 def _cfg_dir(config_path: str, *parts) -> Path:
-    """获取项目目录下的子路径"""
+    """获取项目目录下的子路径（兼容旧调用，新代码请用 _paths()）"""
     from infra.config import Config
-    p = Path(Config(config_path).project_dir)
+    p = Config(config_path).paths.root
     return p.joinpath(*parts) if parts else p
+
+
+def _paths(config_path: str) -> "ProjectPaths":
+    """获取统一路径管理对象"""
+    from infra.config import Config
+    return Config(config_path).paths
 
 
 def _unique_hash_id(prefix: str, name: str, existing: dict) -> str:
@@ -339,8 +346,8 @@ def tts_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *,
         char_data = characters.get(char_ids[0], {}) if char_ids else {}
     else:
         from engines.shot_manager import ShotManager
-        sm = ShotManager(str(Path(cfg.project_dir) / "storyboard" / "episodes.csv"),
-                         str(Path(cfg.project_dir) / "config"))
+        paths = cfg.paths
+        sm = ShotManager(str(paths.storyboard_csv), str(paths.config_dir))
         char_data = sm.get_character(char_ids[0]) if char_ids else {}
 
     if char_ids and not char_data:
@@ -392,8 +399,8 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *,
     # 优先用预加载数据，避免每次创建 ShotManager 读全部 YAML
     if characters is None or scenes is None:
         from engines.shot_manager import ShotManager
-        sm = ShotManager(str(Path(cfg.project_dir) / "storyboard" / "episodes.csv"),
-                         str(Path(cfg.project_dir) / "config"))
+        paths = cfg.paths
+        sm = ShotManager(str(paths.storyboard_csv), str(paths.config_dir))
         if characters is None:
             characters = sm.characters
         if scenes is None:
@@ -425,7 +432,8 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *,
         multi_char_prompt = MultiCharacterHandler().generate_multi_char_prompt(
             [c for c in (characters.get(cid, {}) for cid in char_ids) if c])
 
-    wb = WorkflowBuilder(cfg.data, cfg.get("models", {}), cfg.project_dir, comfyui=cont.get("image"), force=force)
+    paths = cfg.paths
+    wb = WorkflowBuilder(cfg.data, cfg.get("models", {}), str(paths.root), comfyui=cont.get("image"), force=force)
     wb.load_workflows()
     prompt, wf = wb.build_first_frame(
         shot, character_desc=", ".join(char_descs),
@@ -441,7 +449,7 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *,
     from infra.asset_tracker import AssetTracker
     from urllib.parse import urlparse
 
-    tracker = AssetTracker(cfg.project_dir)
+    tracker = AssetTracker(str(paths.root))
     image_server_url = comfyui.url
     lora_nodes = find_lora_nodes(wf)
 
@@ -485,7 +493,7 @@ def first_frame_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *,
                     parts = Path(file_path).parts
                     char_idx = parts.index("characters") + 1
                     cid = parts[char_idx] if char_idx < len(parts) else "unknown"
-                    remote_name = comfyui_asset_name(cfg.project_dir, cid, Path(file_path).name)
+                    remote_name = comfyui_asset_name(str(paths.root), cid, Path(file_path).name)
                 else:
                     remote_name = Path(file_path).name
                 comfyui.upload_image(file_path, filename=remote_name)
@@ -531,7 +539,8 @@ def video_core(shot_id: str, cfg, cont, out_dir: Path, *, shot: dict | None = No
 
     from engines.workflow_builder import WorkflowBuilder
     from engines.workflow import find_load_image_nodes
-    wb = WorkflowBuilder(cfg.data, cfg.get("models", {}), cfg.project_dir, comfyui=cont.get("image"))
+    paths = cfg.paths
+    wb = WorkflowBuilder(cfg.data, cfg.get("models", {}), str(paths.root), comfyui=cont.get("image"))
     wb.load_workflows()
     video_wf = wb.build_video(str(frame_path), shot=shot)
     if not video_wf:
@@ -545,7 +554,7 @@ def video_core(shot_id: str, cfg, cont, out_dir: Path, *, shot: dict | None = No
 
     # 构建全局唯一服务器文件名: {项目}_{集}_{镜头}_frame.png
     # ComfyUI LoadImage 节点不接受非 ASCII 文件名，需做安全化处理
-    project_name = os.path.basename(cfg.project_dir) or "project"
+    project_name = paths.root.name or "project"
     if re.search(r'[^\x00-\x7f]', project_name):
         # 含非 ASCII 字符（如中文）：用原名的短 hash 替代，确保唯一且纯 ASCII
         ascii_name = "proj_" + hashlib.md5(project_name.encode("utf-8")).hexdigest()[:8]
@@ -566,7 +575,7 @@ def video_core(shot_id: str, cfg, cont, out_dir: Path, *, shot: dict | None = No
         # 1) 判断是否需要上传：tracker 记录了 + 服务端确实存在 → 跳过
         #    避免"删除项目→重建同名项目"时，旧图残留在服务器导致跳过上传
         from infra.asset_tracker import AssetTracker
-        tracker = AssetTracker(cfg.project_dir)
+        tracker = AssetTracker(str(paths.root))
         already_tracked = tracker.is_image_tracked(video_server_url, server_filename)
 
         need_upload = True
@@ -742,12 +751,12 @@ def shot_task(self, config_path: str, episode: int, shot_data: dict, force: bool
     cont = Container(cfg.data)
 
     # 预加载角色和场景数据（tts_core / first_frame_core 共用）
+    paths = cfg.paths
     characters = None
     scenes = None
     try:
         from engines.shot_manager import ShotManager
-        sm = ShotManager(str(Path(cfg.project_dir) / "storyboard" / "episodes.csv"),
-                         str(Path(cfg.project_dir) / "config"))
+        sm = ShotManager(str(paths.storyboard_csv), str(paths.config_dir))
         characters = sm.characters
         scenes = sm.scenes
     except Exception as e:
@@ -924,9 +933,8 @@ def portrait_single_task(self, config_path: str, char_id: str) -> dict:
     self.update_state(state="PROGRESS", meta={"step": "portrait", "progress": 10, "message": f"生成 {char_id} 定妆照..."})
 
     # 检查角色是否存在
-    project_dir = _cfg_dir(config_path)
-    char_yaml_path = project_dir / "config" / "characters" / f"{char_id}.yaml"
-    if not char_yaml_path.exists():
+    paths = _paths(config_path)
+    if not paths.character_yaml(char_id).exists():
         return {"status": "error", "reason": f"角色 {char_id} 不存在"}
 
     try:
@@ -947,13 +955,13 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
     self.update_state(state="PROGRESS", meta={"step": "outfit", "progress": 10, "message": f"生成 {char_id}/{outfit_key} 服装图..."})
 
     cfg, cont = _init_ctx(config_path)
-    project_dir = _cfg_dir(config_path)
+    paths = _paths(config_path)
 
-    char_yaml_path = project_dir / "config" / "characters" / f"{char_id}.yaml"
-    if not char_yaml_path.exists():
+    char_yaml = paths.character_yaml(char_id)
+    if not char_yaml.exists():
         return {"status": "error", "reason": f"角色 {char_id} 不存在"}
 
-    with open(char_yaml_path, encoding="utf-8") as f:
+    with open(char_yaml, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     char = data.get("character", {})
     appearance_en = char.get("appearance_prompt_en", "")
@@ -980,7 +988,7 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
     except Exception as e:
         return {"status": "error", "reason": f"ComfyUI 不可用: {e}"}
 
-    outfit_dir = project_dir / "assets" / "characters" / char_id / outfit_key
+    outfit_dir = paths.character_outfit_dir(char_id, outfit_key)
     outfit_dir.mkdir(parents=True, exist_ok=True)
     # 记录旧图，生成成功后再删除（避免生成失败导致无图）
     old_outfit_imgs = list(outfit_dir.glob("*.png")) + list(outfit_dir.glob("*.jpg"))
@@ -988,7 +996,7 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
     full_desc = f"{appearance_en}, wearing {outfit_desc}"
 
     models = cfg.get("models", {})
-    wb = WorkflowBuilder(cfg.data, models, str(project_dir), comfyui=comfyui)
+    wb = WorkflowBuilder(cfg.data, models, str(paths.root), comfyui=comfyui)
     wb.load_workflows()
 
     # 确定性 seed + cover 参考图（保持角色面部一致性）
@@ -1005,16 +1013,16 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
         return {"status": "error", "reason": "首帧工作流为空（缺少模板）"}
 
     # 注入 cover 做 IP-Adapter 参考
-    cover_ref = project_dir / "assets" / "characters" / char_id / "cover.png"
+    cover_ref = paths.character_asset_dir(char_id) / "cover.png"
     if cover_ref.exists():
         from engines.workflow import find_character_load_image_nodes
         from infra.asset_tracker import comfyui_asset_name, AssetTracker
         char_nodes = find_character_load_image_nodes(wf)
         if char_nodes:
-            remote_name = comfyui_asset_name(str(project_dir), char_id, os.path.basename(str(cover_ref)))
+            remote_name = comfyui_asset_name(str(paths.root), char_id, os.path.basename(str(cover_ref)))
             wf[char_nodes[0]]["inputs"]["image"] = remote_name
             try:
-                tracker = AssetTracker(str(project_dir))
+                tracker = AssetTracker(str(paths.root))
                 tracker.upload_if_needed(comfyui, str(cover_ref), remote_name, comfyui.url)
             except Exception as e:
                 logger.warning(f"参考图上传失败: {e}")
@@ -1041,7 +1049,7 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
 
     # 更新角色 YAML 中该 outfit 的 reference_images
     try:
-        with open(char_yaml_path, encoding="utf-8") as f:
+        with open(char_yaml, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         char = data.get("character", {})
         outfits_data = char.get("outfits", {})
@@ -1054,7 +1062,7 @@ def outfit_single_task(self, config_path: str, char_id: str, outfit_key: str) ->
         char["outfits"] = outfits_data
         data["character"] = char
         from infra.config import save_yaml
-        save_yaml(char_yaml_path, data)
+        save_yaml(char_yaml, data)
     except Exception as e:
         logger.debug(f"更新 outfit reference_images 跳过: {e}")
 
@@ -1068,12 +1076,12 @@ def outfits_batch_task(self, config_path: str, char_id: str) -> dict:
 
     self.update_state(state="PROGRESS", meta={"step": "outfits", "progress": 5, "message": f"加载角色 {char_id}..."})
 
-    project_dir = _cfg_dir(config_path)
-    char_yaml_path = project_dir / "config" / "characters" / f"{char_id}.yaml"
-    if not char_yaml_path.exists():
+    paths = _paths(config_path)
+    char_yaml = paths.character_yaml(char_id)
+    if not char_yaml.exists():
         return {"status": "error", "reason": f"角色 {char_id} 不存在"}
 
-    with open(char_yaml_path, encoding="utf-8") as f:
+    with open(char_yaml, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     char = data.get("character", {})
     outfits = char.get("outfits", {})
@@ -1132,17 +1140,18 @@ def scene_image_single_task(self, config_path: str, scene_id: str) -> dict:
 
 def _run_subtitle(config_path: str, episode: int) -> dict:
     cfg, _ = _init_ctx(config_path)
+    paths = cfg.paths
     from post.subtitle import generate_srt
-    sb = _cfg_dir(config_path, "storyboard", "episodes.csv")
+    sb = paths.storyboard_csv
     if not sb.exists():
         return {"status": "error", "reason": "分镜表不存在"}
     with open(sb, encoding="utf-8") as f:
         shots = [dict(r) for r in csv.DictReader(f) if _safe_int(r.get("episode", 0)) == episode]
     if not shots:
         return {"status": "error", "reason": f"第{episode}集没有镜头"}
-    out_dir = _cfg_dir(config_path, "output", f"e{episode:02d}")
+    out_dir = paths.episode_dir(episode)
     out_dir.mkdir(parents=True, exist_ok=True)
-    srt = str(out_dir / f"episode_{episode:02d}.srt")
+    srt = str(paths.episode_srt(episode))
     generate_srt(shots, srt, transition_duration=cfg.get("post_production.transition_duration", 0.5))
     return {"status": "done", "path": srt, "count": len(shots)}
 
@@ -1159,14 +1168,15 @@ def tts_single_task(self, config_path: str, text: str, voice_config: dict | None
     cfg, cont = _init_ctx(config_path)
     self.update_state(state="PROGRESS", meta={"step": "tts", "progress": 20, "message": "TTS..."})
     # 保存到项目目录下，使前端可通过 /api/files 访问
-    preview_dir = Path(cfg.project_dir) / "output" / "tts_preview"
+    paths = cfg.paths
+    preview_dir = paths.tts_preview_dir
     preview_dir.mkdir(parents=True, exist_ok=True)
     tag = hashlib.md5(f"{text}{time.time()}".encode()).hexdigest()[:8]
     output = str(preview_dir / f"preview_{tag}.wav")
     try:
         result = cont.get("tts").synthesize(text, output, voice_config=voice_config or {}, emotion=emotion, language=language)
         # 返回相对于项目目录的路径
-        rel_path = str(Path(result).relative_to(cfg.project_dir))
+        rel_path = str(Path(result).relative_to(paths.root))
         return {"path": rel_path, "text": text}
     except Exception as e:
         return {"status": "error", "reason": f"TTS 合成失败: {e}", "text": text}
@@ -1203,12 +1213,11 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
     self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 10, "message": "正在初始化 LLM..."})
 
     cfg, cont = _init_ctx(config_path)
+    paths = cfg.paths
     try:
         llm = cont.get("llm")
     except Exception as e:
         return {"status": "error", "reason": f"LLM 初始化失败: {e}"}
-
-    project_dir = _cfg_dir(config_path)
 
     # ── 1. 生成分镜（不传已有角色/场景，新用户没有） ──
     self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 30, "message": "AI 正在生成分镜..."})
@@ -1244,7 +1253,7 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
 
     # ── 3. 批量生成角色 ──
     if char_ids:
-        char_dir = project_dir / "config" / "characters"
+        char_dir = paths.characters_dir
         char_dir.mkdir(parents=True, exist_ok=True)
 
         char_descriptions = []
@@ -1327,7 +1336,7 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
 
     # ── 4. 批量生成场景 ──
     if scene_ids:
-        scene_dir = project_dir / "config" / "scenes"
+        scene_dir = paths.scenes_dir
         scene_dir.mkdir(parents=True, exist_ok=True)
 
         scene_descriptions = []
@@ -1409,7 +1418,7 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
     # ── 6. 保存分镜 + DB 同步 ──
     self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 90, "message": "正在保存..."})
 
-    sb_path = project_dir / "storyboard" / "episodes.csv"
+    sb_path = paths.storyboard_csv
     save_storyboard(sb_path, shots, episode, append)
 
     try:
@@ -1452,7 +1461,8 @@ def ai_characters_task(self, config_path: str, descriptions: list[str]) -> dict:
         return {"status": "error", "reason": "LLM 未能生成有效角色"}
 
     # 保存
-    char_dir = _cfg_dir(config_path, "config", "characters")
+    paths = _paths(config_path)
+    char_dir = paths.characters_dir
     char_dir.mkdir(parents=True, exist_ok=True)
     saved = []
     for char in chars:
@@ -1494,7 +1504,8 @@ def ai_scenes_task(self, config_path: str, descriptions: list[str]) -> dict:
     if not scene_list or all(s is None for s in scene_list):
         return {"status": "error", "reason": "LLM 未能生成有效场景"}
 
-    scene_dir = _cfg_dir(config_path, "config", "scenes")
+    paths = _paths(config_path)
+    scene_dir = paths.scenes_dir
     scene_dir.mkdir(parents=True, exist_ok=True)
     saved = []
     for scene in scene_list:
@@ -1800,14 +1811,14 @@ def seko_import_task(
 
     steps = proposal_data.get("steps", [])
     elements = proposal_data.get("elements", [])
-    project_dir = _cfg_dir(config_path)
+    paths = _paths(config_path)
     result = {"characters": 0, "scenes": 0, "shots": 0, "images_downloaded": 0, "images_failed": 0}
 
     # ── 1. 导入角色 ──
     if import_characters:
         self.update_state(state="PROGRESS", meta={"step": "seko_import", "progress": 10, "message": "解析角色..."})
         chars = _parse_seko_characters(steps, elements)
-        char_dir = project_dir / "config" / "characters"
+        char_dir = paths.characters_dir
         char_dir.mkdir(parents=True, exist_ok=True)
 
         for char in chars:
@@ -1843,7 +1854,7 @@ def seko_import_task(
     if import_scenes:
         self.update_state(state="PROGRESS", meta={"step": "seko_import", "progress": 30, "message": "解析场景..."})
         scenes = _parse_seko_scenes(steps, elements)
-        scene_dir = project_dir / "config" / "scenes"
+        scene_dir = paths.scenes_dir
         scene_dir.mkdir(parents=True, exist_ok=True)
 
         for scene in scenes:
@@ -1900,7 +1911,7 @@ def seko_import_task(
                 if scene_field and scene_field in _scene_id_map:
                     shot["scene"] = _scene_id_map[scene_field]
 
-            sb_path = project_dir / "storyboard" / "episodes.csv"
+            sb_path = paths.storyboard_csv
             from engines.storyboard import save_storyboard
             save_storyboard(sb_path, shots, episode, append=True)
 
@@ -1936,7 +1947,7 @@ def seko_import_task(
                 entity_id = _char_id_map.get(name)
                 if not entity_id:
                     # 回退：在已导入的 YAML 中按 name 字段查找
-                    for yf in (project_dir / "config" / "characters").glob("*.yaml"):
+                    for yf in paths.characters_dir.glob("*.yaml"):
                         try:
                             yd = yaml.safe_load(yf) or {}
                             if yd.get("character", {}).get("name") == name:
@@ -1946,14 +1957,14 @@ def seko_import_task(
                             pass
                 if not entity_id:
                     entity_id = "".join(c for c in name if c.isalnum() or c in ("-", "_")).strip() or f"char_{idx + 1:02d}"
-                img_dir = project_dir / "assets" / "characters" / entity_id
-                yaml_path = project_dir / "config" / "characters" / f"{entity_id}.yaml"
+                img_dir = paths.character_asset_dir(entity_id)
+                yaml_path = paths.character_yaml(entity_id)
                 asset_type = "characters"
                 entity_key = "character"
             elif elem_type == "SCENE":
                 entity_id = _scene_id_map.get(name)
                 if not entity_id:
-                    for yf in (project_dir / "config" / "scenes").glob("*.yaml"):
+                    for yf in paths.scenes_dir.glob("*.yaml"):
                         try:
                             yd = yaml.safe_load(yf) or {}
                             if yd.get("scene", {}).get("name") == name:
@@ -1963,12 +1974,12 @@ def seko_import_task(
                             pass
                 if not entity_id:
                     entity_id = "".join(c for c in name if c.isalnum() or c in ("-", "_")).strip() or f"scene_{idx + 1:02d}"
-                img_dir = project_dir / "assets" / "scenes" / entity_id
-                yaml_path = project_dir / "config" / "scenes" / f"{entity_id}.yaml"
+                img_dir = paths.scene_asset_dir(entity_id)
+                yaml_path = paths.scene_yaml(entity_id)
                 asset_type = "scenes"
                 entity_key = "scene"
             else:
-                img_dir = project_dir / "assets" / "seko"
+                img_dir = paths.assets_dir / "seko"
                 yaml_path = None
                 asset_type = "seko"
                 entity_key = ""
@@ -2027,19 +2038,19 @@ def train_lora_task(self, config_path: str, char_id: str, *,
         "message": f"准备训练 {char_id} 的 LoRA..."})
 
     cfg, cont = _init_ctx(config_path)
-    project_dir = _cfg_dir(config_path)
+    paths = _paths(config_path)
     from infra.asset_tracker import comfyui_asset_name
 
     # 检查角色是否存在
-    char_yaml_path = project_dir / "config" / "characters" / f"{char_id}.yaml"
-    if not char_yaml_path.exists():
+    char_yaml = paths.character_yaml(char_id)
+    if not char_yaml.exists():
         _db_record_step(config_path, 0, char_id, "train_lora",
                         {"status": "error", "reason": f"角色 {char_id} 不存在"})
         return {"status": "error", "reason": f"角色 {char_id} 不存在"}
 
     # 检查是否已有 LoRA（多候选路径查找）
-    lora_dir = project_dir / "assets" / "loras"
-    lora_filename = comfyui_asset_name(str(project_dir), char_id, f"{char_id}_lora.safetensors")
+    lora_dir = paths.loras_dir
+    lora_filename = comfyui_asset_name(str(paths.root), char_id, f"{char_id}_lora.safetensors")
     lora_candidates = [
         lora_dir / lora_filename,                        # proj_{hash}_{char_id}_lora.safetensors
         lora_dir / f"{char_id}_lora.safetensors",        # {char_id}_lora.safetensors
@@ -2056,7 +2067,7 @@ def train_lora_task(self, config_path: str, char_id: str, *,
         return {"status": "skipped", "reason": f"LoRA 已存在: {lora_path.name}，使用 force 覆盖"}
 
     # 收集训练图片（角色定妆照 + outfit 图片）
-    char_assets_dir = project_dir / "assets" / "characters" / char_id
+    char_assets_dir = paths.character_asset_dir(char_id)
     if not char_assets_dir.exists():
         return {"status": "error", "reason": f"角色 {char_id} 无定妆照，请先生成定妆照"}
 
@@ -2089,7 +2100,7 @@ def train_lora_task(self, config_path: str, char_id: str, *,
     # 读取角色名作为默认触发词
     if not trigger_word:
         try:
-            with open(char_yaml_path, encoding="utf-8") as f:
+            with open(char_yaml, encoding="utf-8") as f:
                 char_data = yaml.safe_load(f) or {}
             char_name = char_data.get("character", {}).get("name", char_id)
             trigger_word = f"ohwx {char_name}"
@@ -2119,7 +2130,7 @@ def train_lora_task(self, config_path: str, char_id: str, *,
 
     # 重命名 LoRA 文件：加 project_dir hash 前缀，避免跨项目同名角色 LoRA 覆盖
     original_name = Path(result_path).name
-    new_name = comfyui_asset_name(str(project_dir), char_id, original_name)
+    new_name = comfyui_asset_name(str(paths.root), char_id, original_name)
     new_path = Path(result_path).parent / new_name
     if Path(result_path).exists() and not new_path.exists():
         os.replace(result_path, str(new_path))
@@ -2128,13 +2139,13 @@ def train_lora_task(self, config_path: str, char_id: str, *,
 
     # 更新角色 YAML，标记 LoRA 路径
     try:
-        with open(char_yaml_path, encoding="utf-8") as f:
+        with open(char_yaml, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         char = data.get("character", {})
         char["lora_path"] = result_path
         data["character"] = char
         from infra.config import save_yaml
-        save_yaml(char_yaml_path, data)
+        save_yaml(char_yaml, data)
     except Exception as e:
         logger.warning(f"更新角色 LoRA 路径失败: {e}")
 
@@ -2170,7 +2181,7 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
         "step": "prepare", "progress": 5, "message": "初始化..."})
 
     cfg, cont = _init_ctx(config_path)
-    project_dir = _cfg_dir(config_path)
+    paths = cfg.paths
 
     # 获取 LLM 实例
     llm = None
@@ -2198,7 +2209,7 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
         self.update_state(state="PROGRESS", meta={
             "step": "prepare", "progress": 10, "message": "生成角色 prompt..."})
 
-        char_dir = project_dir / "config" / "characters"
+        char_dir = paths.characters_dir
         if char_dir.exists():
             # 收集需要生成 prompt 的角色
             chars_to_process: list[dict] = []
@@ -2259,7 +2270,7 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
         self.update_state(state="PROGRESS", meta={
             "step": "prepare", "progress": 20, "message": "翻译角色附属字段..."})
 
-        char_dir = project_dir / "config" / "characters"
+        char_dir = paths.characters_dir
         if char_dir.exists():
             pending: list[tuple[Path, dict, list[str], str]] = []
             all_char_files: list[tuple[Path, dict]] = []
@@ -2320,7 +2331,7 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
         self.update_state(state="PROGRESS", meta={
             "step": "prepare", "progress": 30, "message": "翻译场景描述..."})
 
-        scene_dir = project_dir / "config" / "scenes"
+        scene_dir = paths.scenes_dir
         if scene_dir.exists():
             pending: list[tuple[Path, dict, list[str], str]] = []
             all_scene_files: list[tuple[Path, dict]] = []
@@ -2371,7 +2382,7 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
         self.update_state(state="PROGRESS", meta={
             "step": "prepare", "progress": 50, "message": "翻译分镜..."})
 
-        sb_path = project_dir / "storyboard" / "episodes.csv"
+        sb_path = paths.storyboard_csv
         if sb_path.exists():
             import csv as _csv
             shots = []

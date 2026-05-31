@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 def run_produce(config_path: str, episode: int, force: bool = False):
     """完整生产"""
     cfg = Config(config_path)
+    paths = cfg.paths
     logger.info(f"完整生产 第{episode}集")
 
     # 触发后端自注册
@@ -28,7 +29,7 @@ def run_produce(config_path: str, episode: int, force: bool = False):
     cont = Container(cfg.data)
 
     # 加载分镜
-    sb_path = Path(cfg.project_dir) / "storyboard" / "episodes.csv"
+    sb_path = paths.storyboard_csv
     if not sb_path.exists():
         logger.warning("分镜表不存在")
         return
@@ -47,13 +48,12 @@ def run_produce(config_path: str, episode: int, force: bool = False):
         logger.warning(f"第{episode}集没有镜头")
         return
 
-    out_dir = Path(cfg.project_dir) / "output" / f"e{episode:02d}"
+    out_dir = paths.episode_dir(episode)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # 加载角色和场景配置
     from engines.shot_manager import ShotManager
-    config_dir = Path(cfg.project_dir) / "config"
-    sm = ShotManager(str(sb_path), str(config_dir), cfg.data)
+    sm = ShotManager(str(sb_path), str(paths.config_dir), cfg.data)
 
     logger.info(f"共 {len(shots)} 个镜头")
 
@@ -150,7 +150,8 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
                 multi_char_prompt = mch.generate_multi_char_prompt([c for c in chars_data if c])
 
             models = cfg.get("models", {})
-            wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=container.get("image"))
+            paths = cfg.paths
+            wb = WorkflowBuilder(cfg.data, models, str(paths.root), comfyui=container.get("image"))
             wb.load_workflows()
             prompt, wf = wb.build_first_frame(
                 shot, character_desc=", ".join(char_descs),
@@ -163,7 +164,7 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
                 from infra.asset_tracker import AssetTracker
                 from urllib.parse import urlparse
 
-                tracker = AssetTracker(cfg.project_dir)
+                tracker = AssetTracker(str(paths.root))
                 image_server_url = comfyui.url
                 lora_nodes = find_lora_nodes(wf)
                 for node_id, lora_name in lora_nodes:
@@ -194,7 +195,7 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
                                 parts = Path(file_path).parts
                                 char_idx = parts.index("characters") + 1
                                 cid = parts[char_idx] if char_idx < len(parts) else "unknown"
-                                remote_name = comfyui_asset_name(cfg.project_dir, cid, Path(file_path).name)
+                                remote_name = comfyui_asset_name(str(paths.root), cid, Path(file_path).name)
                             else:
                                 remote_name = Path(file_path).name
                             comfyui.upload_image(file_path, filename=remote_name)
@@ -218,7 +219,8 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
             from engines.workflow_builder import WorkflowBuilder
             from engines.workflow import find_load_image_nodes
             models = cfg.get("models", {})
-            wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=container.get("image"))
+            paths = cfg.paths
+            wb = WorkflowBuilder(cfg.data, models, str(paths.root), comfyui=container.get("image"))
             wb.load_workflows()
             video_wf = wb.build_video(str(frame_path), shot=shot)
 
@@ -230,7 +232,7 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
                 if load_nodes:
                     video_comfyui = video_backend._get_comfyui() if hasattr(video_backend, "_get_comfyui") else video_backend
                     shot_id = shot.get("shot_id", "000")
-                    project_name = os.path.basename(cfg.project_dir) or "project"
+                    project_name = paths.root.name or "project"
                     # ComfyUI LoadImage 节点不接受非 ASCII 文件名
                     if re.search(r'[^\x00-\x7f]', project_name):
                         ascii_name = "proj_" + hashlib.md5(project_name.encode("utf-8")).hexdigest()[:8]
@@ -246,7 +248,7 @@ def _produce_shot(shot: dict, sm, container, cfg, shot_out: Path, *, force: bool
                     # 判断是否需要上传：tracker 记录 + 服务端存在 → 跳过
                     # 避免"删除项目→重建同名"时旧图残留
                     from infra.asset_tracker import AssetTracker
-                    tracker = AssetTracker(cfg.project_dir)
+                    tracker = AssetTracker(str(paths.root))
                     video_server_url = getattr(video_comfyui, "url", "").rstrip("/")
                     already_tracked = tracker.is_image_tracked(video_server_url, server_filename)
 

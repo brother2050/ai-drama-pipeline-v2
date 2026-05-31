@@ -48,7 +48,7 @@ def run_scene_images(
 
     _ensure_registered()
     cfg = Config(config_path)
-    project_dir = Path(cfg.project_dir)
+    paths = cfg.paths
     cb = progress_cb or _noop_progress
 
     # 初始化 ComfyUI
@@ -59,7 +59,7 @@ def run_scene_images(
         return {"status": "error", "reason": f"ComfyUI 不可用: {e}"}
 
     # 加载场景文件
-    scenes_dir = project_dir / "config" / "scenes"
+    scenes_dir = paths.scenes_dir
     if not scenes_dir.exists():
         return {"status": "error", "reason": "场景配置目录不存在"}
 
@@ -77,7 +77,7 @@ def run_scene_images(
         return {"status": "error", "reason": "没有场景配置"}
 
     models = cfg.get("models", {})
-    wb = WorkflowBuilder(cfg.data, models, str(project_dir), comfyui=comfyui)
+    wb = WorkflowBuilder(cfg.data, models, str(paths.root), comfyui=comfyui)
     wb.load_workflows()
 
     generated = 0
@@ -100,7 +100,7 @@ def run_scene_images(
         cb(i + 1, total, sname)
 
         # 检查已有图
-        scene_asset_dir = project_dir / "assets" / "scenes" / sid
+        scene_asset_dir = paths.scene_asset_dir(sid)
         if scene_asset_dir.exists():
             existing = list(scene_asset_dir.glob("*.png")) + list(scene_asset_dir.glob("*.jpg"))
             if existing:

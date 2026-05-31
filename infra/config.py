@@ -21,7 +21,180 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["Config", "load_config", "save_config"]
+__all__ = ["Config", "ProjectPaths", "load_config", "save_config"]
+
+
+class ProjectPaths:
+    """统一路径管理 — 所有项目路径的单一数据源
+
+    两个核心目录:
+      - project_dir: 项目根目录（如 projects/default/）
+      - episode_dir: 某集的输出目录（如 projects/default/output/e01/）
+
+    用法:
+      paths = ProjectPaths("/path/to/projects/default")
+      paths.characters_dir        # .../config/characters/
+      paths.storyboard_csv        # .../storyboard/episodes.csv
+      ep = paths.episode(1)
+      ep.shot_dir("001")          # .../output/e01/s001/
+      ep.frame_path("001")        # .../output/e01/s001/frame.png
+    """
+
+    def __init__(self, project_dir: str | Path):
+        self._root = Path(project_dir).resolve()
+
+    @property
+    def root(self) -> Path:
+        """项目根目录"""
+        return self._root
+
+    # ── 配置 ──────────────────────────────────────────
+
+    @property
+    def config_dir(self) -> Path:
+        """项目配置目录"""
+        return self._root / "config"
+
+    @property
+    def project_yaml(self) -> Path:
+        """项目配置文件"""
+        return self._root / "config" / "project.yaml"
+
+    @property
+    def characters_dir(self) -> Path:
+        """角色配置目录"""
+        return self._root / "config" / "characters"
+
+    @property
+    def scenes_dir(self) -> Path:
+        """场景配置目录"""
+        return self._root / "config" / "scenes"
+
+    def character_yaml(self, char_id: str) -> Path:
+        """角色配置文件"""
+        return self._root / "config" / "characters" / f"{char_id}.yaml"
+
+    def scene_yaml(self, scene_id: str) -> Path:
+        """场景配置文件"""
+        return self._root / "config" / "scenes" / f"{scene_id}.yaml"
+
+    # ── 分镜 ──────────────────────────────────────────
+
+    @property
+    def storyboard_dir(self) -> Path:
+        """分镜表目录"""
+        return self._root / "storyboard"
+
+    @property
+    def storyboard_csv(self) -> Path:
+        """分镜表 CSV"""
+        return self._root / "storyboard" / "episodes.csv"
+
+    # ── 资产 ──────────────────────────────────────────
+
+    @property
+    def assets_dir(self) -> Path:
+        """资产根目录"""
+        return self._root / "assets"
+
+    @property
+    def character_assets_dir(self) -> Path:
+        """角色资产目录"""
+        return self._root / "assets" / "characters"
+
+    @property
+    def scene_assets_dir(self) -> Path:
+        """场景资产目录"""
+        return self._root / "assets" / "scenes"
+
+    @property
+    def loras_dir(self) -> Path:
+        """LoRA 模型目录"""
+        return self._root / "assets" / "loras"
+
+    def character_asset_dir(self, char_id: str) -> Path:
+        """角色资产目录"""
+        return self._root / "assets" / "characters" / char_id
+
+    def character_lora_dir(self, char_id: str) -> Path:
+        """角色 LoRA 子目录"""
+        return self._root / "assets" / "characters" / char_id / "lora"
+
+    def character_outfit_dir(self, char_id: str, outfit_key: str) -> Path:
+        """角色服装资产目录"""
+        return self._root / "assets" / "characters" / char_id / outfit_key
+
+    def scene_asset_dir(self, scene_id: str) -> Path:
+        """场景资产目录"""
+        return self._root / "assets" / "scenes" / scene_id
+
+    # ── 输出（集级） ──────────────────────────────────
+
+    @property
+    def output_dir(self) -> Path:
+        """输出根目录"""
+        return self._root / "output"
+
+    def episode_dir(self, episode: int) -> Path:
+        """某集的输出目录"""
+        return self._root / "output" / f"e{episode:02d}"
+
+    def episode_srt(self, episode: int) -> Path:
+        """某集的 SRT 字幕文件"""
+        return self._root / "output" / f"e{episode:02d}" / f"episode_{episode:02d}.srt"
+
+    def episode_final(self, episode: int) -> Path:
+        """某集的成片文件"""
+        return self._root / "output" / f"e{episode:02d}" / f"episode_{episode:02d}_final.mp4"
+
+    def shot_dir(self, episode: int, shot_id: str) -> Path:
+        """镜头输出目录"""
+        return self._root / "output" / f"e{episode:02d}" / f"s{shot_id}"
+
+    def shot_audio(self, episode: int, shot_id: str) -> Path:
+        """镜头音频"""
+        return self.shot_dir(episode, shot_id) / "audio.wav"
+
+    def shot_frame(self, episode: int, shot_id: str) -> Path:
+        """镜头首帧"""
+        return self.shot_dir(episode, shot_id) / "frame.png"
+
+    def shot_video(self, episode: int, shot_id: str) -> Path:
+        """镜头视频"""
+        return self.shot_dir(episode, shot_id) / "video.mp4"
+
+    def shot_synced(self, episode: int, shot_id: str) -> Path:
+        """镜头口型同步视频"""
+        return self.shot_dir(episode, shot_id) / "synced.mp4"
+
+    # ── 工作流 ──────────────────────────────────────────
+
+    @property
+    def workflows_dir(self) -> Path:
+        """工作流模板目录"""
+        return self._root / "workflows"
+
+    # ── 其他 ──────────────────────────────────────────
+
+    @property
+    def shared_assets_dir(self) -> Path:
+        """全局共享资产目录（项目根的上一级）"""
+        return self._root.parent / "shared_assets"
+
+    @property
+    def tts_preview_dir(self) -> Path:
+        """TTS 预览目录"""
+        return self._root / "output" / "tts_preview"
+
+    def ensure_dirs(self) -> None:
+        """创建所有标准子目录"""
+        for d in [
+            self.config_dir, self.characters_dir, self.scenes_dir,
+            self.storyboard_dir, self.assets_dir,
+            self.character_assets_dir, self.scene_assets_dir, self.loras_dir,
+            self.output_dir,
+        ]:
+            d.mkdir(parents=True, exist_ok=True)
 
 _cache: dict[str, tuple[dict, float]] = {}
 _lock = threading.Lock()
@@ -193,6 +366,11 @@ class Config:
     @property
     def project_dir(self) -> str:
         return self._project_dir
+
+    @property
+    def paths(self) -> ProjectPaths:
+        """统一路径管理对象"""
+        return ProjectPaths(self._project_dir)
 
     @property
     def path(self) -> str:

@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 def run_preview(config_path: str, episode: int, level: str = "draft", force: bool = False):
     """快速预览"""
     cfg = Config(config_path)
+    paths = cfg.paths
     logger.info(f"预览 第{episode}集 ({level})")
 
     # 触发后端自注册
@@ -29,7 +30,7 @@ def run_preview(config_path: str, episode: int, level: str = "draft", force: boo
     cont = Container(cfg.data)
 
     # 加载分镜
-    sb_path = Path(cfg.project_dir) / "storyboard" / "episodes.csv"
+    sb_path = paths.storyboard_csv
     if not sb_path.exists():
         logger.warning("分镜表不存在")
         return
@@ -79,7 +80,7 @@ def run_preview(config_path: str, episode: int, level: str = "draft", force: boo
     }
     preset = presets.get(level, presets["draft"])
 
-    out_dir = Path(cfg.project_dir) / "output" / f"e{episode:02d}"
+    out_dir = paths.episode_dir(episode)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"共 {len(shots)} 个镜头，预设: {level}")

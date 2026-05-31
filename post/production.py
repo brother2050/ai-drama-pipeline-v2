@@ -37,9 +37,10 @@ def _cleanup_intermediates(out_dir: Path, episode: int) -> None:
 def run_post(config_path: str, episode: int, vertical: bool = False):
     """后期合成：拼接所有镜头视频 → 添加字幕/配乐 → 可选横转竖"""
     cfg = Config(config_path)
+    paths = cfg.paths
     logger.info(f"后期合成 第{episode}集{'（竖屏）' if vertical else ''}")
 
-    out_dir = Path(cfg.project_dir) / "output" / f"e{episode:02d}"
+    out_dir = paths.episode_dir(episode)
     if not out_dir.exists():
         logger.warning(f"输出目录不存在: {out_dir}")
         return
@@ -67,9 +68,9 @@ def run_post(config_path: str, episode: int, vertical: bool = False):
     transition_duration = cfg.get("post_production.transition_duration", 0.5)
 
     # 确保 SRT 基于最新分镜生成（用户可能在 produce 后修改了分镜）
-    srt_path = out_dir / f"episode_{episode:02d}.srt"
+    srt_path = paths.episode_srt(episode)
     try:
-        sb_path = Path(cfg.project_dir) / "storyboard" / "episodes.csv"
+        sb_path = paths.storyboard_csv
         if sb_path.exists():
             import csv as _csv
             with open(sb_path, encoding="utf-8") as f:
