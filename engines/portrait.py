@@ -102,8 +102,10 @@ def ensure_portrait(char_id: str, config: dict, container=None, force: bool = Fa
     Args:
         force: True 时重新生成（递增代数计数器）
     """
+    from infra.config import ProjectPaths
     project_dir = config.get("_project_dir", os.getcwd())
-    portrait_dir = Path(project_dir) / "assets" / "characters" / char_id
+    paths = ProjectPaths(project_dir)
+    portrait_dir = paths.character_asset_dir(char_id)
 
     # 检查三视图是否齐全
     all_views_exist = all((portrait_dir / fname).exists() for fname, *_ in _THREE_VIEWS)
@@ -122,7 +124,7 @@ def ensure_portrait(char_id: str, config: dict, container=None, force: bool = Fa
 
     logger.info(f"角色 '{char_id}' 缺少三视图，自动生成...")
     import yaml
-    char_file = Path(project_dir) / "config" / "characters" / f"{char_id}.yaml"
+    char_file = paths.character_yaml(char_id)
     if not char_file.exists():
         logger.warning(f"角色配置不存在: {char_file}")
         return ""
@@ -139,7 +141,7 @@ def ensure_portrait(char_id: str, config: dict, container=None, force: bool = Fa
         comfyui = container.get("image")
         from engines.workflow_builder import WorkflowBuilder
         models = config.get("models", {})
-        wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui, force=force)
+        wb = WorkflowBuilder(config, models, str(paths.root), comfyui=comfyui, force=force)
         wb.load_workflows()
 
         # 读取代数计数器（force 时递增，得到不同的生成结果）
@@ -216,7 +218,9 @@ def _ensure_outfit_images(char_id: str, config: dict, container,
     使用 cover.png 作为 IP-Adapter 参考图，保持角色面部一致性。
     """
     import yaml
-    char_file = Path(project_dir) / "config" / "characters" / f"{char_id}.yaml"
+    from infra.config import ProjectPaths
+    paths = ProjectPaths(project_dir)
+    char_file = paths.character_yaml(char_id)
     if not char_file.exists():
         return
 
@@ -237,7 +241,7 @@ def _ensure_outfit_images(char_id: str, config: dict, container,
     from engines.workflow_builder import WorkflowBuilder
 
     models = config.get("models", {})
-    wb = WorkflowBuilder(config, models, project_dir, comfyui=comfyui)
+    wb = WorkflowBuilder(config, models, str(paths.root), comfyui=comfyui)
     wb.load_workflows()
 
     # 使用 cover.png 作为所有服装图的 IP-Adapter 参考（保持角色面部一致性）
