@@ -12,6 +12,7 @@
 | **API 优先** | 所有三方工具通过 HTTP API 调用，无需本地 GPU |
 | **Celery 异步** | Redis + Celery 任务队列，前端实时进度反馈 |
 | **一键启动** | `drama serve` + `drama worker` |
+| **注册表驱动** | `models_registry.yaml` 统一管理所有后端元数据，新增后端只改 YAML |
 | **DI 容器** | 后端自注册 + 按需创建 + 热重载 + 懒加载 |
 | **人性化工作台** | 内联编辑、撤销重做、批量执行、资源预览 |
 | **多语言界面** | 中文/English 双语支持 |
@@ -546,6 +547,51 @@ api/__init__.py (懒加载)
   └─ music/template        → 仅需 ffmpeg（无额外依赖）
 ```
 
+### 注册表驱动
+
+所有后端元数据集中在 `config/models_registry.yaml`，代码中零硬编码后端名：
+
+```yaml
+# 新增后端只需在注册表中声明，不改代码
+image_backends:
+  sd15:
+    workflow: "01_first_frame_sd15.json"
+    prompt_style: "tag"              # prompt 风格
+    consistency_default: "ip_adapter" # 默认一致性方案
+  flux:
+    workflow: "01_first_frame_flux.json"
+    prompt_style: "natural"
+    consistency_default: "pulid_flux"
+
+video_backends:
+  animatediff:
+    workflow: "02_img2video.json"
+    frame_params:                    # 帧数注入规则
+      node_class: "ADE_StandardStaticContextOptions"
+      input_name: "context_length"
+
+consistency_methods:                 # 一致性方案元数据
+  ip_adapter:
+    compatible_backends: ["sd15", "sdxl"]
+    inject_method: "_inject_ip_adapter_plus"
+    required_comfyui_node: "IPAdapterAdvanced"
+
+services:                            # 辅助服务健康检查
+  comfyui:
+    health_check:
+      type: "http"
+      path: "/system_stats"
+      config_key: "comfyui.url"
+```
+
+注册表覆盖范围：
+- **TTS / LipSync / LLM / Music / Image / Video** — 所有后端的健康检查、默认值
+- **prompt 风格** — `tag`（SD1.5 CLIP）或 `natural`（Flux/Cosmos T5）
+- **一致性方案** — 与图像后端的兼容关系、注入方法、所需 ComfyUI 插件
+- **帧数参数** — 视频后端的节点类型 + 参数名映射
+- **生产步骤** — shot_task 的步骤编排
+- **工具检测** — 健康检查类型驱动，零 if-elif
+
 ---
 
 ## ⚙️ 配置
@@ -693,11 +739,11 @@ ai-drama-pipeline-v2/
 │
 ├── flow/                     # 编排层
 │   ├── episode.py            # 集级状态管理
-│   └── model_registry.py     # 模型注册表
+│   └── model_registry.py     # 模型注册表（统一查询接口，零硬编码）
 │
 ├── infra/                    # 基础设施
-│   ├── config.py             # 配置管理（缓存 + 校验）
-│   ├── toolcheck.py          # 工具可用性检测（pipeline/web 共用）
+│   ├── config.py             # 配置管理（缓存 + 校验 + 注册表默认值）
+│   ├── toolcheck.py          # 工具可用性检测（注册表驱动，零 if-elif）
 │   ├── ffmpeg.py             # FFmpeg 封装
 │   ├── transitions.py        # 转场拼接（精确 offset）
 │   ├── gpu.py                # GPU 检测
@@ -730,7 +776,8 @@ ai-drama-pipeline-v2/
 │   └── test_e2e.py           # 前端 E2E 测试
 │
 ├── config/                   # 全局配置
-│   └── models_registry.yaml  # 模型注册表（后端定义）
+│   ├── models_registry.yaml  # 模型注册表（所有后端元数据的唯一真相来源）
+│   └── system.yaml           # 系统全局配置（可选）
 │
 ├── workflows/                # ComfyUI 工作流模板（JSON）
 │
