@@ -3,7 +3,7 @@
     "class_type": "UNETLoader",
     "inputs": {
       "unet_name": "flux1-dev.safetensors",
-      "weight_dtype": "fp16"
+      "weight_dtype": "default"
     }
   },
   "2": {
@@ -44,11 +44,17 @@
       "latent_image": ["4", 0]
     }
   },
+  "8": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    }
+  },
   "6": {
     "class_type": "VAEDecode",
     "inputs": {
       "samples": ["5", 0],
-      "vae": ["1", 1]
+      "vae": ["8", 0]
     }
   },
   "7": {
