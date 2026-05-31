@@ -199,11 +199,22 @@ def status():
     table.add_row("Celery Worker", "[green]✅[/green]" if celery_ok else "[red]❌ 未启动[/red]",
                    "-", "异步任务处理（必选）")
 
-    # ComfyUI
+    # ComfyUI（合并项目配置 + 系统配置，与 Config 类行为一致）
     import yaml
     cfg_path = _resolve_config()
     with open(cfg_path) as f:
         cfg = yaml.safe_load(f) or {}
+    sys_cfg_path = ROOT / "config" / "system.yaml"
+    if sys_cfg_path.exists():
+        with open(sys_cfg_path, encoding="utf-8") as f:
+            sys_cfg = yaml.safe_load(f) or {}
+        # 系统配置作为底层，项目配置覆盖
+        for k, v in cfg.items():
+            if k in sys_cfg and isinstance(sys_cfg[k], dict) and isinstance(v, dict):
+                sys_cfg[k].update(v)
+            else:
+                sys_cfg[k] = v
+        cfg = sys_cfg
     comfyui_url = cfg.get("comfyui", {}).get("url", "http://127.0.0.1:8188")
     try:
         import httpx
