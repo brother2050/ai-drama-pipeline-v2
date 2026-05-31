@@ -133,13 +133,19 @@ wget -O ComfyUI/models/clip/t5xxl_fp16.safetensors \
 #### 方案 C：SD1.5 后端（≥6GB 显存，入门级）
 
 ```bash
-# Checkpoint 模型 → ComfyUI/models/checkpoints/
+# 1. Checkpoint 模型 → ComfyUI/models/checkpoints/
 mkdir -p ComfyUI/models/checkpoints/
 wget -O ComfyUI/models/checkpoints/v1-5-pruned-emaonly.safetensors \
   https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly.safetensors
+
+# 2. AnimateDiff 运动模块（视频生成必须）→ ComfyUI/models/animatediff/
+mkdir -p ComfyUI/models/animatediff/
+wget -O ComfyUI/models/animatediff/mm_sd_v15_v2.safetensors \
+  https://huggingface.co/guoyww/animatediff/resolve/main/mm_sd_v15_v2.safetensors
 ```
 
 > SD1.5 的 CLIP 和 VAE 内嵌在 Checkpoint 中，无需单独下载。
+> AnimateDiff 运动模块用于视频生成（`drama produce`），不装则无法生成镜头视频。
 
 #### 📁 目录结构参考
 
@@ -150,6 +156,8 @@ ComfyUI/models/
 │   └── cosmos_predict2_2B_t2i.safetensors
 ├── checkpoints/          # SD1.5 Checkpoint
 │   └── v1-5-pruned-emaonly.safetensors
+├── animatediff/          # AnimateDiff 运动模块（SD1.5 视频生成）
+│   └── mm_sd_v15_v2.safetensors
 ├── clip/                 # 文本编码器
 │   ├── clip_l.safetensors            # Flux
 │   ├── t5xxl_fp16.safetensors        # Flux
