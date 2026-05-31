@@ -393,9 +393,43 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
             style_tag, genre_tag, scene_clean, char_clean,
             action, emotion, emotion_desc, shot_type_desc, camera_desc)
     else:
-        return _build_tag_prompt(
+        prompt = _build_tag_prompt(
             style_tag, genre_tag, scene_clean, char_clean,
             action, emotion_desc, shot_type_desc, camera_desc)
+        # SD1.5 CLIP 最大 75 tokens（77 含 start/end），超长时按逗号截断
+        prompt = _truncate_tag_prompt(prompt, max_tokens=75)
+        return prompt
+
+
+def _truncate_tag_prompt(prompt: str, max_tokens: int = 75) -> str:
+    """将逗号分隔的 tag prompt 截断到指定 token 数以内。
+
+    SD1.5 CLIP tokenizer 限制 75 tokens（不含 start/end token）。
+    粗略估算：1 token ≈ 4 字符（英文），按逗号分隔的 tag 边界截断，
+    保留前面的 tag（style/genre/scene/character 优先），丢弃末尾溢出部分。
+    """
+    # 粗略估算 token 数（英文约 4 字符/token，含逗号和空格）
+    est_tokens = len(prompt) / 4
+    if est_tokens <= max_tokens:
+        return prompt
+
+    # 按逗号拆分，逐个 tag 累加，超出限制时截断
+    tags = [t.strip() for t in prompt.split(",") if t.strip()]
+    result = []
+    char_count = 0
+    for tag in tags:
+        # 估算新增 token：tag 字符数/4 + 1(逗号+空格)
+        tag_cost = len(tag) / 4 + 1
+        if char_count + tag_cost > max_tokens * 4:
+            break
+        result.append(tag)
+        char_count += len(tag) + 2  # ", " = 2 chars
+
+    truncated = ", ".join(result)
+    if len(truncated) < len(prompt):
+        logger.info(f"SD1.5 prompt 截断: {len(prompt)} → {len(truncated)} 字符 "
+                    f"(保留 {len(result)}/{len(tags)} 个 tag)")
+    return truncated
 
 
 def _build_tag_prompt(style_tag: str, genre_tag: str, scene: str, character: str,

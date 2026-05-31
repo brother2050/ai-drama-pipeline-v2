@@ -314,30 +314,40 @@ class WorkflowBuilder:
 
             # 无 LoRA 的角色使用一致性方案
             if chars_without_lora:
-                if consistency == "pulid_flux":
-                    pulid_config = self.config.get("pulid_flux", {})
-                    if pulid_config.get("enabled", True):
-                        # 检查 ComfyUI 是否安装了 PuLID-Flux 插件
-                        if hasattr(self, 'available_nodes') and self.available_nodes and "PulidFluxModelLoader" not in self.available_nodes:
-                            logger.warning("ComfyUI 未安装 PuLID-Flux 插件（PulidFluxModelLoader 节点不存在），跳过面部一致性注入。安装: cd ComfyUI/custom_nodes && git clone https://github.com/balazik/ComfyUI-PuLID-Flux.git")
-                        else:
-                            wf = self._inject_pulid_flux(wf, chars_without_lora, pulid_config, outfit=outfit)
+                # 过滤：只有存在定妆照的角色才注入一致性节点，避免空 LoadImage 导致 ComfyUI 校验失败
+                chars_with_refs = []
+                for cid in chars_without_lora:
+                    refs = self._get_character_refs(cid, outfit=outfit)
+                    if refs:
+                        chars_with_refs.append(cid)
                     else:
-                        logger.info("PuLID-Flux 已禁用，跳过一致性注入")
-                elif consistency == "ip_adapter":
-                    ip_config = self.models.get("ip_adapter", {})
-                    if not ip_config:
-                        ip_config = self.config.get("ip_adapter", {})
-                    if ip_config.get("enabled") is not False:
-                        # 检查 ComfyUI 是否安装了 IP-Adapter 插件
-                        if hasattr(self, 'available_nodes') and self.available_nodes and "IPAdapterAdvanced" not in self.available_nodes:
-                            logger.warning("ComfyUI 未安装 ComfyUI_IPAdapter_plus 插件（IPAdapterAdvanced 节点不存在），跳过面部一致性注入。安装: cd ComfyUI/custom_nodes && git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus.git")
+                        logger.warning(f"角色 '{cid}' 无定妆照，跳过一致性注入（请先执行: drama portraits 或在 Web 工作台生成定妆照）")
+
+                if chars_with_refs:
+                    if consistency == "pulid_flux":
+                        pulid_config = self.config.get("pulid_flux", {})
+                        if pulid_config.get("enabled", True):
+                            # 检查 ComfyUI 是否安装了 PuLID-Flux 插件
+                            if hasattr(self, 'available_nodes') and self.available_nodes and "PulidFluxModelLoader" not in self.available_nodes:
+                                logger.warning("ComfyUI 未安装 PuLID-Flux 插件（PulidFluxModelLoader 节点不存在），跳过面部一致性注入。安装: cd ComfyUI/custom_nodes && git clone https://github.com/balazik/ComfyUI-PuLID-Flux.git")
+                            else:
+                                wf = self._inject_pulid_flux(wf, chars_with_refs, pulid_config, outfit=outfit)
                         else:
-                            wf = self._inject_character_refs(wf, chars_without_lora, ip_config, outfit=outfit)
+                            logger.info("PuLID-Flux 已禁用，跳过一致性注入")
+                    elif consistency == "ip_adapter":
+                        ip_config = self.models.get("ip_adapter", {})
+                        if not ip_config:
+                            ip_config = self.config.get("ip_adapter", {})
+                        if ip_config.get("enabled") is not False:
+                            # 检查 ComfyUI 是否安装了 IP-Adapter 插件
+                            if hasattr(self, 'available_nodes') and self.available_nodes and "IPAdapterAdvanced" not in self.available_nodes:
+                                logger.warning("ComfyUI 未安装 ComfyUI_IPAdapter_plus 插件（IPAdapterAdvanced 节点不存在），跳过面部一致性注入。安装: cd ComfyUI/custom_nodes && git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus.git")
+                            else:
+                                wf = self._inject_character_refs(wf, chars_with_refs, ip_config, outfit=outfit)
+                        else:
+                            logger.info("IP-Adapter 已禁用，跳过一致性注入")
                     else:
-                        logger.info("IP-Adapter 已禁用，跳过一致性注入")
-                else:
-                    logger.info(f"一致性方案: {consistency}，跳过面部一致性注入")
+                        logger.info(f"一致性方案: {consistency}，跳过面部一致性注入")
 
         # 注入风格 LoRA（复用上方已读取的 genre）
         if genre:
