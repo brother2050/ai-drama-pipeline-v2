@@ -415,7 +415,7 @@ def test_distributor_compat():
     from post.distributor import check_platform_compat, get_adapt_params
 
     result = check_platform_compat("/nonexistent.mp4", "douyin")
-    assert result["compatible"] is True
+    assert result["compatible"] is False
 
     result = check_platform_compat("/tmp/test.mp4", "unknown_platform")
     assert result["compatible"] is False

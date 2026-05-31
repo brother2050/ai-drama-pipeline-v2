@@ -1,5 +1,11 @@
-"""完整生产管线 — 全流程：首帧→视频→音频→口型同步→后期"""
+"""[已弃用] 完整生产管线 — 请使用 pipeline.tasks.produce_task
+
+⚠️ 此文件已弃用，保留仅作参考。所有生产逻辑已迁移到 pipeline/tasks.py。
+"""
 from __future__ import annotations
+
+import warnings
+warnings.warn("pipeline.producer 已弃用，请使用 pipeline.tasks.produce_task", DeprecationWarning, stacklevel=2)
 
 import argparse
 import csv

@@ -9,7 +9,7 @@ def _row_to_dict(row) -> dict:
         return {}
     if hasattr(row, 'keys'):
         d = {k: row[k] for k in row.keys()}
-        for json_field in ("voice_config", "reference_images"):
+        for json_field in ("voice_config", "reference_images", "outfits"):
             if json_field in d and isinstance(d[json_field], str):
                 try:
                     d[json_field] = json.loads(d[json_field])
@@ -45,12 +45,15 @@ def upsert(pool, char_id: str, data: dict):
         cur = conn.cursor()
         try:
             cur.execute("""
-                INSERT INTO characters (id, name, appearance, voice_config, reference_images)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO characters (id, name, gender, personality, appearance, outfits, voice_config, reference_images)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO UPDATE SET
-                    name=EXCLUDED.name, appearance=EXCLUDED.appearance,
+                    name=EXCLUDED.name, gender=EXCLUDED.gender, personality=EXCLUDED.personality,
+                    appearance=EXCLUDED.appearance, outfits=EXCLUDED.outfits,
                     voice_config=EXCLUDED.voice_config, reference_images=EXCLUDED.reference_images
-            """, (char_id, data.get("name", ""), data.get("appearance", ""),
+            """, (char_id, data.get("name", ""), data.get("gender", ""),
+                  data.get("personality", ""), data.get("appearance", ""),
+                  json.dumps(data.get("outfits", []), ensure_ascii=False),
                   json.dumps(data.get("voice", {}), ensure_ascii=False),
                   json.dumps(data.get("reference_images", []), ensure_ascii=False)))
             conn.commit()

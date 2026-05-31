@@ -81,8 +81,8 @@ def check_platform_compat(video: str, platform: str) -> dict:
         return {"compatible": False, "issues": [f"未知平台: {platform}"], "preset": {}}
 
     info = get_video_info(video)
-    if not info:
-        return {"compatible": True, "issues": ["无法获取视频信息"], "preset": preset}
+    if not info or info.get("duration", 0) <= 0:
+        return {"compatible": False, "issues": ["无法获取视频信息，请检查文件是否存在且格式正确"], "preset": preset}
 
     issues = []
 

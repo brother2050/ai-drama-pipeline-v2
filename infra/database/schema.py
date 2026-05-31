@@ -5,7 +5,10 @@ SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS characters (
     id TEXT PRIMARY KEY,
     name TEXT,
+    gender TEXT DEFAULT '',
+    personality TEXT DEFAULT '',
     appearance TEXT,
+    outfits TEXT,
     voice_config TEXT,
     reference_images TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -86,6 +89,8 @@ def init_schema(conn):
 
         # 2. 自动迁移：scenes.reference_image → reference_images
         _migrate_scenes_reference_images(cursor)
+        # 3. 自动迁移：characters 表添加缺失列
+        _migrate_characters_columns(cursor)
 
         conn.commit()
     finally:
@@ -109,3 +114,17 @@ def _migrate_scenes_reference_images(cursor) -> None:
     except Exception:
         # 列已迁移或表不存在，静默跳过
         pass
+
+
+def _migrate_characters_columns(cursor) -> None:
+    """迁移 characters 表：添加 gender, personality, outfits 列"""
+    for col, col_type in [("gender", "TEXT DEFAULT ''"), ("personality", "TEXT DEFAULT ''"), ("outfits", "TEXT")]:
+        try:
+            cursor.execute(f"""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'characters' AND column_name = '{col}'
+            """)
+            if not cursor.fetchone():
+                cursor.execute(f"ALTER TABLE characters ADD COLUMN {col} {col_type}")
+        except Exception:
+            pass

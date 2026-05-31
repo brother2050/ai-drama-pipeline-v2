@@ -16,9 +16,10 @@ VALID_CAMERAS = frozenset({
 
 VALID_SHOT_TYPES = frozenset({
     "特写", "近景", "中景", "过肩", "全身", "全景", "远景", "双人全景",
+    "侧面特写", "背面特写",
 })
 
-SHOT_KEYWORDS = ("特写", "近景", "中景", "过肩", "全身", "全景", "远景")
+SHOT_KEYWORDS = ("侧面特写", "背面特写", "特写", "近景", "中景", "过肩", "全身", "全景", "远景")
 
 
 def normalize_camera(raw: str) -> str:
