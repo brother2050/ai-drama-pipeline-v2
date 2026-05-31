@@ -379,6 +379,64 @@ flowchart TB
 
 ---
 
+## 角色一致性 — IP-Adapter Plus
+
+> 通过 `ip-adapter-plus-face` 模型实现跨镜头角色面部一致性
+
+```mermaid
+flowchart LR
+    subgraph input["输入"]
+        ref["📸 定妆照<br/>cover.png"]
+        prompt["📝 Prompt<br/>appearance_en"]
+    end
+
+    subgraph ipa["IP-Adapter Plus 链"]
+        direction TB
+        ipmodel["IPAdapterModelLoader<br/>ip-adapter-plus-face_sd15"]
+        clipvis["CLIPVisionLoader<br/>CLIP-ViT-H-14"]
+        ipadv["IPAdapterAdvanced<br/>weight=0.75<br/>embeds_scaling=V only"]
+        ref --> ipadv
+        ipmodel --> ipadv
+        clipvis --> ipadv
+    end
+
+    subgraph gen["生成"]
+        ks["KSampler"]
+        out["🖼️ 首帧"]
+    end
+
+    prompt --> ks
+    ipadv -->|"model"| ks
+    ks --> out
+
+    style ipa fill:#2d1b69,stroke:#7c3aed,color:#e2e8f0
+    style gen fill:#1b3b2e,stroke:#059669,color:#6ee7b7
+```
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `ip_adapter.model` | `ip-adapter-plus-face_sd15.safetensors` | 面部一致性最佳 |
+| `ip_adapter.weight` | `0.75` | 参考图影响力（0-1） |
+| `ip_adapter.embeds_scaling` | `V only` | 面部特征保持最佳 |
+| `ip_adapter.secondary_weight` | `0.45` | 多角色时次要角色权重 |
+
+**模型选择建议**：
+- 短剧角色（推荐）：`ip-adapter-plus-face_sd15` — 面部一致性最强
+- 通用场景：`ip-adapter-plus_sd15` — 风格+内容保持
+- SDXL：`ip-adapter-plus-face_sdxl_vit-h` — 高分辨率面部保持
+
+**多角色同框**：自动链式注入，主角色 weight=0.75，次要角色 weight=0.45，确保各自面部特征不混淆。
+
+**模型文件放置**：
+```
+ComfyUI/models/ipadapter/
+  └── ip-adapter-plus-face_sd15.safetensors
+ComfyUI/models/clip_vision/
+  └── CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors
+```
+
+---
+
 ## 服务依赖
 
 ```mermaid
@@ -393,6 +451,7 @@ flowchart LR
         tts["TTS 服务<br/>MIMO / GPT-SoVITS / CosyVoice"]
         comfyui["ComfyUI<br/>图片+视频生成"]
         lipsync["LipSync<br/>MuseTalk / Wav2Lip"]
+        ipadapter["IP-Adapter Plus<br/>角色面部一致性"]
     end
 
     subgraph optional["可选"]
@@ -403,6 +462,7 @@ flowchart LR
 
     redis --> celery
     celery --> tts & comfyui & lipsync
+    comfyui --> ipadapter
     llm -.->|"阶段0+1"| celery
     seko -.->|"策划案导入"| celery
     ffmpeg -.->|"阶段3"| celery

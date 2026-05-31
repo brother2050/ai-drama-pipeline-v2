@@ -41,6 +41,40 @@ llm_backends:
     description: "Ollama（本地部署）"
     requires_api_key: false
 
+ip_adapter_models:
+  # SD1.5 模型（放入 ComfyUI/models/ipadapter/）
+  ip-adapter-plus-face_sd15:
+    description: "Plus Face 模型 — 人物面部一致性最佳，适合短剧角色"
+    file: "ip-adapter-plus-face_sd15.safetensors"
+    clip_vision: "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+    base: "sd15"
+  ip-adapter-plus_sd15:
+    description: "Plus 通用模型 — 风格+内容保持，面部稍弱"
+    file: "ip-adapter-plus_sd15.safetensors"
+    clip_vision: "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+    base: "sd15"
+  ip-adapter_sd15:
+    description: "基础模型 — 影响最弱，仅做轻微参考"
+    file: "ip-adapter_sd15.safetensors"
+    clip_vision: "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+    base: "sd15"
+  ip-adapter-full-face_sd15:
+    description: "Full Face 模型 — 更强面部保持，但可能过度拟合"
+    file: "ip-adapter-full-face_sd15.safetensors"
+    clip_vision: "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+    base: "sd15"
+  # SDXL 模型
+  ip-adapter-plus-face_sdxl:
+    description: "SDXL Plus Face — SDXL 面部一致性"
+    file: "ip-adapter-plus-face_sdxl_vit-h.safetensors"
+    clip_vision: "CLIP-ViT-bigG-14-laion2B-39B-b160k.safetensors"
+    base: "sdxl"
+  ip-adapter-plus_sdxl:
+    description: "SDXL Plus 通用"
+    file: "ip-adapter-plus_sdxl_vit-h.safetensors"
+    clip_vision: "CLIP-ViT-bigG-14-laion2B-39B-b160k.safetensors"
+    base: "sdxl"
+
 music_backends:
   template:
     description: "ffmpeg 模板配乐（开箱即用）"

@@ -2,9 +2,15 @@
 
 职责:
 - 加载 ComfyUI 工作流 JSON 模板
-- 构建首帧生成工作流（含多角色 IP-Adapter 链式注入）
+- 构建首帧生成工作流（含多角色 IP-Adapter Plus 链式注入）
 - 构建视频生成工作流
 - 处理参考图上传映射
+
+IP-Adapter Plus 集成:
+- 自动注入 IPAdapterModelLoader + CLIPVisionLoader + IPAdapterAdvanced 节点
+- 支持 face-specific 模型（ip-adapter-plus-face）提升角色面部一致性
+- 多角色链式注入，次要角色自动降权
+- 嵌入缩放模式: V only（面部一致性最佳）
 """
 from __future__ import annotations
 import copy
@@ -258,10 +264,17 @@ class WorkflowBuilder:
         img_backend = self.models.get("image_backend", "sd15")
         set_clip_text_prompts(wf, positive, negative, img_backend)
 
-        # 注入角色参考图（IP-Adapter）或 LoRA
+        # 注入角色参考图（IP-Adapter Plus）或 LoRA
         char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
         outfit = shot.get("outfit", "")
+
+        # IP-Adapter 配置：优先读 models.ip_adapter，回退到 system.yaml 的 ip_adapter 顶层
         ip_config = self.models.get("ip_adapter", {})
+        if not ip_config:
+            ip_config = self.config.get("ip_adapter", {})
+        # 确保 ip_adapter 启用（未显式禁用即视为启用）
+        if ip_config.get("enabled") is False:
+            ip_config = {}
 
         if char_ids:
             # 为所有角色查找 LoRA，无 LoRA 的用 IP-Adapter 回退
@@ -306,33 +319,256 @@ class WorkflowBuilder:
 
     def _inject_character_refs(self, wf: dict, char_ids: list[str],
                                 ip_config: dict, outfit: str = "") -> dict:
-        """注入角色参考图到工作流（支持多角色链式 IP-Adapter）"""
+        """注入角色参考图到工作流（IP-Adapter Plus 链式注入）
+
+        支持两种模式：
+        1. 模板已含 IP-Adapter 节点 → 只更新参考图和权重
+        2. 模板不含 IP-Adapter 节点 → 完整注入 IPAdapterModelLoader + CLIPVisionLoader + IPAdapterAdvanced
+
+        Args:
+            wf: 工作流 dict
+            char_ids: 角色 ID 列表
+            ip_config: IP-Adapter 配置（来自 models.ip_adapter 或 system.yaml）
+            outfit: 服装标签
+        """
         if not char_ids:
             return wf
 
-        # 主角色：使用模板中的 LoadImage 节点
+        # 获取主角色参考图
+        primary_id = char_ids[0]
+        primary_refs = self._get_character_refs(primary_id, outfit=outfit)
+
+        # 判断模板是否已包含 IP-Adapter 节点
+        existing_ip_nodes = find_nodes_by_class(wf, "IPAdapterAdvanced")
+
+        if existing_ip_nodes:
+            # ── 模式 1: 模板已有 IP-Adapter 节点，只更新引用和权重 ──
+            wf = self._update_existing_ip_adapter(wf, char_ids, ip_config, outfit)
+        else:
+            # ── 模式 2: 完整注入 IP-Adapter Plus 子图 ──
+            if primary_refs:
+                wf = self._inject_ip_adapter_plus(wf, primary_id, primary_refs, ip_config)
+            else:
+                logger.warning(f"角色 '{primary_id}' 无定妆照，跳过 IP-Adapter 注入")
+
+            # 多角色：链式注入次要角色
+            if len(char_ids) > 1:
+                for i, secondary_id in enumerate(char_ids[1:]):
+                    secondary_refs = self._get_character_refs(secondary_id, outfit=outfit)
+                    if secondary_refs:
+                        secondary_weight = ip_config.get("secondary_weight",
+                            max(0.3, ip_config.get("weight", 0.75) * 0.6))
+                        wf = self._inject_ip_adapter_chain(wf, secondary_id, secondary_refs,
+                                                           weight=secondary_weight, ip_config=ip_config)
+                    else:
+                        logger.warning(f"第二角色 '{secondary_id}' 无定妆照，跳过 IP-Adapter")
+
+        return wf
+
+    def _update_existing_ip_adapter(self, wf: dict, char_ids: list[str],
+                                     ip_config: dict, outfit: str = "") -> dict:
+        """更新模板中已有的 IP-Adapter 节点（参考图 + 权重）"""
+        weight = ip_config.get("weight", 0.75)
+        ip_nodes = find_nodes_by_class(wf, "IPAdapterAdvanced")
+
+        # 更新主 IP-Adapter 权重
+        if ip_nodes:
+            wf[ip_nodes[0]]["inputs"]["weight"] = weight
+            # 更新 weight_type / combine_embeds / embeds_scaling
+            for key in ("weight_type", "combine_embeds", "embeds_scaling", "start_at", "end_at"):
+                if key in ip_config:
+                    wf[ip_nodes[0]]["inputs"][key] = ip_config[key]
+
+        # 更新主角色参考图
         primary_id = char_ids[0]
         primary_refs = self._get_character_refs(primary_id, outfit=outfit)
         char_nodes = find_character_load_image_nodes(wf)
-
         if primary_refs and char_nodes:
             wf[char_nodes[0]]["inputs"]["image"] = os.path.basename(primary_refs[0])
-        elif not primary_refs:
-            logger.warning(f"角色 '{primary_id}' 无定妆照，IP-Adapter 将使用占位图")
 
-        # 设置 IP-Adapter 权重（0.75 保持角色面部一致性，可通过 models.ip_adapter.weight 覆盖）
-        weight = ip_config.get("weight", 0.75)
-        for nid in find_nodes_by_class(wf, "IPAdapterAdvanced"):
-            if nid in wf:
-                wf[nid]["inputs"]["weight"] = weight
-
-        # 第二角色：链式 IP-Adapter
+        # 多角色：链式注入（使用新的 _inject_ip_adapter_chain）
         if len(char_ids) > 1:
             for i, secondary_id in enumerate(char_ids[1:]):
                 secondary_refs = self._get_character_refs(secondary_id, outfit=outfit)
                 if secondary_refs:
-                    wf = self._add_secondary_ip_adapter(wf, secondary_id, secondary_refs, ip_config, i)
+                    secondary_weight = ip_config.get("secondary_weight",
+                        max(0.3, weight * 0.6))
+                    wf = self._inject_ip_adapter_chain(wf, secondary_id, secondary_refs,
+                                                       weight=secondary_weight, ip_config=ip_config)
 
+        return wf
+
+    def _inject_ip_adapter_plus(self, wf: dict, char_id: str, ref_images: list[str],
+                                 ip_config: dict) -> dict:
+        """完整注入 IP-Adapter Plus 子图（IPAdapterModelLoader + CLIPVisionLoader + IPAdapterAdvanced + LoadImage）
+
+        在模型加载节点和 KSampler 之间插入 IP-Adapter 链，重接 model 连线。
+
+        Args:
+            wf: 工作流 dict
+            char_id: 角色 ID
+            ref_images: 参考图路径列表
+            ip_config: IP-Adapter 配置
+        """
+        wf = copy.deepcopy(wf)
+
+        # 1. 找模型加载节点和 KSampler
+        model_source = (find_first_node(wf, "UNETLoader")
+                        or find_first_node(wf, "CheckpointLoaderSimple"))
+        ksampler = find_first_node(wf, "KSampler")
+        if not model_source or not ksampler:
+            logger.warning("未找到模型加载节点或 KSampler，无法注入 IP-Adapter")
+            return wf
+
+        # 2. 获取 IP-Adapter 配置
+        ip_model_name = ip_config.get("model", "ip-adapter-plus-face_sd15.safetensors")
+        clip_vision_name = ip_config.get("clip_vision", "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors")
+        weight = ip_config.get("weight", 0.75)
+        weight_type = ip_config.get("weight_type", "linear")
+        combine_embeds = ip_config.get("combine_embeds", "concat")
+        start_at = ip_config.get("start_at", 0.0)
+        end_at = ip_config.get("end_at", 1.0)
+        embeds_scaling = ip_config.get("embeds_scaling", "V only")
+
+        # 3. 创建节点（加随机后缀防冲突）
+        suffix = random.randint(1000, 9999)
+        ip_model_node = f"ipadapter_model_{suffix}"
+        clip_vision_node = f"ipadapter_clip_vision_{suffix}"
+        ip_node = f"ipadapter_{suffix}"
+        load_image_node = f"ipadapter_ref_{suffix}"
+
+        # 4. 添加 IPAdapterModelLoader
+        wf[ip_model_node] = {
+            "class_type": "IPAdapterModelLoader",
+            "inputs": {"ipadapter_file": ip_model_name}
+        }
+
+        # 5. 添加 CLIPVisionLoader
+        wf[clip_vision_node] = {
+            "class_type": "CLIPVisionLoader",
+            "inputs": {"clip_name": clip_vision_name}
+        }
+
+        # 6. 添加 LoadImage（角色参考图）
+        wf[load_image_node] = {
+            "class_type": "LoadImage",
+            "inputs": {"image": os.path.basename(ref_images[0])}
+        }
+
+        # 7. 添加 IPAdapterAdvanced
+        wf[ip_node] = {
+            "class_type": "IPAdapterAdvanced",
+            "inputs": {
+                "weight": weight,
+                "weight_type": weight_type,
+                "combine_embeds": combine_embeds,
+                "start_at": start_at,
+                "end_at": end_at,
+                "embeds_scaling": embeds_scaling,
+                "model": [model_source, 0],
+                "ipadapter": [ip_model_node, 0],
+                "clip_vision": [clip_vision_node, 0],
+                "image": [load_image_node, 0],
+            }
+        }
+
+        # 8. 将 KSampler 的 model 输入重接到 IP-Adapter 输出
+        wf[ksampler]["inputs"]["model"] = [ip_node, 0]
+
+        logger.info(f"注入 IP-Adapter Plus: {char_id} "
+                    f"(model={ip_model_name}, weight={weight}, "
+                    f"weight_type={weight_type}, embeds_scaling={embeds_scaling})")
+        return wf
+
+    def _inject_ip_adapter_chain(self, wf: dict, char_id: str, ref_images: list[str],
+                                  weight: float = 0.45, ip_config: dict | None = None) -> dict:
+        """链式注入第二个角色的 IP-Adapter（串联在已有 IP-Adapter 之后）
+
+        找到已有 IPAdapterAdvanced 节点的下游消费者，断开后插入新 IP-Adapter 链。
+        """
+        wf = copy.deepcopy(wf)
+        if ip_config is None:
+            ip_config = {}
+
+        # 找已有 IP-Adapter 节点
+        ip_nodes = find_nodes_by_class(wf, "IPAdapterAdvanced")
+        if not ip_nodes:
+            logger.warning("未找到已有 IP-Adapter 节点，无法链式注入")
+            return wf
+
+        last_ip = ip_nodes[-1]
+
+        # 找下游消费者（KSampler 或其他节点的 model 输入）
+        downstream_node = None
+        downstream_input = None
+        for nid, node in wf.items():
+            if nid in (last_ip,) or node.get("class_type") == "LoadImage":
+                continue
+            for inp_name, inp_val in node.get("inputs", {}).items():
+                if isinstance(inp_val, list) and len(inp_val) == 2 and inp_val[0] == last_ip:
+                    downstream_node = nid
+                    downstream_input = inp_name
+                    break
+            if downstream_node:
+                break
+
+        if not downstream_node:
+            downstream_node = find_first_node(wf, "KSampler")
+            downstream_input = "model"
+
+        if not downstream_node:
+            return wf
+
+        # 创建新节点
+        suffix = random.randint(1000, 9999)
+        new_load = f"ipadapter_ref2_{char_id}_{suffix}"
+        new_ip = f"ipadapter2_{char_id}_{suffix}"
+
+        # 获取配置
+        weight_type = ip_config.get("weight_type", "linear")
+        combine_embeds = ip_config.get("combine_embeds", "concat")
+        start_at = ip_config.get("start_at", 0.0)
+        end_at = ip_config.get("end_at", 1.0)
+        embeds_scaling = ip_config.get("embeds_scaling", "V only")
+
+        # 复用主角色的 IP-Adapter 模型和 CLIP Vision 节点
+        ip_model_node = None
+        clip_vision_node = None
+        for nid, node in wf.items():
+            if node.get("class_type") == "IPAdapterModelLoader":
+                ip_model_node = nid
+            elif node.get("class_type") == "CLIPVisionLoader":
+                clip_vision_node = nid
+
+        # 添加 LoadImage
+        wf[new_load] = {
+            "class_type": "LoadImage",
+            "inputs": {"image": os.path.basename(ref_images[0])}
+        }
+
+        # 添加 IPAdapterAdvanced（串联在上一个之后）
+        ip_inputs = {
+            "weight": weight,
+            "weight_type": weight_type,
+            "combine_embeds": combine_embeds,
+            "start_at": start_at,
+            "end_at": end_at,
+            "embeds_scaling": embeds_scaling,
+            "model": [last_ip, 0],  # 接上一个 IP-Adapter 的 model 输出
+            "image": [new_load, 0],
+        }
+        if ip_model_node:
+            ip_inputs["ipadapter"] = [ip_model_node, 0]
+        if clip_vision_node:
+            ip_inputs["clip_vision"] = [clip_vision_node, 0]
+
+        wf[new_ip] = {"class_type": "IPAdapterAdvanced", "inputs": ip_inputs}
+
+        # 重接下游
+        if downstream_node and downstream_input:
+            wf[downstream_node]["inputs"][downstream_input] = [new_ip, 0]
+
+        logger.info(f"链式注入第二角色 IP-Adapter: {char_id} (weight={weight:.2f})")
         return wf
 
     def _add_secondary_ip_adapter(self, wf: dict, char_id: str, ref_images: list[str],
@@ -620,22 +856,33 @@ class WorkflowBuilder:
         char_ids = [c.strip() for c in shot.get("characters", "").split("+") if c.strip()]
         outfit = shot.get("outfit", "")
 
-        char_nodes = find_character_load_image_nodes(wf)
         all_load_nodes = find_load_image_nodes(wf)
-        scene_nodes = [n for n in all_load_nodes if n not in set(char_nodes)]
+
+        # 区分 IP-Adapter 参考图节点和场景图节点
+        # IP-Adapter 节点命名规则: ipadapter_ref_* (主角色), ipadapter_ref2_* (次要角色)
+        ipa_primary_nodes = [n for n in all_load_nodes if n.startswith("ipadapter_ref_") and not n.startswith("ipadapter_ref2_")]
+        ipa_secondary_nodes = [n for n in all_load_nodes if n.startswith("ipadapter_ref2_")]
+        # 旧式节点命名兼容
+        char2_nodes = [n for n in all_load_nodes if n.startswith("char2_load_")]
+        # 剩余的是场景图节点
+        ipa_node_set = set(ipa_primary_nodes) | set(ipa_secondary_nodes) | set(char2_nodes)
+        scene_nodes = [n for n in all_load_nodes if n not in ipa_node_set
+                       and not n.startswith("ipadapter_")]
 
         # 主角色
         if char_ids:
             refs = self._get_character_refs(char_ids[0], outfit=outfit)
-            if refs and char_nodes:
-                uploads[char_nodes[0]] = refs[0]
+            target_node = ipa_primary_nodes[0] if ipa_primary_nodes else (all_load_nodes[0] if all_load_nodes else None)
+            if refs and target_node:
+                uploads[target_node] = refs[0]
 
         # 第二角色
-        secondary_nodes = [n for n in all_load_nodes if n.startswith("char2_load_")]
         for i, cid in enumerate(char_ids[1:]):
             refs = self._get_character_refs(cid, outfit=outfit)
-            if refs and i < len(secondary_nodes):
-                uploads[secondary_nodes[i]] = refs[0]
+            # 优先用 ipadapter_ref2 节点，回退到 char2_load 节点
+            secondary_pool = ipa_secondary_nodes + char2_nodes
+            if refs and i < len(secondary_pool):
+                uploads[secondary_pool[i]] = refs[0]
 
         # 场景图
         depth_map = shot.get("depth_map", "")
@@ -701,7 +948,7 @@ class WorkflowBuilder:
         return sorted(refs)
 
     def cleanup_dangling_refs(self, wf: dict, removed_ids: list[str]) -> dict:
-        """清理工作流中对已删除节点的残留引用"""
+        """清理工作流中对已删除节点的残留引用（含 IP-Adapter 链）"""
         removed_set = set(removed_ids)
         model_source = find_first_node(wf, "UNETLoader") or find_first_node(wf, "CheckpointLoaderSimple")
 
@@ -713,13 +960,15 @@ class WorkflowBuilder:
                     else:
                         del node["inputs"][key]
 
-        # 移除缺少必需输入的 IP-Adapter 节点
+        # 移除缺少必需输入的 IP-Adapter 节点（级联清理）
+        ipa_types = {"IPAdapterAdvanced", "IPAdapterModelLoader", "CLIPVisionLoader"}
         changed = True
         while changed:
             changed = False
             current_removed = set()
             for nid, node in list(wf.items()):
-                if node.get("class_type") == "IPAdapterAdvanced":
+                ct = node.get("class_type", "")
+                if ct == "IPAdapterAdvanced":
                     img = node.get("inputs", {}).get("image")
                     if not img or (isinstance(img, list) and len(img) == 2 and img[0] not in wf):
                         current_removed.add(nid)

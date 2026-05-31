@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "find_first_node", "find_nodes_by_class", "find_load_image_nodes",
     "find_character_load_image_nodes", "find_lora_nodes",
+    "find_ip_adapter_nodes", "find_ip_adapter_load_image_nodes",
     "set_clip_text_prompts",
     "apply_ip_adapter_config", "resolve_node_aliases",
 ]
@@ -49,7 +50,59 @@ def find_load_image_nodes(wf: dict) -> list[str]:
 
 
 def find_character_load_image_nodes(wf: dict) -> list[str]:
-    return find_load_image_nodes(wf)
+    """查找角色参考图的 LoadImage 节点（IP-Adapter 专用）
+
+    区分角色参考图节点和场景图节点：
+    - ipadapter_ref_*: IP-Adapter 主角色参考图
+    - ipadapter_ref2_*: IP-Adapter 次要角色参考图
+    - char2_load_*: 旧式次要角色参考图
+
+    不包含场景图的 LoadImage 节点。
+    """
+    all_nodes = find_load_image_nodes(wf)
+    # 排除场景图节点（不以 ipadapter_ 或 char2_ 开头的可能是场景图）
+    # 但如果只有纯模板（无 IP-Adapter 节点），返回全部 LoadImage
+    ipa_nodes = [n for n in all_nodes
+                 if n.startswith("ipadapter_ref") or n.startswith("char2_load_")]
+    if ipa_nodes:
+        return ipa_nodes
+    # 模板无 IP-Adapter 节点时，返回全部（向后兼容）
+    return all_nodes
+
+
+def find_ip_adapter_nodes(wf: dict) -> dict[str, list[str]]:
+    """查找所有 IP-Adapter 相关节点，按类型分组
+
+    Returns:
+        {
+            "ipadapter": ["ipadapter_xxx", ...],         # IPAdapterAdvanced
+            "model_loader": ["ipadapter_model_xxx", ...], # IPAdapterModelLoader
+            "clip_vision": ["ipadapter_clip_vision_xxx", ...], # CLIPVisionLoader
+            "ref_images": ["ipadapter_ref_xxx", ...],     # IP-Adapter LoadImage
+        }
+    """
+    result = {"ipadapter": [], "model_loader": [], "clip_vision": [], "ref_images": []}
+    for nid, node in wf.items():
+        if nid.startswith("_"):
+            continue
+        ct = node.get("class_type", "")
+        if ct == "IPAdapterAdvanced":
+            result["ipadapter"].append(nid)
+        elif ct == "IPAdapterModelLoader":
+            result["model_loader"].append(nid)
+        elif ct == "CLIPVisionLoader" and nid.startswith("ipadapter_"):
+            result["clip_vision"].append(nid)
+        elif ct == "LoadImage" and nid.startswith("ipadapter_ref"):
+            result["ref_images"].append(nid)
+    return result
+
+
+def find_ip_adapter_load_image_nodes(wf: dict) -> list[str]:
+    """查找 IP-Adapter 专用的 LoadImage 节点（不含场景图）"""
+    return [nid for nid, node in wf.items()
+            if not nid.startswith("_")
+            and node.get("class_type") == "LoadImage"
+            and nid.startswith("ipadapter_ref")]
 
 
 def find_lora_nodes(wf: dict) -> list[tuple[str, str]]:

@@ -174,4 +174,24 @@ def _check_tool_inner(name: str, cfg: dict) -> dict:
         return {"available": ok, "backend": "ai-toolkit", "type": "gpu",
                 "url": api_url, "reason": "" if ok else f"AI Toolkit 服务不可达 ({api_url})"}
 
+    elif name == "ip_adapter":
+        # IP-Adapter 可用性 = ComfyUI 可用 + 模型文件存在于 ComfyUI 服务器
+        ip_cfg = cfg.get("ip_adapter", {})
+        if not ip_cfg.get("enabled", True):
+            return {"available": False, "backend": "ip-adapter-plus", "type": "gpu",
+                    "reason": "IP-Adapter 未启用"}
+        # 检查 ComfyUI
+        comfyui_cfg = cfg.get("comfyui", {})
+        url = comfyui_cfg.get("url", "http://127.0.0.1:8188")
+        api_key = comfyui_cfg.get("api_key", "")
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+        comfyui_ok = _url_ok(url, "/system_stats", headers=headers)
+        if not comfyui_ok:
+            return {"available": False, "backend": "ip-adapter-plus", "type": "gpu",
+                    "reason": "ComfyUI 不可达"}
+        # 模型文件检查通过配置告知（ComfyUI 服务器上模型文件无法直接 HTTP 检测）
+        model = ip_cfg.get("model", "ip-adapter-plus-face_sd15.safetensors")
+        return {"available": True, "backend": "ip-adapter-plus", "type": "gpu",
+                "model": model, "reason": f"IP-Adapter Plus ({model})"}
+
     return {"available": False, "backend": "unknown", "type": "unknown", "reason": "未知工具"}

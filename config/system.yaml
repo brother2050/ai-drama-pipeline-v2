@@ -51,6 +51,30 @@ post_production:
   transition_duration: 0.5
   bgm_volume: 0.15
   subtitle_platform: douyin
+ip_adapter:
+  enabled: true
+  # IP-Adapter 模型（放入 ComfyUI/models/ipadapter/）
+  # 推荐: ip-adapter-plus-face_sd15.safetensors（人物面部一致性最佳）
+  # 可选: ip-adapter-plus_sd15.safetensors（通用，含风格）
+  # 可选: ip-adapter_sd15.safetensors（基础，影响较弱）
+  model: "ip-adapter-plus-face_sd15.safetensors"
+  # CLIP Vision 模型（放入 ComfyUI/models/clip_vision/）
+  # SD1.5 配 CLIP-ViT-H-14, SDXL 配 CLIP-ViT-bigG-14
+  clip_vision: "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+  # 主角色参考图权重（0.0-1.0，越高越像参考图）
+  weight: 0.75
+  # 多角色时次要角色权重（自动计算或手动指定）
+  secondary_weight: 0.45
+  # 权重类型: linear / ease in / ease out / ease in-out / reverse / weak input / weak output / style transfer
+  weight_type: "linear"
+  # 融合方式: concat / add / subtract / average / norm / cosine
+  combine_embeds: "concat"
+  # IP-Adapter 生效的去噪范围
+  start_at: 0.0
+  end_at: 1.0
+  # 嵌入缩放: all / v only / k+v (v only 对面部一致性最好)
+  embeds_scaling: "V only"
+
 timeouts:
   comfyui: 900
   tts: 60

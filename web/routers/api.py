@@ -222,7 +222,7 @@ def system_status():
 def _collect_tools(cfg: dict) -> dict:
     """收集所有工具状态（并行检测，避免串行超时累积）"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    names = ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg", "seko", "training"]
+    names = ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg", "seko", "training", "ip_adapter"]
     tools = {}
     with ThreadPoolExecutor(max_workers=5) as ex:
         futures = {ex.submit(_check_tool, name, cfg): name for name in names}
@@ -376,6 +376,21 @@ def test_tool(name: str):
                     return {"ok": False, "name": name, "message": status.get("error", "连接失败"), **result}
             except Exception as e:
                 return {"ok": False, "name": name, "message": f"训练后端不可用: {e}", **result}
+
+        elif name == "ip_adapter":
+            ip_cfg = cfg.get("ip_adapter", {})
+            if not ip_cfg.get("enabled", True):
+                return {"ok": False, "name": name, "message": "IP-Adapter 未启用", **result}
+            model = ip_cfg.get("model", "ip-adapter-plus-face_sd15.safetensors")
+            clip_vision = ip_cfg.get("clip_vision", "")
+            weight = ip_cfg.get("weight", 0.75)
+            # 检查 ComfyUI 是否可达
+            comfyui_check = _check_tool("comfyui", cfg)
+            if not comfyui_check.get("available"):
+                return {"ok": False, "name": name, "message": f"ComfyUI 不可达（IP-Adapter 依赖 ComfyUI）", **result}
+            return {"ok": True, "name": name,
+                    "message": f"IP-Adapter Plus: {model} (weight={weight})",
+                    "model": model, "clip_vision": clip_vision, "weight": weight, **result}
 
         return {"ok": True, "name": name, "message": "可用", **result}
 
