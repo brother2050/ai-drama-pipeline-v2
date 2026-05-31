@@ -36,9 +36,8 @@ cd ai-drama-pipeline-v2
 # 基础安装（Web + Celery + TTS 云 API）
 pip install -e .
 
-# 含人脸检测（精确角色一致性检查）
-pip install -e ".[face]"
-
+# 含横转竖人脸追踪
+pip install -e ".[vertical]"
 
 # 全量安装
 pip install -e ".[all]"
@@ -49,9 +48,8 @@ pip install -e ".[all]"
 
 | 安装方式 | 包 | 用途 | 不装影响 |
 |---------|---|------|---------|
-| `.[face]` | numpy, insightface, onnxruntime | 精确人脸检测 | 回退到图片哈希 |
-| `.[face]` | face_recognition | 次选人脸检测 | 回退到哈希 |
-| `.[face]` | opencv-python-headless | 横转竖人脸定位 | 回退到模糊背景 |
+| `.[vertical]` | face_recognition | 横转竖人脸追踪定位 | 回退到模糊背景 |
+| `.[vertical]` | opencv-python-headless | 视频帧读取 | 回退到模糊背景 |
 
 不装可选包时，各功能自动降级，不会崩溃。
 
@@ -273,12 +271,6 @@ api/__init__.py (懒加载)
   ├─ video/animatediff     → 需要 ComfyUI
   ├─ llm/ollama            → 需要 httpx + Ollama
   └─ music/template        → 仅需 ffmpeg（无额外依赖）
-```
-
-### 一致性检测三级回退
-
-```
-insightface（精确） → face_recognition（次选） → 图片哈希（无依赖）
 ```
 
 ---

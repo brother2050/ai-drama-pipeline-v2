@@ -26,16 +26,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-face = [
-    "numpy>=1.24.0",
-    "insightface>=0.7.3",
-    "onnxruntime>=1.16.0",
+vertical = [
     "face_recognition>=1.3.0",
     "opencv-python-headless>=4.8.0",
 ]
 training = []
 dev = ["pytest>=7.0", "ruff>=0.1.0"]
-all = ["ai-drama-pipeline[face,training,dev]"]
+all = ["ai-drama-pipeline[vertical,training,dev]"]
 
 [project.scripts]
 drama = "cli:cli"

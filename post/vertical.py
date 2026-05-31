@@ -3,7 +3,7 @@
 支持两种模式：
 - center_crop: 居中裁剪，简单高效
 - face_track: 背景模糊 + 人物居中（当前为 blur_bg 实现，
-  如需真正人脸追踪请安装 face_recognition/insightface）
+  如需真正人脸追踪请安装 face_recognition）
 """
 from __future__ import annotations
 
