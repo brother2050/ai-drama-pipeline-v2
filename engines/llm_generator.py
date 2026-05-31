@@ -269,8 +269,10 @@ def generate_characters(llm, descriptions: list[str], expected_ids: list[str] | 
             char = _normalize_character(char)
             cname = char.get("name", "").strip()
             if cname in used_names:
-                suffix = char.get("id", str(i + 1))
-                new_name = f"{cname}_{suffix}"
+                counter = 2
+                while f"{cname}{counter}" in used_names:
+                    counter += 1
+                new_name = f"{cname}{counter}"
                 logger.warning(f"  ⚠ 角色名重复: {cname} → {new_name}")
                 char["name"] = new_name
                 cname = new_name
@@ -363,8 +365,10 @@ def generate_scenes(llm, descriptions: list[str], expected_ids: list[str] | None
                 scene["id"] = expected_ids[i]
             sname = scene.get("name", "").strip()
             if sname in used_names:
-                suffix = scene.get("id", str(i + 1))
-                new_name = f"{sname}_{suffix}"
+                counter = 2
+                while f"{sname}{counter}" in used_names:
+                    counter += 1
+                new_name = f"{sname}{counter}"
                 logger.warning(f"  ⚠ 场景名重复: {sname} → {new_name}")
                 scene["name"] = new_name
                 sname = new_name
@@ -425,22 +429,25 @@ def _postprocess_shots(shots: list[dict], episode: int) -> list[dict]:
         sid = shot.get("shot_id", "")
         if not sid:
             sid = f"{i+1:03d}"
-        if sid in used_ids:
+        # 校验 shot_id 格式：三位数数字，不符合则重新编号
+        if not re.match(r"^\d{3}$", sid) or sid in used_ids:
+            old_sid = sid
             sid = f"{i+1:03d}"
-            logger.warning(f"镜头 shot_id 重复，自动重编号为 {sid}")
+            if old_sid != sid:
+                logger.warning(f"镜头 shot_id '{old_sid}' 格式无效或重复，自动重编号为 {sid}")
         shot["shot_id"] = sid
         used_ids.add(sid)
         # 确保 episode（统一为字符串，与 CSV 读取行为一致）
         shot["episode"] = str(episode)
-        # 限制 duration 范围（截断时警告，避免用户不知情）
+        # 限制 duration 范围（截断时警告，避免用户不知情），统一为 int
         try:
             d = int(shot.get("duration", 4))
             clamped = max(2, min(8, d))
             if clamped != d:
-                logger.warning(f"镜头 {shot.get('shot_id', '?')} duration={d} 超出范围 [2,8]，已截断为 {clamped}")
+                logger.warning(f"镜头 {sid} duration={d} 超出范围 [2,8]，已截断为 {clamped}")
             shot["duration"] = clamped
         except (ValueError, TypeError):
-            logger.warning(f"镜头 {shot.get('shot_id', '?')} duration 格式无效，使用默认值 4")
+            logger.warning(f"镜头 {sid} duration 格式无效，使用默认值 4")
             shot["duration"] = 4
         # 清理 dialogue / action_en / dialogue_en 中的多余引号
         # 只去除首尾成对的引号，保留内容中有意义的引号

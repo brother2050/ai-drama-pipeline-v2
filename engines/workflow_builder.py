@@ -419,7 +419,7 @@ class WorkflowBuilder:
 
         # 多角色：链式注入（使用新的 _inject_ip_adapter_chain）
         if len(char_ids) > 1:
-            for i, secondary_id in enumerate(char_ids[1:]):
+            for secondary_id in char_ids[1:]:
                 secondary_refs = self._get_character_refs(secondary_id, outfit=outfit)
                 if secondary_refs:
                     secondary_weight = ip_config.get("secondary_weight",
@@ -600,75 +600,6 @@ class WorkflowBuilder:
             wf[downstream_node]["inputs"][downstream_input] = [new_ip, 0]
 
         logger.info(f"链式注入第二角色 IP-Adapter: {char_id} (weight={weight:.2f})")
-        return wf
-
-    def _add_secondary_ip_adapter(self, wf: dict, char_id: str, ref_images: list[str],
-                                    ip_config: dict, index: int = 0) -> dict:
-        """为第二角色添加链式 IPAdapterAdvanced 节点"""
-        wf = copy.deepcopy(wf)
-
-        # 找现有 IP-Adapter 节点
-        ip_nodes = find_nodes_by_class(wf, "IPAdapterAdvanced")
-        if not ip_nodes:
-            return wf
-
-        primary_ip = ip_nodes[0]
-
-        # 找下游消费者
-        downstream_node = None
-        downstream_input = None
-        for nid, node in wf.items():
-            if nid == primary_ip:
-                continue
-            for inp_name, inp_val in node.get("inputs", {}).items():
-                if isinstance(inp_val, list) and len(inp_val) == 2 and inp_val[0] == primary_ip:
-                    downstream_node = nid
-                    downstream_input = inp_name
-                    break
-            if downstream_node:
-                break
-
-        if not downstream_node:
-            downstream_node = find_first_node(wf, "KSampler")
-            downstream_input = "model"
-
-        if not downstream_node:
-            return wf
-
-        # 创建新节点
-        new_load = f"char2_load_{char_id}_{index}"
-        new_ip = f"char2_ip_{char_id}_{index}"
-
-        # 计算权重
-        primary_weight = float(wf[primary_ip]["inputs"].get("weight", 0.6))
-        secondary_weight = ip_config.get("secondary_weight", max(0.3, primary_weight * 0.6))
-
-        # 找 IP-Adapter 模型和 CLIP Vision 节点
-        ip_model_node = find_first_node(wf, "IPAdapterModelLoader")
-        clip_vision_node = find_first_node(wf, "CLIPVisionLoader")
-
-        # 添加 LoadImage 节点
-        wf[new_load] = {"class_type": "LoadImage", "inputs": {"image": os.path.basename(ref_images[0])}}
-
-        # 添加 IPAdapterAdvanced 节点
-        ip_inputs = {
-            "weight": secondary_weight, "weight_type": "linear",
-            "combine_embeds": "concat", "start_at": 0.0, "end_at": 1.0,
-            "embeds_scaling": "V only",
-            "model": [primary_ip, 0], "image": [new_load, 0],
-        }
-        if ip_model_node:
-            ip_inputs["ipadapter"] = [ip_model_node, 0]
-        if clip_vision_node:
-            ip_inputs["clip_vision"] = [clip_vision_node, 0]
-
-        wf[new_ip] = {"class_type": "IPAdapterAdvanced", "inputs": ip_inputs}
-
-        # 重接下游
-        if downstream_node and downstream_input:
-            wf[downstream_node]["inputs"][downstream_input] = [new_ip, 0]
-
-        logger.info(f"添加第二角色 IP-Adapter: {char_id} (weight={secondary_weight:.2f})")
         return wf
 
     # ── PuLID-Flux 注入（Flux DiT 架构专用）─────────────────
