@@ -204,7 +204,7 @@ class WorkflowBuilder:
 
     @staticmethod
     def _set_seed(wf: dict, seed: int) -> None:
-        """设置指定 seed（用于定妆照三视图/服装图保持一致性）"""
+        """设置指定 seed（用于定妆照五视图/服装图保持一致性）"""
         for nid, node in wf.items():
             ct = node.get("class_type", "")
             if ct in ("KSampler", "KSamplerAdvanced"):

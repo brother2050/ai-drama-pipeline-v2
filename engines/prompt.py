@@ -81,23 +81,33 @@ _APPEARANCE_PROMPT_SYSTEM = """你是一位顶级 AI 绘画提示词工程师，
 5. 不要包含动作、场景、情绪、镜头信息（这些由其他模块处理）
 6. 不要包含 quality 标签（如 best quality, masterpiece，由负向 prompt 控制）
 7. 如果描述中有年龄、身高等数字信息，保留
+8. 【重要】身体特征（伤疤、纹身、胎记、烧伤痕迹等）必须在所有可见该部位的视角中重复出现
 
 输出格式（严格 JSON，不要其他文字）：
 ```json
 {
   "prompt_en": "1girl, 22 years old, ...",
-  "front": "1girl, 22 years old, ...（正面可见的所有特征）",
-  "side": "1girl, 22 years old, ...（侧面可见特征，含侧面轮廓）",
-  "back": "1girl, 22 years old, ...（仅背面可见特征，无面部）"
+  "body_features": "cross scar on left cheek, burn mark on neck（所有身体特征集中列出，无则留空）",
+  "front": "1girl, 22 years old, ...（正面可见的所有特征 + body_features 中正面可见的部分）",
+  "left_side": "1girl, 22 years old, ...（左侧可见特征，含侧面轮廓 + body_features 中左侧可见的部分）",
+  "right_side": "1girl, 22 years old, ...（右侧可见特征，含侧面轮廓 + body_features 中右侧可见的部分）",
+  "back": "1girl, 22 years old, ...（仅背面可见特征 + body_features 中背面可见的部分）",
+  "three_quarter": "1girl, 22 years old, ...（3/4侧面，最常用的美观视角，包含部分正面和侧面特征）"
 }
 ```
 
-视角规则（【重要】保持人物一致性的关键：相同年龄、性别、肤色、发型、体型描述贯穿所有视角）：
-- front：包含面部特征、表情、发型正面、全身服装、配饰
-- side：侧面轮廓（额头线条、鼻梁、嘴唇轮廓、下巴线条、耳朵）、发型侧面、一只眼睛可见、体型剪影、服装侧面。**必须包含年龄、性别、肤色、发型、体型等与 front 一致的辨识特征**
-- back：后脑勺/发型背面（长度、颜色、质感与正面一致）、耳朵（外轮廓、大小）、后颈肤色、肩背宽度、服装背面、体态。**不能包含眼睛、鼻子、嘴巴、表情**，但必须包含年龄、性别、体型等非面部辨识特征，确保与 front/side 描述的是同一个人
+视角规则：
+- front：面部全部特征（眼睛、鼻子、嘴巴、眉毛、耳朵）、表情、发型正面、服装正面、配饰、身体特征（正面可见的伤疤/纹身等）
+- left_side：左侧轮廓（额头线条、鼻梁、嘴唇轮廓、下巴线条、左耳）、左眼可见、发型侧面、体型剪影、服装侧面。身体特征：左侧可见的伤疤/纹身/胎记必须保留
+- right_side：右侧轮廓（与 left_side 镜像）、右眼可见、发型侧面、服装侧面。身体特征：右侧可见的伤疤/纹身/胎记必须保留
+- back：后脑发型、双耳背面、后颈、肩背体态、服装背面。不能包含眼睛、鼻子、嘴巴。身体特征：背部/后颈可见的伤疤/纹身必须保留
+- three_quarter：3/4 侧面（最常用美观视角），包含一侧面部特征 + 部分正面特征，身体特征对应侧面保留
 
-只输出 JSON，不要任何解释。"""
+body_features 规则：
+- 从原始描述中提取所有身体特征（伤疤、纹身、胎记、烧伤、残疾等）
+- 标注位置（left cheek, neck, right arm, back 等）
+- 每个视角 prompt 必须包含该视角可见的 body_features
+- 如果原文没有身体特征，body_features 留空字符串"""
 
 
 def batch_generate_appearance_prompts(characters: list[dict], llm) -> dict[str, dict]:
@@ -198,9 +208,12 @@ def _generate_prompt_batch(characters: list[dict], llm) -> dict[str, dict]:
             if cid:
                 mapping[cid] = {
                     "prompt_en": item.get("prompt_en", ""),
+                    "body_features": item.get("body_features", ""),
                     "front": item.get("front", ""),
-                    "side": item.get("side", ""),
+                    "left_side": item.get("left_side", ""),
+                    "right_side": item.get("right_side", ""),
                     "back": item.get("back", ""),
+                    "three_quarter": item.get("three_quarter", ""),
                 }
         return mapping
 
@@ -215,6 +228,12 @@ def get_view_appearance(char: dict, shot_type: str) -> str:
     优先读 appearance_{view}_prompt_en（prepare 阶段 LLM 生成），
     无则回退到 appearance_prompt_en（通用 prompt）。
 
+    视角映射（5视图）：
+    - 特写/近景/中景/全身/过肩 → front
+    - 侧面特写 → left_side（默认左侧，无则 right_side，再无则 front）
+    - 背面特写 → back
+    - 3/4侧/三人全景 → three_quarter
+
     Args:
         char: 角色数据 dict
         shot_type: 景别（特写/侧面特写/背面特写/全身 等）
@@ -225,14 +244,32 @@ def get_view_appearance(char: dict, shot_type: str) -> str:
     if "背面" in shot_type:
         view_key = "back"
     elif "侧面" in shot_type:
-        view_key = "side"
+        # 优先 left_side，回退 right_side，最后 front
+        view_key = "left_side"
+    elif "3/4" in shot_type or "三人" in shot_type:
+        view_key = "three_quarter"
     else:
         view_key = "front"
 
+    # 尝试精确匹配
     view_prompt = char.get(f"appearance_{view_key}_prompt_en", "")
     if view_prompt:
         return view_prompt
 
+    # 侧面回退：left_side → right_side
+    if view_key in ("left_side", "right_side"):
+        for fallback_key in ("right_side", "left_side"):
+            fallback = char.get(f"appearance_{fallback_key}_prompt_en", "")
+            if fallback:
+                return fallback
+
+    # 3/4 回退到 front
+    if view_key == "three_quarter":
+        front = char.get("appearance_front_prompt_en", "")
+        if front:
+            return front
+
+    # 最终回退：通用 prompt
     return char.get("appearance_prompt_en", "")
 
 

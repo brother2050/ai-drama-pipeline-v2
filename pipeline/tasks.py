@@ -2236,7 +2236,7 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                 if not appearance:
                     continue
                 need_prompt = not char.get("appearance_prompt_en") or force
-                need_views = not all(char.get(f"appearance_{v}_prompt_en") for v in ("front", "side", "back")) or force
+                need_views = not all(char.get(f"appearance_{v}_prompt_en") for v in ("front", "left_side", "right_side", "back", "three_quarter")) or force
                 if need_prompt or need_views:
                     chars_to_process.append(char)
 
@@ -2253,12 +2253,18 @@ def ai_prepare_task(self, config_path: str, episode: int = 1, *,
                         pr = prompt_results[cid]
                         if pr.get("prompt_en"):
                             char["appearance_prompt_en"] = pr["prompt_en"]
+                        if pr.get("body_features"):
+                            char["appearance_body_features"] = pr["body_features"]
                         if pr.get("front"):
                             char["appearance_front_prompt_en"] = pr["front"]
-                        if pr.get("side"):
-                            char["appearance_side_prompt_en"] = pr["side"]
+                        if pr.get("left_side"):
+                            char["appearance_left_side_prompt_en"] = pr["left_side"]
+                        if pr.get("right_side"):
+                            char["appearance_right_side_prompt_en"] = pr["right_side"]
                         if pr.get("back"):
                             char["appearance_back_prompt_en"] = pr["back"]
+                        if pr.get("three_quarter"):
+                            char["appearance_three_quarter_prompt_en"] = pr["three_quarter"]
                         data["character"] = char
                         result["prompt_chars"] += 1
                         modified_files.add(str(f))

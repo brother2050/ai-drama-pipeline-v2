@@ -1,4 +1,4 @@
-"""定妆照生成 — 为角色生成三视图 + 各服装参考图
+"""定妆照生成 — 为角色生成五视图 + 各服装参考图
 
 被以下入口调用：
 - portraits_task / drama portraits CLI（批量，Celery）
@@ -21,11 +21,13 @@ from engines.portrait import _view_seed, _outfit_seed
 
 logger = logging.getLogger(__name__)
 
-# 三视图配置: (文件名, 景别, 标签)
-_THREE_VIEWS = [
-    ("cover.png", "特写", "正面"),
-    ("side.png",  "侧面特写", "侧面"),
-    ("back.png",  "背面特写", "背面"),
+# 五视图配置: (文件名, 景别, 标签, view_key)
+_FIVE_VIEWS = [
+    ("cover.png",        "特写",     "正面",  "front"),
+    ("left_side.png",    "侧面特写", "左侧",  "left_side"),
+    ("right_side.png",   "侧面特写", "右侧",  "right_side"),
+    ("back.png",         "背面特写", "背面",  "back"),
+    ("three_quarter.png","特写",     "3/4侧", "three_quarter"),
 ]
 
 
@@ -34,18 +36,25 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
                    seed: int | None = None,
                    ref_image: str | None = None,
                    char: dict | None = None,
-                   project_dir: str = "") -> bool:
+                   project_dir: str = "",
+                   view_key: str = "") -> bool:
     """生成单张视图，成功返回 True
 
     Args:
         seed: 指定 seed 保持一致性
-        ref_image: IP-Adapter 参考图路径（side/back 用 cover 做参考）
+        ref_image: IP-Adapter 参考图路径（非正面视图用 cover 做参考）
         char: 角色数据 dict（用于读取视角专属描述）
         project_dir: 项目目录全路径（用于唯一文件名 + AssetTracker）
+        view_key: 视角 key（front/left_side/right_side/back/three_quarter）
     """
     # 获取视角专属 prompt（prepare 阶段已生成）
-    from engines.prompt import get_view_appearance
-    view_desc = get_view_appearance(char, shot_type) if char else ""
+    if view_key and char:
+        view_desc = char.get(f"appearance_{view_key}_prompt_en", "")
+        if not view_desc:
+            view_desc = char.get("appearance_prompt_en", "")
+    else:
+        from engines.prompt import get_view_appearance
+        view_desc = get_view_appearance(char, shot_type) if char else ""
     if not view_desc:
         logger.error(f"角色 '{char_id}' 未生成 AI 绘图 prompt，请先运行: drama prepare <episode>")
         return False
@@ -138,7 +147,7 @@ def run_portraits(
     char_ids: list[str] | None = None,
     write_db: bool = False,
 ):
-    """生成定妆照（三视图 + 各服装参考图）
+    """生成定妆照（五视图 + 各服装参考图）
 
     Args:
         config_path: 项目配置文件路径
@@ -148,7 +157,7 @@ def run_portraits(
     """
     cfg = Config(config_path)
     paths = cfg.paths
-    logger.info("生成定妆照（三视图）")
+    logger.info("生成定妆照（五视图）")
 
     from api import _ensure_registered; _ensure_registered()
     from api.registry import Container
@@ -205,10 +214,10 @@ def run_portraits(
             wb = WorkflowBuilder(cfg.data, models, str(paths.root), comfyui=comfyui, force=force)
             wb.load_workflows()
 
-            # ── 1. 生成三视图 ──
+            # ── 1. 生成五视图 ──
             # 读取代数计数器（force 时递增，得到不同的生成结果）
             generation = char.get("portrait_generation", 0)
-            if force and any((portrait_dir / fn).exists() for fn, *_ in _THREE_VIEWS):
+            if force and any((portrait_dir / fn).exists() for fn, *_ in _FIVE_VIEWS):
                 generation += 1
                 char["portrait_generation"] = generation
                 data["character"] = char
@@ -218,7 +227,7 @@ def run_portraits(
 
             cover_path = portrait_dir / "cover.png"
             char_generated = 0
-            for i, (filename, shot_type, label) in enumerate(_THREE_VIEWS):
+            for i, (filename, shot_type, label, vk) in enumerate(_FIVE_VIEWS):
                 view_path = portrait_dir / filename
                 if view_path.exists() and not force:
                     logger.info(f"    ⏭ {label}视图已存在: {filename}")
@@ -229,13 +238,13 @@ def run_portraits(
 
                 # 每个视角独立 seed（含 char_id，不同角色完全隔离）
                 view_seed = _view_seed(char_id, generation, i)
-                # side/back 用 cover 做 IP-Adapter 参考
+                # 非正面视图用 cover 做 IP-Adapter 参考
                 ref = str(cover_path) if i > 0 and cover_path.exists() else None
 
                 try:
                     ok = _generate_view(char_id, appearance, portrait_dir, comfyui, wb,
                                         filename, shot_type, seed=view_seed, ref_image=ref,
-                                        char=char, project_dir=str(paths.root))
+                                        char=char, project_dir=str(paths.root), view_key=vk)
                     if ok:
                         if old_file and force:
                             pass  # os.replace 已覆盖
@@ -249,17 +258,17 @@ def run_portraits(
             if char_generated > 0:
                 generated += 1
 
-            # ── 2. 回写三视图 reference_images ──
+            # ── 2. 回写五视图 reference_images ──
             view_urls = []
-            for filename, _, _ in _THREE_VIEWS:
+            for filename, _, _ in _FIVE_VIEWS:
                 if (portrait_dir / filename).exists():
                     view_urls.append(f"/api/assets/characters/{char_id}/{filename}")
 
             if view_urls:
                 char.setdefault("reference_images", [])
                 prefix = f"/api/assets/characters/{char_id}/"
-                # 保留非本角色的引用 + 本角色的三视图引用
-                view_filenames = {fn for fn, _, _ in _THREE_VIEWS}
+                # 保留非本角色的引用 + 本角色的五视图引用
+                view_filenames = {fn for fn, _, _ in _FIVE_VIEWS}
                 char["reference_images"] = [
                     u for u in char["reference_images"]
                     if not u.startswith(prefix) or u.rsplit("/", 1)[-1] not in view_filenames

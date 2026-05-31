@@ -1,4 +1,4 @@
-"""定妆照生成 — 确保角色有参考图（含三视图）"""
+"""定妆照生成 — 确保角色有参考图（含五视图）"""
 from __future__ import annotations
 
 import hashlib
@@ -13,18 +13,21 @@ logger = logging.getLogger(__name__)
 _generating: set[str] = set()
 _generating_lock = threading.Lock()
 
-# 三视图配置：文件名 → (shot_type, camera, 描述)
-_THREE_VIEWS = [
-    ("cover.png", "特写", "固定", "正面"),
-    ("side.png",  "侧面特写", "固定", "侧面"),
-    ("back.png",  "背面特写", "固定", "背面"),
+# 五视图配置：文件名 → (shot_type, camera, 描述)
+# 五视图配置：文件名 → (shot_type, camera, 描述, view_key)
+_FIVE_VIEWS = [
+    ("cover.png",        "特写",     "固定", "正面",  "front"),
+    ("left_side.png",    "侧面特写", "固定", "左侧",  "left_side"),
+    ("right_side.png",   "侧面特写", "固定", "右侧",  "right_side"),
+    ("back.png",         "背面特写", "固定", "背面",  "back"),
+    ("three_quarter.png","特写",     "固定", "3/4侧", "three_quarter"),
 ]
 
 
 def _view_seed(char_id: str, generation: int, view_index: int) -> int:
-    """三视图 seed：同角色同代不同视角，不同角色完全隔离
+    """五视图 seed：同角色同代不同视角，不同角色完全隔离
 
-    注意：为保持三视图人物一致性，所有视角使用相同 seed。
+    注意：为保持五视图人物一致性，所有视角使用相同 seed。
     view_index 保留用于未来需要差异化时扩展。
     """
     h = hashlib.md5(f"{char_id}:gen{generation}:portrait".encode("utf-8")).hexdigest()
@@ -42,7 +45,8 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
                    seed: int | None = None,
                    ref_image: str | None = None,
                    char: dict | None = None,
-                   project_dir: str = "") -> str:
+                   project_dir: str = "",
+                   view_key: str = "") -> str:
     """生成单张视图，返回文件路径或空字符串
 
     Args:
@@ -50,10 +54,18 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
         ref_image: IP-Adapter 参考图路径（用于保持角色一致性）
         char: 角色数据 dict（用于读取视角专属描述）
         project_dir: 项目目录全路径（用于生成唯一 ComfyUI 文件名 + AssetTracker）
+        view_key: 视角 key（front/left_side/right_side/back/three_quarter），
+                  直接指定时跳过 shot_type 映射
     """
     # 获取视角专属 prompt（prepare 阶段已生成）
     from engines.prompt import get_view_appearance
-    view_desc = get_view_appearance(char, shot_type) if char else ""
+    if view_key and char:
+        # 直接按 view_key 查找，不经过 shot_type 映射
+        view_desc = char.get(f"appearance_{view_key}_prompt_en", "")
+        if not view_desc:
+            view_desc = char.get("appearance_prompt_en", "")
+    else:
+        view_desc = get_view_appearance(char, shot_type) if char else ""
     if not view_desc:
         logger.error(f"角色 '{char_id}' 未生成 AI 绘图 prompt，请先运行: drama prepare <episode>")
         return ""
@@ -88,7 +100,7 @@ def _generate_view(char_id: str, appearance: str, portrait_dir: Path,
 
 
 def ensure_portrait(char_id: str, config: dict, container=None, force: bool = False) -> str:
-    """确保角色有定妆照（三视图），没有则生成
+    """确保角色有定妆照（五视图），没有则生成
 
     生成三张图：
       - cover.png 正面特写
@@ -96,7 +108,7 @@ def ensure_portrait(char_id: str, config: dict, container=None, force: bool = Fa
       - back.png  背面特写
 
     配置项 portraits.auto_outfit:
-      - False（默认）: 只生成三视图，不遍历 outfits
+      - False（默认）: 只生成五视图，不遍历 outfits
       - True: 同时为各 outfit 生成参考图
 
     Args:
@@ -107,8 +119,8 @@ def ensure_portrait(char_id: str, config: dict, container=None, force: bool = Fa
     paths = ProjectPaths(project_dir)
     portrait_dir = paths.character_asset_dir(char_id)
 
-    # 检查三视图是否齐全
-    all_views_exist = all((portrait_dir / fname).exists() for fname, *_ in _THREE_VIEWS)
+    # 检查五视图是否齐全
+    all_views_exist = all((portrait_dir / fname).exists() for fname, *_ in _FIVE_VIEWS)
     if all_views_exist:
         auto_outfit = config.get("portraits", {}).get("auto_outfit", False)
         if auto_outfit and container:
@@ -122,7 +134,7 @@ def ensure_portrait(char_id: str, config: dict, container=None, force: bool = Fa
             return ""
         _generating.add(char_id)
 
-    logger.info(f"角色 '{char_id}' 缺少三视图，自动生成...")
+    logger.info(f"角色 '{char_id}' 缺少五视图，自动生成...")
     import yaml
     char_file = paths.character_yaml(char_id)
     if not char_file.exists():
@@ -158,7 +170,7 @@ def ensure_portrait(char_id: str, config: dict, container=None, force: bool = Fa
         cover_path = portrait_dir / "cover.png"
 
         generated_urls = []
-        for i, (filename, shot_type, camera, label) in enumerate(_THREE_VIEWS):
+        for i, (filename, shot_type, camera, label, vk) in enumerate(_FIVE_VIEWS):
             if (portrait_dir / filename).exists():
                 generated_urls.append(f"/api/assets/characters/{char_id}/{filename}")
                 continue
@@ -166,23 +178,23 @@ def ensure_portrait(char_id: str, config: dict, container=None, force: bool = Fa
             # 每个视角独立 seed（含 char_id + generation + view_index，不同角色完全隔离）
             view_seed = _view_seed(char_id, generation, i)
 
-            # side/back 视图用 cover 做 IP-Adapter 参考（保持角色一致性）
+            # 非正面视图用 cover 做 IP-Adapter 参考（保持角色一致性）
             ref = str(cover_path) if i > 0 and cover_path.exists() else None
 
             result = _generate_view(char_id, appearance, portrait_dir, comfyui, wb,
                                     filename, shot_type, seed=view_seed, ref_image=ref,
-                                    char=char, project_dir=project_dir)
+                                    char=char, project_dir=project_dir, view_key=vk)
             if result:
                 generated_urls.append(f"/api/assets/characters/{char_id}/{filename}")
                 logger.info(f"  ✅ {label}视图: {filename} (seed={view_seed})")
             else:
                 logger.warning(f"  ⚠ {label}视图生成失败")
 
-        # 回写 reference_images（只保留三视图，移除旧的 cover/side/back）
+        # 回写 reference_images（只保留五视图，移除旧的 cover/side/back）
         if generated_urls:
             char.setdefault("reference_images", [])
             prefix = f"/api/assets/characters/{char_id}/"
-            view_filenames = {fn for fn, *_ in _THREE_VIEWS}
+            view_filenames = {fn for fn, *_ in _FIVE_VIEWS}
             char["reference_images"] = [
                 u for u in char["reference_images"]
                 if not u.startswith(prefix) or u.rsplit("/", 1)[-1] not in view_filenames
