@@ -1058,7 +1058,6 @@ async def upload_entity_image(entity_type: str, entity_id: str, file: UploadFile
     _MAGIC = {
         b"\x89PNG": ".png",
         b"\xff\xd8\xff": ".jpg",
-        b"RIFF": ".webp",
         b"GIF8": ".gif",
     }
     detected = ""
@@ -1066,6 +1065,9 @@ async def upload_entity_image(entity_type: str, entity_id: str, file: UploadFile
         if content[:len(magic)] == magic:
             detected = mime_ext
             break
+    # WebP: RIFF at offset 0 + WEBP at offset 8（需 12 字节）
+    if not detected and len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        detected = ".webp"
     if not detected:
         raise HTTPException(400, "文件内容不是有效的图片格式")
 
@@ -1693,10 +1695,15 @@ def seko_proposal_status(req: SekoProposalStatusRequest):
     if req.download_dir and result.get("code") == 200:
         data = result.get("data", {})
         if data.get("taskStatus") == "OK":
+            # 校验 task_id 格式（防路径遍历）
+            _check_id(req.task_id, "task_id")
             # 特殊值 __project_assets__ → 使用当前项目的 assets 目录
             if req.download_dir == "__project_assets__":
                 download_dir = str(_proj() / "assets" / "seko" / req.task_id)
             else:
+                # 校验 download_dir：禁止 .. 遍历
+                if ".." in req.download_dir.split("/"):
+                    raise HTTPException(400, "非法下载目录")
                 download_dir = os.path.join(req.download_dir, req.task_id)
             downloaded = download_elements_images(data, download_dir)
 
@@ -1743,9 +1750,17 @@ def seko_import_proposal(req: SekoImportRequest):
         create_project(req.project_name, ROOT, Console())
 
     cfg = _cfg_path()
-    return _submit_task(
-        seko_import_task, cfg,
-        req.proposal_data, req.episode,
-        req.import_characters, req.import_scenes,
-        req.import_storyboard, req.download_images,
-    )
+    try:
+        return _submit_task(
+            seko_import_task, cfg,
+            req.proposal_data, req.episode,
+            req.import_characters, req.import_scenes,
+            req.import_storyboard, req.download_images,
+        )
+    except Exception as e:
+        # 任务提交失败，回滚已创建的项目
+        if req.project_name:
+            import shutil as _shutil
+            _shutil.rmtree(str(projects_dir / req.project_name), ignore_errors=True)
+            logger.warning(f"导入任务提交失败，已回滚项目 '{req.project_name}'")
+        raise HTTPException(503, f"任务提交失败: {e}")

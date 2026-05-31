@@ -207,9 +207,9 @@ def _execute_health_check(name: str, hc: dict, cfg: dict,
         url = _get_cfg_value(cfg, hc.get("config_key", ""))
         if not url:
             return _result(name, False, result_backend, "cloud", "LLM 地址未配置")
-        # 检查 enabled 状态
+        # 检查 enabled 状态（兼容 bool / str / None）
         llm_enabled = _get_cfg_value(cfg, "llm.enabled")
-        if llm_enabled and llm_enabled.lower() in ("false", "0"):
+        if llm_enabled and str(llm_enabled).lower() in ("false", "0"):
             service_ok = _url_ok(url.rstrip("/") + "/v1/models",
                                 headers=_resolve_auth(cfg, hc.get("api_key_from", "")))
             if service_ok:
