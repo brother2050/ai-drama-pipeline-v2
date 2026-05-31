@@ -318,8 +318,8 @@ class WorkflowBuilder:
                     pulid_config = self.config.get("pulid_flux", {})
                     if pulid_config.get("enabled", True):
                         # 检查 ComfyUI 是否安装了 PuLID-Flux 插件
-                        if not self.available_nodes or "LoadPuLIDFluxModel" not in self.available_nodes:
-                            logger.warning("ComfyUI 未安装 PuLID-Flux 插件（LoadPuLIDFluxModel 节点不存在），跳过面部一致性注入。安装: cd ComfyUI/custom_nodes && git clone https://github.com/balazik/ComfyUI-PuLID-Flux.git")
+                        if hasattr(self, 'available_nodes') and self.available_nodes and "PulidFluxModelLoader" not in self.available_nodes:
+                            logger.warning("ComfyUI 未安装 PuLID-Flux 插件（PulidFluxModelLoader 节点不存在），跳过面部一致性注入。安装: cd ComfyUI/custom_nodes && git clone https://github.com/balazik/ComfyUI-PuLID-Flux.git")
                         else:
                             wf = self._inject_pulid_flux(wf, chars_without_lora, pulid_config, outfit=outfit)
                     else:
@@ -330,7 +330,7 @@ class WorkflowBuilder:
                         ip_config = self.config.get("ip_adapter", {})
                     if ip_config.get("enabled") is not False:
                         # 检查 ComfyUI 是否安装了 IP-Adapter 插件
-                        if not self.available_nodes or "IPAdapterAdvanced" not in self.available_nodes:
+                        if hasattr(self, 'available_nodes') and self.available_nodes and "IPAdapterAdvanced" not in self.available_nodes:
                             logger.warning("ComfyUI 未安装 ComfyUI_IPAdapter_plus 插件（IPAdapterAdvanced 节点不存在），跳过面部一致性注入。安装: cd ComfyUI/custom_nodes && git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus.git")
                         else:
                             wf = self._inject_character_refs(wf, chars_without_lora, ip_config, outfit=outfit)
@@ -624,9 +624,9 @@ class WorkflowBuilder:
         - 实现跨镜头角色面部一致性
 
         节点结构：
-        LoadPuLIDFluxModel → ┐
-        LoadInsightFace     → ├→ ApplyPuLIDFlux → KSampler (model)
-        LoadEvaClip         → ┘
+        PulidFluxModelLoader → ┐
+        PulidFluxInsightFaceLoader → ├→ ApplyPulidFlux → KSampler (model)
+        PulidFluxEvaClipLoader → ┘
         LoadImage (定妆照)  → ┘
 
         Args:
@@ -649,8 +649,6 @@ class WorkflowBuilder:
         weight = pulid_config.get("weight", 0.9)
         start_at = pulid_config.get("start_at", 0.0)
         end_at = pulid_config.get("end_at", 1.0)
-        fusion = pulid_config.get("fusion", "mean")
-        use_gray = pulid_config.get("use_gray", True)
 
         # 3. 创建节点
         suffix = random.randint(1000, 9999)
@@ -660,21 +658,21 @@ class WorkflowBuilder:
         load_image_node = f"pulid_ref_{suffix}"
         apply_node = f"pulid_apply_{suffix}"
 
-        # 4. LoadPuLIDFluxModel
+        # 4. PulidFluxModelLoader
         wf[pulid_model_node] = {
-            "class_type": "LoadPuLIDFluxModel",
+            "class_type": "PulidFluxModelLoader",
             "inputs": {"pulid_file": pulid_config.get("model", "pulid_flux_v0.9.0.safetensors")}
         }
 
-        # 5. LoadInsightFace (PuLID Flux)
+        # 5. PulidFluxInsightFaceLoader
         wf[insightface_node] = {
-            "class_type": "LoadInsightFace",
+            "class_type": "PulidFluxInsightFaceLoader",
             "inputs": {"provider": "CPU"}  # GPU 可选，但 CPU 更兼容
         }
 
-        # 6. LoadEvaClip (PuLID Flux)
+        # 6. PulidFluxEvaClipLoader
         wf[eva_clip_node] = {
-            "class_type": "LoadEvaClip",
+            "class_type": "PulidFluxEvaClipLoader",
             "inputs": {}
         }
 
@@ -684,18 +682,16 @@ class WorkflowBuilder:
             "inputs": {"image": ""}  # 由 build_upload_map 设置
         }
 
-        # 8. ApplyPuLIDFlux
+        # 8. ApplyPulidFlux
         wf[apply_node] = {
-            "class_type": "ApplyPuLIDFlux",
+            "class_type": "ApplyPulidFlux",
             "inputs": {
                 "weight": weight,
                 "start_at": start_at,
                 "end_at": end_at,
-                "fusion": fusion,
-                "use_gray": use_gray,
                 "model": [model_source, 0],
-                "pulid": [pulid_model_node, 0],
-                "insightface": [insightface_node, 0],
+                "pulid_flux": [pulid_model_node, 0],
+                "face_analysis": [insightface_node, 0],
                 "eva_clip": [eva_clip_node, 0],
                 "image": [load_image_node, 0],
             }
@@ -704,7 +700,7 @@ class WorkflowBuilder:
         # 9. 将 KSampler 的 model 输入重接到 PuLID 输出
         wf[ksampler]["inputs"]["model"] = [apply_node, 0]
 
-        logger.info(f"注入 PuLID-Flux: weight={weight}, fusion={fusion}, "
+        logger.info(f"注入 PuLID-Flux: weight={weight}, "
                     f"start_at={start_at}, end_at={end_at}")
 
         # 多角色：链式注入次要角色
@@ -728,8 +724,8 @@ class WorkflowBuilder:
         if pulid_config is None:
             pulid_config = {}
 
-        # 找已有 ApplyPuLIDFlux 节点
-        pulid_nodes = find_nodes_by_class(wf, "ApplyPuLIDFlux")
+        # 找已有 ApplyPulidFlux 节点
+        pulid_nodes = find_nodes_by_class(wf, "ApplyPulidFlux")
         if not pulid_nodes:
             logger.warning("未找到已有 PuLID-Flux 节点，无法链式注入")
             return wf
@@ -763,11 +759,11 @@ class WorkflowBuilder:
         eva_clip_node = None
         for nid, node in wf.items():
             ct = node.get("class_type", "")
-            if ct == "LoadPuLIDFluxModel":
+            if ct == "PulidFluxModelLoader":
                 pulid_model_node = nid
-            elif ct == "LoadInsightFace":
+            elif ct == "PulidFluxInsightFaceLoader":
                 insightface_node = nid
-            elif ct == "LoadEvaClip":
+            elif ct == "PulidFluxEvaClipLoader":
                 eva_clip_node = nid
 
         # 创建新节点
@@ -784,19 +780,17 @@ class WorkflowBuilder:
             "weight": weight,
             "start_at": pulid_config.get("start_at", 0.0),
             "end_at": pulid_config.get("end_at", 1.0),
-            "fusion": pulid_config.get("fusion", "mean"),
-            "use_gray": pulid_config.get("use_gray", True),
             "model": [last_pulid, 0],
             "image": [new_load, 0],
         }
         if pulid_model_node:
-            apply_inputs["pulid"] = [pulid_model_node, 0]
+            apply_inputs["pulid_flux"] = [pulid_model_node, 0]
         if insightface_node:
-            apply_inputs["insightface"] = [insightface_node, 0]
+            apply_inputs["face_analysis"] = [insightface_node, 0]
         if eva_clip_node:
             apply_inputs["eva_clip"] = [eva_clip_node, 0]
 
-        wf[new_apply] = {"class_type": "ApplyPuLIDFlux", "inputs": apply_inputs}
+        wf[new_apply] = {"class_type": "ApplyPulidFlux", "inputs": apply_inputs}
 
         # 重接下游
         if downstream_node and downstream_input:
@@ -1147,7 +1141,7 @@ class WorkflowBuilder:
                         current_removed.add(nid)
                         del wf[nid]
                         changed = True
-                elif ct == "ApplyPuLIDFlux":
+                elif ct == "ApplyPulidFlux":
                     img = node.get("inputs", {}).get("image")
                     if not img or (isinstance(img, list) and len(img) == 2 and img[0] not in wf):
                         current_removed.add(nid)

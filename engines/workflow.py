@@ -111,10 +111,10 @@ def find_pulid_flux_nodes(wf: dict) -> dict[str, list[str]]:
 
     Returns:
         {
-            "apply": ["pulid_apply_xxx", ...],           # ApplyPuLIDFlux
-            "model_loader": ["pulid_model_xxx", ...],    # LoadPuLIDFluxModel
-            "insightface": ["pulid_insightface_xxx", ...],# LoadInsightFace
-            "eva_clip": ["pulid_eva_clip_xxx", ...],     # LoadEvaClip
+            "apply": ["pulid_apply_xxx", ...],           # ApplyPulidFlux
+            "model_loader": ["pulid_model_xxx", ...],    # PulidFluxModelLoader
+            "insightface": ["pulid_insightface_xxx", ...],# PulidFluxInsightFaceLoader
+            "eva_clip": ["pulid_eva_clip_xxx", ...],     # PulidFluxEvaClipLoader
             "ref_images": ["pulid_ref_xxx", ...],        # PuLID LoadImage
         }
     """
@@ -123,13 +123,13 @@ def find_pulid_flux_nodes(wf: dict) -> dict[str, list[str]]:
         if nid.startswith("_"):
             continue
         ct = node.get("class_type", "")
-        if ct == "ApplyPuLIDFlux":
+        if ct == "ApplyPulidFlux":
             result["apply"].append(nid)
-        elif ct == "LoadPuLIDFluxModel":
+        elif ct == "PulidFluxModelLoader":
             result["model_loader"].append(nid)
-        elif ct == "LoadInsightFace" and nid.startswith("pulid_"):
+        elif ct == "PulidFluxInsightFaceLoader" and nid.startswith("pulid_"):
             result["insightface"].append(nid)
-        elif ct == "LoadEvaClip" and nid.startswith("pulid_"):
+        elif ct == "PulidFluxEvaClipLoader" and nid.startswith("pulid_"):
             result["eva_clip"].append(nid)
         elif ct == "LoadImage" and nid.startswith("pulid_ref"):
             result["ref_images"].append(nid)
