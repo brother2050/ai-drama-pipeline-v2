@@ -311,6 +311,7 @@ services:
     health_check:
       type: "api_key_env"
       env: "SEKO_API_KEY"
+      config_key: "seko.api_key"
 
   training:
     description: "AI Toolkit LoRA 训练"

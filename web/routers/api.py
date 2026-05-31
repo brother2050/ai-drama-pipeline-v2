@@ -367,6 +367,23 @@ def test_tool(name: str):
             workers = list(active.keys())
             return {"ok": True, "name": name, "message": f"Celery Worker: {', '.join(workers) or 'none'}", **result}
 
+        elif name == "seko":
+            seko_cfg = cfg.get("seko", {})
+            api_key = seko_cfg.get("api_key") or os.environ.get("SEKO_API_KEY", "")
+            if not api_key:
+                return {"ok": False, "name": name, "message": "SEKO_API_KEY 未配置", **result}
+            # 实际调用 Seko API 验证 Key 有效性
+            from api.backends.seko.proposal import check_proposal_status
+            test_result = check_proposal_status("__health_check__", api_key=api_key, config=seko_cfg)
+            code = test_result.get("code", 0)
+            # 认证失败（401/403/自定义错误码）→ Key 无效
+            if code in (401, 403):
+                return {"ok": False, "name": name, "message": f"API Key 无效 (HTTP {code})", **result}
+            if isinstance(test_result.get("msg"), str) and "auth" in test_result["msg"].lower():
+                return {"ok": False, "name": name, "message": f"API Key 认证失败: {test_result['msg']}", **result}
+            # 其他响应（含任务不存在）说明网络通、Key 有效
+            return {"ok": True, "name": name, "message": f"Seko API 连接正常 (code={code})", **result}
+
         elif name == "training":
             training_cfg = cfg.get("training", {})
             api_url = training_cfg.get("api_url", "")
