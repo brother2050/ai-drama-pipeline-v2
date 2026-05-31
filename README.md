@@ -57,7 +57,102 @@ pip install -e ".[all]"
 
 </details>
 
-### 3. 启动 Redis + PostgreSQL（必选）
+### 3. 下载基础模型（按选择的后端）
+
+> 项目启动前必须下载至少一个图像后端的基础模型。模型放到 `ComfyUI/models/` 对应子目录。
+
+#### 📌 模型下载总览
+
+| 后端 | UNet / Checkpoint | CLIP | VAE | 显存需求 |
+|------|-------------------|------|-----|---------|
+| **Flux（推荐）** | `flux1-dev.safetensors` | `clip_l.safetensors` + `t5xxl_fp16.safetensors` | Flux 自带 | ~16GB |
+| **Cosmos** | `cosmos_predict2_2B_t2i.safetensors` | `oldt5_xxl_fp8_e4m3fn_scaled.safetensors` | `wan_2.1_vae.safetensors` | ~12GB |
+| **SD1.5** | `v1-5-pruned-emaonly.safetensors` | Checkpoint 自带 | Checkpoint 自带 | ~6GB |
+
+#### 方案 A：Flux 后端（推荐）
+
+```bash
+# 1. UNet 模型 → ComfyUI/models/diffusion_models/（或 ComfyUI/models/unet/）
+mkdir -p ComfyUI/models/diffusion_models/
+wget -O ComfyUI/models/diffusion_models/flux1-dev.safetensors \
+  https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/flux1-dev.safetensors
+
+# 2. CLIP 模型 → ComfyUI/models/clip/
+mkdir -p ComfyUI/models/clip/
+wget -O ComfyUI/models/clip/clip_l.safetensors \
+  https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors
+wget -O ComfyUI/models/clip/t5xxl_fp16.safetensors \
+  https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp16.safetensors
+
+# 3. VAE：Flux UNet 自带 VAE，无需单独下载
+```
+
+> **FP8 省显存版**（8GB 显存可跑）：
+> ```bash
+> # 用 FP8 UNet 替代 FP16，显存从 16GB 降到 ~8GB
+> wget -O ComfyUI/models/diffusion_models/flux1-dev-fp8.safetensors \
+>   https://huggingface.co/Kijai/flux-fp8/resolve/main/flux1-dev-fp8.safetensors
+> ```
+
+#### 方案 B：Cosmos 后端
+
+```bash
+# 1. UNet 模型 → ComfyUI/models/diffusion_models/
+mkdir -p ComfyUI/models/diffusion_models/
+wget -O ComfyUI/models/diffusion_models/cosmos_predict2_2B_t2i.safetensors \
+  https://huggingface.co/nvidia/Cosmos-Predict2-2B-Text2Image/resolve/main/cosmos_predict2_2B_t2i.safetensors
+
+# 2. CLIP 模型（T5-XXL FP8）→ ComfyUI/models/clip/
+mkdir -p ComfyUI/models/clip/
+wget -O ComfyUI/models/clip/oldt5_xxl_fp8_e4m3fn_scaled.safetensors \
+  https://huggingface.co/nvidia/Cosmos-Predict2-2B-Text2Image/resolve/main/oldt5_xxl_fp8_e4m3fn_scaled.safetensors
+
+# 3. VAE → ComfyUI/models/vae/
+mkdir -p ComfyUI/models/vae/
+wget -O ComfyUI/models/vae/wan_2.1_vae.safetensors \
+  https://huggingface.co/nvidia/Cosmos-Predict2-2B-Text2Image/resolve/main/wan_2.1_vae.safetensors
+```
+
+> **Cosmos 视频生成**（可选，用于 `cosmos-video` 视频后端）：
+> ```bash
+> wget -O ComfyUI/models/diffusion_models/cosmos_predict2_2B_video2world_480p_16fps.safetensors \
+>   https://huggingface.co/nvidia/Cosmos-Predict2-2B-Video2World/resolve/main/cosmos_predict2_2B_video2world_480p_16fps.safetensors
+> ```
+
+#### 方案 C：SD1.5 后端
+
+```bash
+# Checkpoint 模型 → ComfyUI/models/checkpoints/
+mkdir -p ComfyUI/models/checkpoints/
+wget -O ComfyUI/models/checkpoints/v1-5-pruned-emaonly.safetensors \
+  https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly.safetensors
+```
+
+> SD1.5 的 CLIP 和 VAE 内嵌在 Checkpoint 中，无需单独下载。
+
+#### 📁 目录结构参考
+
+```
+ComfyUI/models/
+├── diffusion_models/     # UNet 模型（Flux / Cosmos）
+│   ├── flux1-dev.safetensors
+│   └── cosmos_predict2_2B_t2i.safetensors
+├── checkpoints/          # SD1.5 Checkpoint
+│   └── v1-5-pruned-emaonly.safetensors
+├── clip/                 # 文本编码器
+│   ├── clip_l.safetensors            # Flux
+│   ├── t5xxl_fp16.safetensors        # Flux
+│   └── oldt5_xxl_fp8_e4m3fn_scaled.safetensors  # Cosmos
+├── vae/                  # VAE 解码器
+│   └── wan_2.1_vae.safetensors       # Cosmos
+├── ipadapter/            # IP-Adapter 模型（第 6 节）
+├── pulid/                # PuLID-Flux 模型（第 7 节）
+├── clip_vision/          # CLIP Vision 编码器
+├── insightface/          # InsightFace 人脸模型
+└── loras/                # LoRA 模型（训练产出）
+```
+
+### 4. 启动 Redis + PostgreSQL（必选）
 
 ```bash
 # Ubuntu
@@ -107,7 +202,7 @@ sudo -u postgres psql -c "GRANT ALL ON DATABASE ai_drama TO drama;"
 > brew services restart postgresql@16
 > ```
 
-### 4. 配置
+### 5. 配置
 
 ```bash
 cp .env.example .env
@@ -119,7 +214,7 @@ cp .env.example .env
 # 获取 SEKO_API_KEY: https://seko.sensetime.com/explore
 ```
 
-### 5. 启动
+### 6. 启动
 
 ```bash
 # 终端 1: 启动 Celery Worker（处理异步任务）
@@ -140,7 +235,7 @@ drama serve
 > drama worker -c 4   # Web 操作较多时推荐
 > ```
 
-### 6. IP-Adapter Plus（角色面部一致性，可选但强烈推荐）
+### 7. IP-Adapter Plus（角色面部一致性，可选但强烈推荐）
 
 > 基于 [ComfyUI_IPAdapter_plus](https://github.com/cubiq/ComfyUI_IPAdapter_plus) 实现跨镜头角色面部一致性。安装后定妆照的面部特征会通过 IP-Adapter 注入到每个镜头的首帧生成中，大幅提升同一角色在不同镜头间的辨识度。
 
@@ -238,7 +333,7 @@ ip_adapter:
 drama status   # 应显示 IP-Adapter Plus ✅
 ```
 
-### 7. PuLID-Flux（Flux 面部一致性，推荐）
+### 8. PuLID-Flux（Flux 面部一致性，推荐）
 
 > 基于 [PuLID](https://github.com/ToTheBeginning/PuLID) 的 Flux 面部一致性方案。通过 InsightFace 检测人脸 + EVA CLIP 编码面部特征，将 ID embedding 注入 Flux DiT 注意力层，实现跨镜头角色面部一致性。
 
