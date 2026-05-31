@@ -65,6 +65,7 @@ class WorkflowBuilder:
                 available_nodes = self.comfyui.get_available_node_types()
             except Exception as e:
                 logger.debug(f"获取 ComfyUI 节点类型失败: {e}")
+        self.available_nodes = available_nodes
 
         # 确保 registry 可用（懒加载内置默认）
         if not self.registry:
@@ -316,7 +317,11 @@ class WorkflowBuilder:
                 if consistency == "pulid_flux":
                     pulid_config = self.config.get("pulid_flux", {})
                     if pulid_config.get("enabled", True):
-                        wf = self._inject_pulid_flux(wf, chars_without_lora, pulid_config, outfit=outfit)
+                        # 检查 ComfyUI 是否安装了 PuLID-Flux 插件
+                        if hasattr(self, 'available_nodes') and self.available_nodes and "LoadPuLIDFluxModel" not in self.available_nodes:
+                            logger.warning("ComfyUI 未安装 PuLID-Flux 插件（LoadPuLIDFluxModel 节点不存在），跳过面部一致性注入。安装: cd ComfyUI/custom_nodes && git clone https://github.com/balazik/ComfyUI-PuLID-Flux.git")
+                        else:
+                            wf = self._inject_pulid_flux(wf, chars_without_lora, pulid_config, outfit=outfit)
                     else:
                         logger.info("PuLID-Flux 已禁用，跳过一致性注入")
                 elif consistency == "ip_adapter":
@@ -324,7 +329,11 @@ class WorkflowBuilder:
                     if not ip_config:
                         ip_config = self.config.get("ip_adapter", {})
                     if ip_config.get("enabled") is not False:
-                        wf = self._inject_character_refs(wf, chars_without_lora, ip_config, outfit=outfit)
+                        # 检查 ComfyUI 是否安装了 IP-Adapter 插件
+                        if hasattr(self, 'available_nodes') and self.available_nodes and "IPAdapterAdvanced" not in self.available_nodes:
+                            logger.warning("ComfyUI 未安装 ComfyUI_IPAdapter_plus 插件（IPAdapterAdvanced 节点不存在），跳过面部一致性注入。安装: cd ComfyUI/custom_nodes && git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus.git")
+                        else:
+                            wf = self._inject_character_refs(wf, chars_without_lora, ip_config, outfit=outfit)
                     else:
                         logger.info("IP-Adapter 已禁用，跳过一致性注入")
                 else:
