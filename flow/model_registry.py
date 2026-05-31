@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import copy
 import logging
 import os
 from pathlib import Path
@@ -123,7 +124,7 @@ class ModelRegistry:
 
     def get_defaults(self) -> dict[str, str]:
         """返回全局默认后端名映射 {'tts_backend': 'mimo-voicedesign', ...}"""
-        return dict(self._data.get("defaults", {}))
+        return copy.deepcopy(self._data.get("defaults", {}))
 
     # ══════════════════════════════════════════════════════════
     #  通用后端查询
@@ -137,23 +138,24 @@ class ModelRegistry:
             name: 后端名（如 mimo-voicedesign, sd15, animatediff）
 
         Returns:
-            后端元数据 dict，不存在返回 None
+            后端元数据 dict，不存在返回 None（返回副本，修改不影响注册表）
         """
         section = self._SECTION_MAP.get(service_type)
         if not section:
             logger.warning(f"未知服务类型: {service_type}")
             return None
-        return self._data.get(section, {}).get(name)
+        backend = self._data.get(section, {}).get(name)
+        return copy.deepcopy(backend) if backend is not None else None
 
     def get_backends(self, service_type: str) -> dict[str, dict]:
-        """返回某服务类型的所有后端 {'name': {metadata}}"""
+        """返回某服务类型的所有后端 {'name': {metadata}}（返回副本）"""
         section = self._SECTION_MAP.get(service_type)
         if not section:
             return {}
-        return dict(self._data.get(section, {}))
+        return copy.deepcopy(self._data.get(section, {}))
 
     def list_backend_names(self, service_type: str) -> list[str]:
-        """返回某服务类型的所有后端名列表"""
+        """返回某服务类型的所有后端名列表（返回副本）"""
         section = self._SECTION_MAP.get(service_type)
         if not section:
             return []
@@ -167,11 +169,12 @@ class ModelRegistry:
         """返回后端的健康检查配置
 
         Returns:
-            {'type': 'http', 'path': '/', 'config_key': 'models.gpt_sovits.api_url'} 或 None
+            {'type': 'http', 'path': '/', 'config_key': 'models.gpt_sovits.api_url'} 或 None（返回副本）
         """
         backend = self.get_backend(service_type, name)
         if backend:
-            return backend.get("health_check")
+            hc = backend.get("health_check")
+            return copy.deepcopy(hc) if hc is not None else None
         return None
 
     def get_service_health_check(self, service_name: str) -> dict | None:
@@ -181,9 +184,10 @@ class ModelRegistry:
             service_name: comfyui / redis / celery / ffmpeg / seko / training
 
         Returns:
-            健康检查配置 dict 或 None
+            健康检查配置 dict 或 None（返回副本）
         """
-        return self._data.get("services", {}).get(service_name, {}).get("health_check")
+        hc = self._data.get("services", {}).get(service_name, {}).get("health_check")
+        return copy.deepcopy(hc) if hc is not None else None
 
     def get_all_health_checks(self) -> dict[str, dict]:
         """返回所有需要健康检查的项（后端 + 辅助服务）
@@ -218,8 +222,8 @@ class ModelRegistry:
         return self._data.get("image_backends", {}).get(backend, {}).get("workflow", "")
 
     def get_image_defaults(self, backend: str) -> dict:
-        """返回图像后端的默认生成参数"""
-        return dict(self._data.get("image_backends", {}).get(backend, {}).get("default_params", {}))
+        """返回图像后端的默认生成参数（返回副本）"""
+        return copy.deepcopy(self._data.get("image_backends", {}).get(backend, {}).get("default_params", {}))
 
     def get_prompt_style(self, image_backend: str) -> str:
         """返回图像后端的 prompt 风格 ('tag' / 'natural')
@@ -246,17 +250,18 @@ class ModelRegistry:
         return self._data.get("video_backends", {}).get(backend, {}).get("workflow", "")
 
     def get_video_defaults(self, backend: str) -> dict:
-        """返回视频后端的默认生成参数"""
-        return dict(self._data.get("video_backends", {}).get(backend, {}).get("default_params", {}))
+        """返回视频后端的默认生成参数（返回副本）"""
+        return copy.deepcopy(self._data.get("video_backends", {}).get(backend, {}).get("default_params", {}))
 
     def get_frame_params(self, video_backend: str) -> dict | None:
         """返回视频后端的帧数注入规则
 
         Returns:
             {'node_class': 'ADE_StandardStaticContextOptions', 'input_name': 'context_length'}
-            或 None（后端未声明帧数注入规则）
+            或 None（后端未声明帧数注入规则，返回副本）
         """
-        return self._data.get("video_backends", {}).get(video_backend, {}).get("frame_params")
+        fp = self._data.get("video_backends", {}).get(video_backend, {}).get("frame_params")
+        return copy.deepcopy(fp) if fp is not None else None
 
     def get_sampler_node(self, backend: str) -> str:
         """返回后端的采样器节点类型名（image 或 video）"""
@@ -279,9 +284,10 @@ class ModelRegistry:
         Returns:
             {'compatible_backends': ['sd15', 'sdxl'], 'config_key': 'ip_adapter',
              'inject_method': '_inject_ip_adapter_plus'}
-            或 None
+            或 None（返回副本）
         """
-        return self._data.get("consistency_methods", {}).get(name)
+        method = self._data.get("consistency_methods", {}).get(name)
+        return copy.deepcopy(method) if method is not None else None
 
     def get_compatible_consistency(self, image_backend: str) -> list[str]:
         """返回与某图像后端兼容的所有一致性方案名"""
@@ -302,8 +308,9 @@ class ModelRegistry:
 
         Returns:
             [{'name': 'tts', 'task': 'pipeline.step.tts', 'tool': 'tts', 'timeout': 120}, ...]
+            （返回副本）
         """
-        return list(self._data.get("pipeline_steps", []))
+        return copy.deepcopy(self._data.get("pipeline_steps", []))
 
     # ══════════════════════════════════════════════════════════
     #  已有接口（向后兼容）
@@ -328,17 +335,17 @@ class ModelRegistry:
         return set(self._data.get("music_backends", {}).keys())
 
     def get_tts_backends(self) -> dict:
-        """获取所有 TTS 后端及其描述（向后兼容）"""
-        return dict(self._data.get("tts_backends", {}))
+        """获取所有 TTS 后端及其描述（向后兼容，返回副本）"""
+        return copy.deepcopy(self._data.get("tts_backends", {}))
 
     def get_lipsync_backends(self) -> dict:
-        return dict(self._data.get("lipsync_backends", {}))
+        return copy.deepcopy(self._data.get("lipsync_backends", {}))
 
     def get_llm_backends(self) -> dict:
-        return dict(self._data.get("llm_backends", {}))
+        return copy.deepcopy(self._data.get("llm_backends", {}))
 
     def get_music_backends(self) -> dict:
-        return dict(self._data.get("music_backends", {}))
+        return copy.deepcopy(self._data.get("music_backends", {}))
 
     def register_image_backend(self, name: str, workflow: str, params: dict, **kw):
         self._data.setdefault("image_backends", {})[name] = {
