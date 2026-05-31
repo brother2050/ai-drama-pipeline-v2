@@ -233,7 +233,16 @@ def system_status():
 def _collect_tools(cfg: dict) -> dict:
     """收集所有工具状态（并行检测，避免串行超时累积）"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    names = ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg", "seko", "training", "ip_adapter", "pulid_flux"]
+    from flow.model_registry import ModelRegistry
+    try:
+        _reg = ModelRegistry(_cfg_path())
+        names = _reg.get_registered_service_types()
+        # 补充一致性方案（ip_adapter / pulid_flux）的健康检查
+        for method_name, method_meta in _reg._data.get("consistency_methods", {}).items():
+            if method_name != "none" and method_meta.get("config_key"):
+                names.append(method_name)
+    except Exception:
+        names = ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg"]
     tools = {}
     with ThreadPoolExecutor(max_workers=5) as ex:
         futures = {ex.submit(_check_tool, name, cfg): name for name in names}
@@ -419,32 +428,20 @@ def test_tool(name: str):
             except Exception as e:
                 return {"ok": False, "name": name, "message": f"训练后端不可用: {e}", **result}
 
-        elif name == "ip_adapter":
-            ip_cfg = cfg.get("ip_adapter", {})
-            if not ip_cfg.get("enabled", True):
-                return {"ok": False, "name": name, "message": "IP-Adapter 未启用", **result}
-            model = ip_cfg.get("model", "ip-adapter-plus-face_sd15.safetensors")
-            clip_vision = ip_cfg.get("clip_vision", "")
-            weight = ip_cfg.get("weight", 0.75)
-            # 检查 ComfyUI 是否可达
+        # 一致性方案（从注册表 consistency_methods 动态获取，不硬编码方案名）
+        elif name in _reg.get_consistency_check_map():
+            method_meta = _reg.get_consistency_method(name)
+            config_key = method_meta.get("config_key", name) if method_meta else name
+            method_cfg = cfg.get(config_key, {})
+            if not method_cfg.get("enabled", True):
+                return {"ok": False, "name": name, "message": f"{name} 未启用", **result}
+            model = method_cfg.get("model", "")
+            weight = method_cfg.get("weight", "")
             comfyui_check = _check_tool("comfyui", cfg)
             if not comfyui_check.get("available"):
-                return {"ok": False, "name": name, "message": f"ComfyUI 不可达（IP-Adapter 依赖 ComfyUI）", **result}
+                return {"ok": False, "name": name, "message": f"ComfyUI 不可达（{name} 依赖 ComfyUI）", **result}
             return {"ok": True, "name": name,
-                    "message": f"IP-Adapter Plus: {model} (weight={weight})",
-                    "model": model, "clip_vision": clip_vision, "weight": weight, **result}
-
-        elif name == "pulid_flux":
-            pulid_cfg = cfg.get("pulid_flux", {})
-            if not pulid_cfg.get("enabled", True):
-                return {"ok": False, "name": name, "message": "PuLID-Flux 未启用", **result}
-            model = pulid_cfg.get("model", "pulid_flux_v0.9.0.safetensors")
-            weight = pulid_cfg.get("weight", 0.9)
-            comfyui_check = _check_tool("comfyui", cfg)
-            if not comfyui_check.get("available"):
-                return {"ok": False, "name": name, "message": "ComfyUI 不可达（PuLID-Flux 依赖 ComfyUI）", **result}
-            return {"ok": True, "name": name,
-                    "message": f"PuLID-Flux: {model} (weight={weight})",
+                    "message": f"{name}: {model} (weight={weight})",
                     "model": model, "weight": weight, **result}
 
         return {"ok": True, "name": name, "message": "可用", **result}
@@ -458,14 +455,16 @@ def _test_llm(cfg: dict, result: dict) -> dict:
     name = "llm"
     llm_cfg = cfg.get("llm", {})
     base_url = llm_cfg.get("base_url", "")
-    backend = llm_cfg.get("backend", "openai")
+    # 从注册表读取默认 LLM 后端（不硬编码 "openai"）
+    from flow.model_registry import ModelRegistry as _MR
+    _reg = _MR(_cfg_path())
+    _defaults = _reg.get_defaults()
+    backend = llm_cfg.get("backend", _defaults.get("llm_backend", "openai"))
     api_key = llm_cfg.get("api_key", "")
 
     if not base_url:
         return {"ok": False, "name": name, "message": "未配置 API URL", **result}
     # 从注册表查询后端是否需要 API Key（替代硬编码 backend != "ollama"）
-    from flow.model_registry import ModelRegistry as _MR
-    _reg = _MR(_cfg_path())
     backend_meta = _reg.get_backend("llm", backend)
     needs_key = backend_meta.get("requires_api_key", True) if backend_meta else True
 
