@@ -41,7 +41,7 @@ def _safe_int(val, default=0) -> int:
 
 
 def _load_shots(config_path: str, episode: int) -> list[dict]:
-    sb = Path(config_path).resolve().parent.parent / "storyboard" / "episodes.csv"
+    sb = _paths(config_path).storyboard_csv
     if not sb.exists():
         return []
     with open(sb, encoding="utf-8") as f:
@@ -56,7 +56,7 @@ _SB_CACHE_MAX = 8  # 最多缓存不同项目的分镜表数量
 def _load_all_shots_cached(config_path: str) -> list[dict]:
     """加载全部分镜（带 mtime 缓存）。返回深拷贝，防止调用方修改缓存数据。"""
     import copy as _copy
-    sb = Path(config_path).resolve().parent.parent / "storyboard" / "episodes.csv"
+    sb = _paths(config_path).storyboard_csv
     if not sb.exists():
         return []
     sb_str = str(sb)

@@ -28,16 +28,19 @@ class ProjectPaths:
     """统一路径管理 — 所有项目路径的单一数据源
 
     两个核心目录:
-      - project_dir: 项目根目录（如 projects/default/）
-      - episode_dir: 某集的输出目录（如 projects/default/output/e01/）
+      - root: 项目根目录（如 projects/default/）
+      - episode_dir(n): 某集的输出目录（如 projects/default/output/e01/）
 
     用法:
       paths = ProjectPaths("/path/to/projects/default")
-      paths.characters_dir        # .../config/characters/
-      paths.storyboard_csv        # .../storyboard/episodes.csv
-      ep = paths.episode(1)
-      ep.shot_dir("001")          # .../output/e01/s001/
-      ep.frame_path("001")        # .../output/e01/s001/frame.png
+      paths.characters_dir          # .../config/characters/
+      paths.storyboard_csv          # .../storyboard/episodes.csv
+      paths.character_yaml("guchen")# .../config/characters/guchen.yaml
+      paths.episode_dir(1)          # .../output/e01/
+      paths.shot_dir(1, "001")      # .../output/e01/s001/
+      paths.shot_frame(1, "001")    # .../output/e01/s001/frame.png
+      paths.episode_srt(1)          # .../output/e01/episode_01.srt
+      paths.episode_final(1)        # .../output/e01/episode_01_final.mp4
     """
 
     def __init__(self, project_dir: str | Path):

@@ -147,12 +147,13 @@ def run_portraits(
         write_db: True 时同步写入数据库
     """
     cfg = Config(config_path)
+    paths = cfg.paths
     logger.info("生成定妆照（三视图）")
 
     from api import _ensure_registered; _ensure_registered()
     from api.registry import Container
 
-    chars_dir = Path(cfg.project_dir) / "config" / "characters"
+    chars_dir = paths.characters_dir
     if not chars_dir.exists():
         logger.warning("角色配置目录不存在")
         return
@@ -187,7 +188,7 @@ def run_portraits(
         char_name = char.get("name", char_id)
         logger.info(f"  角色: {char_name} ({char_id})")
 
-        portrait_dir = Path(cfg.project_dir) / "assets" / "characters" / char_id
+        portrait_dir = paths.character_asset_dir(char_id)
         portrait_dir.mkdir(parents=True, exist_ok=True)
 
         if not cont:
@@ -201,7 +202,7 @@ def run_portraits(
             comfyui = cont.get("image")
             from engines.workflow_builder import WorkflowBuilder
             models = cfg.get("models", {})
-            wb = WorkflowBuilder(cfg.data, models, cfg.project_dir, comfyui=comfyui, force=force)
+            wb = WorkflowBuilder(cfg.data, models, str(paths.root), comfyui=comfyui, force=force)
             wb.load_workflows()
 
             # ── 1. 生成三视图 ──
@@ -234,7 +235,7 @@ def run_portraits(
                 try:
                     ok = _generate_view(char_id, appearance, portrait_dir, comfyui, wb,
                                         filename, shot_type, seed=view_seed, ref_image=ref,
-                                        char=char, project_dir=cfg.project_dir)
+                                        char=char, project_dir=str(paths.root))
                     if ok:
                         if old_file and force:
                             pass  # os.replace 已覆盖
@@ -301,7 +302,7 @@ def run_portraits(
                             char_id, appearance, outfit_key, outfit_desc,
                             portrait_dir, comfyui, wb,
                             seed=outfit_seed, ref_image=ref,
-                            project_dir=cfg.project_dir,
+                            project_dir=str(paths.root),
                             appearance_prompt_en=appearance_prompt_en)
                         if ok:
                             outfit_url = f"/api/assets/characters/{char_id}/{outfit_key}/cover.png"

@@ -1,14 +1,15 @@
 """集管理 — 文件系统 + 数据库双查询"""
 from __future__ import annotations
 import logging
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
 def get_episode_status(project_dir: str, episode: int) -> dict:
     """获取集状态（文件系统 + 数据库）"""
-    out_dir = Path(project_dir) / "output" / f"e{episode:02d}"
+    from infra.config import ProjectPaths
+    paths = ProjectPaths(project_dir)
+    out_dir = paths.episode_dir(episode)
     if not out_dir.exists():
         return {"episode": episode, "status": "not_started", "shots": 0}
 

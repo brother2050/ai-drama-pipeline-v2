@@ -127,7 +127,7 @@ def _merged_cfg() -> dict:
 
 
 def _cfg_path() -> str:
-    return str(_proj() / "config" / "project.yaml")
+    return str(_paths().project_yaml)
 
 
 def _paths():
@@ -1125,7 +1125,7 @@ def get_episodes_summary():
         shots = ep_shots[ep]
         total_dur = sum(int(s.get("duration", 4) or 4) for s in shots)
         done_count = 0
-        out_base = _proj() / "output" / f"e{ep:02d}"
+        out_base = _paths().episode_dir(ep)
         for s in shots:
             sid = s.get("shot_id", "")
             if not sid:
@@ -1312,7 +1312,7 @@ def get_shot_resources(episode: int, shot_id: str):
     _check_episode(episode)
     _check_id(shot_id, "shot_id")
 
-    out_dir = _safe_path(_proj(), "output", f"e{episode:02d}", f"s{shot_id}")
+    out_dir = _safe_path(_paths().root, "output", f"e{episode:02d}", f"s{shot_id}")
     if not out_dir.exists():
         return {"shot_id": shot_id, "resources": {}}
 
@@ -1332,15 +1332,14 @@ def get_shot_file(episode: int, shot_id: str, filename: str):
     _check_episode(episode)
     _check_filename(filename)
 
-    proj = _proj()
+    p = _paths()
 
     if shot_id == "final":
         # 成片文件
-        out_dir = proj / "output" / f"e{episode:02d}"
-        file_path = _safe_path(out_dir, filename)
+        file_path = _safe_path(p.episode_dir(episode), filename)
     else:
         _check_id(shot_id, "shot_id")
-        file_path = _safe_path(proj, "output", f"e{episode:02d}", f"s{shot_id}", filename)
+        file_path = _safe_path(p.root, "output", f"e{episode:02d}", f"s{shot_id}", filename)
     if not file_path.exists():
         raise HTTPException(404, f"文件不存在: {filename}")
 
@@ -1513,9 +1512,9 @@ def add_to_shared_library(entity_type: str, entity_id: str):
 def get_final_resources(episode: int):
     """获取成片资源状态"""
     _check_episode(episode)
-    proj = _proj()
-    out_dir = proj / "output" / f"e{episode:02d}"
-    final_mp4 = out_dir / f"episode_{episode:02d}_final.mp4"
+    p = _paths()
+    out_dir = p.episode_dir(episode)
+    final_mp4 = p.episode_final(episode)
     if not final_mp4.exists():
         candidates = list(out_dir.glob("*final*.mp4"))
         if candidates:
