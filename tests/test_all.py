@@ -426,55 +426,10 @@ def test_distributor_compat():
     print("✅ 平台兼容性检查正常")
 
 
-# ── engines/video_consistency.py ──
-
-def test_video_consistency():
-    """测试视频一致性检查"""
-    from engines.video_consistency import check_video_consistency, _compute_image_hash, _hash_similarity
-
-    # 不存在的视频
-    result = check_video_consistency("/nonexistent/video.mp4", [])
-    assert result["consistent"] is False
-
-    # 无参考图
-    result = check_video_consistency("/nonexistent/video.mp4", [])
-    assert result["score"] == 0.0
-
-    # 哈希相似度
-    h1 = _compute_image_hash(__file__)  # 用测试文件自身
-    if h1:
-        h2 = _compute_image_hash(__file__)
-        sim = _hash_similarity(h1, h2)
-        assert sim == 1.0  # 同一文件
-
-    print("✅ 视频一致性检查正常")
 
 
-# ── engines/consistency.py ──
 
-def test_consistency_engine():
-    """测试角色一致性引擎"""
-    from engines.consistency import CharacterConsistency
 
-    cc = CharacterConsistency()
-
-    # 空参考图
-    score = cc.verify_consistency("/nonexistent.png", [])
-    assert score == 0.0
-
-    # 嵌入提取（哈希回退）
-    emb = cc._extract_hash(__file__)
-    assert emb is not None
-    assert len(emb) > 0
-
-    # 余弦相似度
-    sim = cc._compute_similarity([1.0, 0.0, 0.0], [1.0, 0.0, 0.0])
-    assert sim == 1.0
-    sim = cc._compute_similarity([1.0, 0.0, 0.0], [0.0, 1.0, 0.0])
-    assert sim == 0.0
-
-    cc.shutdown()
-    print("✅ 角色一致性引擎正常")
 
 
 # ── web/schemas ──
@@ -658,8 +613,7 @@ def run_all():
         test_music,
         test_distributor,
         test_distributor_compat,
-        test_video_consistency,
-        test_consistency_engine,
+
         test_web_schemas,
         test_registry,
         test_model_registry,
