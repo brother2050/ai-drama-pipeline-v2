@@ -1,9 +1,9 @@
-episode,shot_id,scene,characters,action,dialogue,camera,shot_type,duration,outfit,emotion,action_en,dialogue_en
-1,001,living_room,linxia,坐在沙发上看手机,他怎么还不回消息...,缓慢推近,特写,4,home,worried,sitting on sofa looking at phone,Why isn't he replying...
-1,002,living_room,linxia,起身走到窗前,......,跟随平移,中景,3,home,sad,stands up and walks to the window,...
-1,003,street,guchen,骑车赶路,马上就到了！,固定,全身,4,casual,determined,riding a bicycle,I'm almost there!
-1,004,living_room,linxia,听到门铃声抬头,嗯？,手持晃动,近景,2,home,surprised,hears the doorbell and looks up,Hmm?
-1,005,street,guchen,按门铃,开门！我来了！,固定,近景,3,casual,happy,ringing the doorbell,Open the door! I'm here!
-1,006,living_room,linxia+guchen,开门对视,......,缓慢推近,双人全景,5,home,romantic,opens the door and they lock eyes,...
-1,007,living_room,guchen,递出一束花,送你的，生日快乐。,固定,中景,4,casual,happy,handing over a bouquet of flowers,This is for you. Happy birthday.
-1,008,living_room,linxia,接过花低头笑,谢谢...你还记得。,缓慢推近,特写,4,home,romantic,takes the flowers and smiles,Thank you... you remembered.
+episode,shot_id,scene,characters,action,dialogue,camera,shot_type,duration,outfit,emotion,action_en,dialogue_en,language
+1,001,living_room,linxia,坐在沙发上看手机,他怎么还不回消息...,缓慢推近,特写,4,home,worried,sitting on sofa looking at phone,Why isn't he replying...,zh
+1,002,living_room,linxia,起身走到窗前,......,跟随平移,中景,3,home,sad,stands up and walks to the window,...,zh
+1,003,street,guchen,骑车赶路,马上就到了！,固定,全身,4,casual,determined,riding a bicycle,I'm almost there!,zh
+1,004,living_room,linxia,听到门铃声抬头,嗯？,手持晃动,近景,2,home,surprised,hears the doorbell and looks up,Hmm?,zh
+1,005,street,guchen,按门铃,开门！我来了！,固定,近景,3,casual,happy,ringing the doorbell,Open the door! I'm here!,zh
+1,006,living_room,linxia+guchen,开门对视,......,缓慢推近,双人全景,5,home,romantic,opens the door and they lock eyes,...,zh
+1,007,living_room,guchen,递出一束花,送你的，生日快乐。,固定,中景,4,casual,happy,handing over a bouquet of flowers,This is for you. Happy birthday.,zh
+1,008,living_room,linxia,接过花低头笑,谢谢...你还记得。,缓慢推近,特写,4,home,romantic,takes the flowers and smiles,Thank you... you remembered.,zh
