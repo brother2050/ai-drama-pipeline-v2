@@ -1,6 +1,6 @@
 """ComfyUI 图片/视频生成 — HTTP API"""
 from __future__ import annotations
-import logging, time, uuid, urllib.parse
+import logging, random, time, uuid, urllib.parse
 from pathlib import Path
 import httpx
 from api.registry import BackendMeta, registry
@@ -92,7 +92,7 @@ class ComfyUI:
         if not prompt_id:
             raise RuntimeError(f"ComfyUI 未返回 prompt_id: {resp}")
 
-        # 等待完成（指数退避：2s → 4s → 8s，上限 16s）
+        # 等待完成（指数退避 + jitter：2s → 4s → 8s → 16s 上限，±50% 抖动）
         deadline = time.time() + self._timeout
         poll_interval = 2
         while time.time() < deadline:
@@ -103,7 +103,7 @@ class ComfyUI:
                         history = r.json()
                     except Exception:
                         logger.warning(f"GET /history/{prompt_id} 返回非 JSON (len={len(r.text)}): {r.text[:200]}")
-                        time.sleep(poll_interval)
+                        time.sleep(poll_interval * (0.5 + random.random()))
                         poll_interval = min(poll_interval * 2, 16)
                         continue
                     if prompt_id in history:
@@ -121,7 +121,7 @@ class ComfyUI:
                             return files
             except httpx.HTTPError as e:
                 logger.debug(f"ComfyUI 轮询网络抖动: {e}")
-            time.sleep(poll_interval)
+            time.sleep(poll_interval * (0.5 + random.random()))
             poll_interval = min(poll_interval * 2, 16)
         raise TimeoutError(f"ComfyUI workflow timeout ({self._timeout}s)")
 
