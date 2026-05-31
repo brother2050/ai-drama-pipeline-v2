@@ -403,9 +403,12 @@ def project_list():
 
 @project.command("new")
 @click.argument("name")
-def project_new(name):
-    from scripts.project_mgr import create_project
-    create_project(name, ROOT, console)
+@click.option("--style", default="cinematic", help="视觉风格 (cinematic/anime/realistic/noir/fantasy/vintage/minimalist/cyberpunk 或自定义)")
+@click.option("--genre", default="urban", help="题材类型 (urban/suspense/romance/action/comedy/horror/scifi/historical/campus/family 或自定义)")
+def project_new(name, style, genre):
+    from scripts.project_mgr import create_project, STYLE_PRESETS, GENRE_PRESETS
+    # 验证：如果不在预设中，视为自定义（用 LLM 处理时不限制）
+    create_project(name, ROOT, console, style=style, genre=genre)
 
 
 @project.command("switch")
@@ -534,7 +537,10 @@ def gen_storyboard(episode, outline, text, duration, config_path, append):
     console.print(f"\n[bold cyan]📝 生成分镜表 — 第{episode}集[/bold cyan]")
     console.print(f"[dim]大纲: {len(outline_text)} 字 | 目标: {duration}s | 角色: {len(characters)} | 场景: {len(scenes)}[/dim]\n")
 
-    shots = generate_storyboard(llm, outline_text, characters, scenes, episode, duration)
+    style = cfg.get("project", {}).get("style", "")
+    genre = cfg.get("project", {}).get("genre", "")
+    shots = generate_storyboard(llm, outline_text, characters, scenes, episode, duration,
+                                style=style, genre=genre)
 
     if not shots:
         console.print("[red]❌ 生成失败，未获得有效分镜[/red]")
@@ -641,7 +647,10 @@ def gen_all(episode, outline, duration, config_path):
     scenes = _load_yaml_entities(project_dir / "config" / "scenes", "scene")
 
     console.print("[bold][1/3] 生成分镜表...[/bold]")
-    shots = generate_storyboard(llm, outline_text, characters, scenes, episode, duration)
+    style = cfg.get("project", {}).get("style", "")
+    genre = cfg.get("project", {}).get("genre", "")
+    shots = generate_storyboard(llm, outline_text, characters, scenes, episode, duration,
+                                style=style, genre=genre)
 
     if shots:
         sb_path = project_dir / "storyboard" / "episodes.csv"

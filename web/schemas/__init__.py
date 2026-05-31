@@ -147,6 +147,8 @@ class SceneData(BaseModel):
 
 class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
+    style: str = Field("cinematic", max_length=50, description="视觉风格")
+    genre: str = Field("urban", max_length=50, description="题材类型")
 
     @field_validator("name")
     @classmethod

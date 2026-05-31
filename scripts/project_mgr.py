@@ -15,6 +15,31 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_PROJECT = "default"
 
+# ── 风格/题材预设 ──
+STYLE_PRESETS = {
+    "cinematic": "电影质感 — 专业打光、宽银幕构图、电影色调",
+    "anime": "动漫风格 — 日系画风、鲜艳色彩、夸张表情",
+    "realistic": "写实风格 — 真实光影、自然色彩、纪录片质感",
+    "noir": "黑色电影 — 暗调光影、高对比度、冷峻氛围",
+    "fantasy": "奇幻风格 — 魔法元素、华丽特效、异世界感",
+    "vintage": "复古风格 — 胶片质感、暖色调、怀旧氛围",
+    "minimalist": "极简风格 — 干净画面、留白构图、淡雅色调",
+    "cyberpunk": "赛博朋克 — 霓虹灯光、科技感、暗色调",
+}
+
+GENRE_PRESETS = {
+    "urban": "都市情感 — 现代城市背景、职场/恋爱/家庭",
+    "suspense": "悬疑推理 — 悬念迭起、推理破案、心理博弈",
+    "romance": "甜蜜恋爱 — 浪漫邂逅、甜蜜互动、情感纠葛",
+    "action": "动作热血 — 激烈打斗、追逐场面、英雄主义",
+    "comedy": "轻松喜剧 — 幽默搞笑、反转误会、欢乐日常",
+    "horror": "惊悚恐怖 — 阴森氛围、恐怖元素、心理压迫",
+    "scifi": "科幻未来 — 太空/未来/科技、赛博元素",
+    "historical": "古装历史 — 古代背景、宫廷/武侠/历史",
+    "campus": "校园青春 — 校园生活、青春成长、同学情谊",
+    "family": "家庭温情 — 亲情温暖、家庭矛盾、成长治愈",
+}
+
 # 每个项目必须具备的目录结构
 _PROJECT_DIRS = [
     "config",
@@ -38,8 +63,8 @@ project:
   episodes: 1
   fps: 24
   resolution: [1280, 720]
-  style: "cinematic"
-  genre: "urban"
+  style: "{style}"
+  genre: "{genre}"
 
 # 定妆照配置
 # portraits:
@@ -109,21 +134,23 @@ def _ensure_project_dirs(project_dir: Path) -> None:
         (project_dir / sub).mkdir(parents=True, exist_ok=True)
 
 
-def _scaffold_default_config(project_dir: Path, name: str) -> None:
-    """为新项目生成默认配置文件（已存在时仅更新项目名称）"""
-    # project.yaml — 始终确保名称正确
+def _scaffold_default_config(project_dir: Path, name: str, style: str = "cinematic", genre: str = "urban") -> None:
+    """为新项目生成默认配置文件（已存在时仅更新项目名称和风格）"""
+    # project.yaml — 始终确保名称和风格正确
     cfg_path = project_dir / "config" / "project.yaml"
     if cfg_path.exists():
-        # 已有配置：只更新项目名称，不覆盖其他自定义内容
+        # 已有配置：只更新项目名称和风格，不覆盖其他自定义内容
         with open(cfg_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         data.setdefault("project", {})["name"] = name
+        data["project"]["style"] = style
+        data["project"]["genre"] = genre
         from infra.config import save_yaml
         save_yaml(cfg_path, data)
     else:
         # 无配置：从模板生成
         cfg_path.write_text(
-            _DEFAULT_PROJECT_YAML.format(name=name),
+            _DEFAULT_PROJECT_YAML.format(name=name, style=style, genre=genre),
             encoding="utf-8",
         )
 
@@ -184,7 +211,7 @@ def list_projects(console):
     console.print(t)
 
 
-def create_project(name: str, root: Path, console):
+def create_project(name: str, root: Path, console, style: str = "cinematic", genre: str = "urban"):
     """创建新项目 — 干净的目录结构 + 项目配置（不带模板数据）"""
     projects_dir = root / "projects"
     projects_dir.mkdir(exist_ok=True)
@@ -197,13 +224,14 @@ def create_project(name: str, root: Path, console):
     _ensure_project_dirs(project_dir)
 
     # 2. 生成项目配置（只写 project.yaml + 空分镜表，不复制模板数据）
-    _scaffold_default_config(project_dir, name)
+    _scaffold_default_config(project_dir, name, style=style, genre=genre)
 
     # 3. 设置为活动项目
     (projects_dir / ".active").write_text(str(project_dir), encoding="utf-8")
 
     console.print(f"[green]✅ 项目 '{name}' 已创建并设为当前[/green]")
     console.print(f"[dim]  路径: {project_dir}[/dim]")
+    console.print(f"[dim]  风格: {style} | 题材: {genre}[/dim]")
     console.print(f"[dim]  下一步:[/dim]")
     console.print(f"[dim]    1. 编辑 config/characters/ 添加角色[/dim]")
     console.print(f"[dim]    2. 编辑 config/scenes/ 添加场景[/dim]")
@@ -230,7 +258,10 @@ def switch_project(name: str, root: Path, console):
         with open(cfg, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         proj = data.get("project", {})
+        style = proj.get('style', 'cinematic')
+        genre = proj.get('genre', 'urban')
         console.print(f"[dim]  集数: {proj.get('episodes', 1)}, 分辨率: {proj.get('resolution', [1280, 720])}[/dim]")
+        console.print(f"[dim]  风格: {style}, 题材: {genre}[/dim]")
 
     chars_dir = d / "config" / "characters"
     if chars_dir.exists():

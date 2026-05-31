@@ -737,8 +737,15 @@ def list_projects():
 def create_project(req: ProjectCreate):
     from scripts.project_mgr import create_project
     from rich.console import Console
-    create_project(req.name, ROOT, Console())
-    return {"status": "ok", "name": req.name}
+    create_project(req.name, ROOT, Console(), style=req.style, genre=req.genre)
+    return {"status": "ok", "name": req.name, "style": req.style, "genre": req.genre}
+
+
+@router.get("/projects/presets")
+def get_project_presets():
+    """获取风格/题材预设列表"""
+    from scripts.project_mgr import STYLE_PRESETS, GENRE_PRESETS
+    return {"styles": STYLE_PRESETS, "genres": GENRE_PRESETS}
 
 
 @router.post("/projects/switch")

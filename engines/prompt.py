@@ -111,10 +111,13 @@ body_features 规则：
 
 
 def batch_generate_appearance_prompts(characters: list[dict], llm) -> dict[str, dict]:
-    """批量生成角色模型友好 prompt（自动分批，按模型上下文动态调整）
+    """批量生成角色模型友好 prompt（自动分批 + 重试 + 单角色降级）
 
-    自动估算每个角色的 token 开销，按模型可用上下文分批处理。
-    每批调用一次 LLM，结果合并返回。
+    策略：
+    1. 按上下文长度自动分批，每批一次 LLM 调用
+    2. 批次失败 → 重试 2 次（指数退避）
+    3. 仍然失败 → 降级为逐角色生成（每个角色独立 LLM 调用，带重试）
+    4. 单角色也失败 → 跳过该角色，记录警告
 
     Args:
         characters: 角色数据列表，每项需有 id 和 appearance 字段
@@ -126,11 +129,12 @@ def batch_generate_appearance_prompts(characters: list[dict], llm) -> dict[str, 
     if not characters or not llm:
         return {}
 
-    # 估算模型上下文长度（优先读配置，兜底 32K）
+    import time as _time
+
+    # 估算模型上下文长度（优先读配置，兜底 8K）
     max_ctx = _estimate_context_length(llm)
-    # 系统 prompt + 输出预留
     system_overhead = 800
-    output_reserve = 2000  # 每批输出预留
+    output_reserve = 2000
     available = max_ctx - system_overhead - output_reserve
 
     # 按字符数分批（中文字符 ≈ 2 tokens，留余量按 3 算）
@@ -138,7 +142,7 @@ def batch_generate_appearance_prompts(characters: list[dict], llm) -> dict[str, 
     batch_tokens = 0
     for char in characters:
         appearance = char.get("appearance", "")
-        char_tokens = len(appearance) * 3 + 200  # 描述 + id + 结构开销
+        char_tokens = len(appearance) * 3 + 200
         if batch_tokens + char_tokens > available and batches[-1]:
             batches.append([])
             batch_tokens = 0
@@ -148,15 +152,38 @@ def batch_generate_appearance_prompts(characters: list[dict], llm) -> dict[str, 
     if len(batches) > 1:
         logger.info(f"  角色 prompt 分批处理: {len(characters)} 个角色 → {len(batches)} 批")
 
-    # 逐批调用 LLM
+    # 逐批调用（带重试）
     all_mapping: dict[str, dict] = {}
-    for batch_idx, batch in enumerate(batches):
-        mapping = _generate_prompt_batch(batch, llm)
-        all_mapping.update(mapping)
-        if len(batches) > 1:
-            logger.info(f"  批次 {batch_idx + 1}/{len(batches)}: {len(mapping)} 个角色完成")
+    failed_chars: list[dict] = []
 
-    logger.info(f"  ✅ 批量 prompt 生成: {len(all_mapping)}/{len(characters)} 个角色")
+    for batch_idx, batch in enumerate(batches):
+        mapping = _generate_prompt_batch_with_retry(batch, llm, max_retries=3)
+        all_mapping.update(mapping)
+
+        # 找出本批中失败的角色
+        batch_ids = {c.get("id", "") for c in batch}
+        succeeded_ids = set(mapping.keys())
+        for c in batch:
+            if c.get("id", "") not in succeeded_ids:
+                failed_chars.append(c)
+
+        if len(batches) > 1:
+            ok = len(batch) - len(batch_ids - succeeded_ids)
+            logger.info(f"  批次 {batch_idx + 1}/{len(batches)}: {ok}/{len(batch)} 成功")
+
+    # 降级：逐角色重试失败的角色
+    if failed_chars:
+        logger.warning(f"  批量生成失败 {len(failed_chars)} 个角色，降级为逐角色重试...")
+        for char in failed_chars:
+            cid = char.get("id", "?")
+            mapping = _generate_prompt_batch_with_retry([char], llm, max_retries=2)
+            if mapping:
+                all_mapping.update(mapping)
+                logger.info(f"  ✅ 逐角色重试成功: {cid}")
+            else:
+                logger.warning(f"  ❌ 角色 {cid} prompt 生成最终失败，跳过")
+
+    logger.info(f"  批量 prompt 生成完成: {len(all_mapping)}/{len(characters)} 个角色")
     return all_mapping
 
 
@@ -174,8 +201,42 @@ def _estimate_context_length(llm) -> int:
     return 8192
 
 
+def _generate_prompt_batch_with_retry(characters: list[dict], llm, max_retries: int = 3) -> dict[str, dict]:
+    """处理单批角色 prompt 生成（带指数退避重试）
+
+    Args:
+        characters: 角色数据列表
+        llm: LLM 后端实例
+        max_retries: 最大重试次数
+
+    Returns:
+        {char_id: {...}} 映射，失败时返回空 dict
+    """
+    import time as _time
+
+    for attempt in range(max_retries):
+        try:
+            mapping = _generate_prompt_batch(characters, llm)
+            if mapping:
+                return mapping
+            # 返回空可能是 LLM 输出解析失败，重试
+            if attempt < max_retries - 1:
+                wait = 2 ** attempt
+                logger.warning(f"  prompt 批次返回空（尝试 {attempt+1}/{max_retries}），{wait}s 后重试")
+                _time.sleep(wait)
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait = 2 ** attempt
+                logger.warning(f"  prompt 批次失败（尝试 {attempt+1}/{max_retries}）: {e}，{wait}s 后重试")
+                _time.sleep(wait)
+            else:
+                logger.error(f"  prompt 批次最终失败: {e}")
+
+    return {}
+
+
 def _generate_prompt_batch(characters: list[dict], llm) -> dict[str, dict]:
-    """处理单批角色 prompt 生成"""
+    """处理单批角色 prompt 生成（单次调用）"""
     parts = []
     for i, char in enumerate(characters):
         cid = char.get("id", f"char_{i}")
@@ -184,42 +245,37 @@ def _generate_prompt_batch(characters: list[dict], llm) -> dict[str, dict]:
 
     prompt = "请为以下每个角色生成 AI 绘图 prompt，按角色编号输出 JSON 数组。\n\n" + "\n\n".join(parts)
 
-    try:
-        from infra.json_parse import parse_llm_json
-        response = llm.chat(prompt, system=_APPEARANCE_PROMPT_SYSTEM, max_tokens=4096)
-        result = parse_llm_json(response)
+    from infra.json_parse import parse_llm_json
+    response = llm.chat(prompt, system=_APPEARANCE_PROMPT_SYSTEM, max_tokens=4096)
+    result = parse_llm_json(response)
 
-        if not result:
-            logger.warning(f"批量 prompt 生成返回无法解析")
-            return {}
-
-        if isinstance(result, dict):
-            result = [result]
-        if not isinstance(result, list):
-            return {}
-
-        mapping: dict[str, dict] = {}
-        for i, item in enumerate(result):
-            if not isinstance(item, dict):
-                continue
-            cid = item.get("id", "")
-            if not cid and i < len(characters):
-                cid = characters[i].get("id", f"char_{i}")
-            if cid:
-                mapping[cid] = {
-                    "prompt_en": item.get("prompt_en", ""),
-                    "body_features": item.get("body_features", ""),
-                    "front": item.get("front", ""),
-                    "left_side": item.get("left_side", ""),
-                    "right_side": item.get("right_side", ""),
-                    "back": item.get("back", ""),
-                    "three_quarter": item.get("three_quarter", ""),
-                }
-        return mapping
-
-    except Exception as e:
-        logger.warning(f"批量 prompt 生成失败: {e}")
+    if not result:
+        logger.warning(f"批量 prompt 生成返回无法解析")
         return {}
+
+    if isinstance(result, dict):
+        result = [result]
+    if not isinstance(result, list):
+        return {}
+
+    mapping: dict[str, dict] = {}
+    for i, item in enumerate(result):
+        if not isinstance(item, dict):
+            continue
+        cid = item.get("id", "")
+        if not cid and i < len(characters):
+            cid = characters[i].get("id", f"char_{i}")
+        if cid:
+            mapping[cid] = {
+                "prompt_en": item.get("prompt_en", ""),
+                "body_features": item.get("body_features", ""),
+                "front": item.get("front", ""),
+                "left_side": item.get("left_side", ""),
+                "right_side": item.get("right_side", ""),
+                "back": item.get("back", ""),
+                "three_quarter": item.get("three_quarter", ""),
+            }
+    return mapping
 
 
 def get_view_appearance(char: dict, shot_type: str) -> str:

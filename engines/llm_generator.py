@@ -56,7 +56,8 @@ STORYBOARD_SYSTEM = """你是一位专业的短剧分镜师。根据用户提供
 
 def generate_storyboard(llm, outline: str, characters: list[dict] = None,
                         scenes: list[dict] = None, episode: int = 1,
-                        target_duration: int = 90) -> list[dict]:
+                        target_duration: int = 90,
+                        style: str = "", genre: str = "") -> list[dict]:
     """从剧情大纲生成分镜表
 
     Args:
@@ -66,12 +67,22 @@ def generate_storyboard(llm, outline: str, characters: list[dict] = None,
         scenes: 已有场景列表 [{id, name, description, ...}]
         episode: 集数
         target_duration: 目标总时长（秒）
+        style: 视觉风格（如 cinematic, anime, realistic）
+        genre: 题材类型（如 urban, romance, suspense）
 
     Returns:
         镜头列表 [{shot_id, scene, characters, action, dialogue, ...}]
     """
     # 构建上下文
     context_parts = [f"=== 第{episode}集 剧情大纲 ===\n{outline}"]
+
+    if style or genre:
+        style_info = []
+        if style:
+            style_info.append(f"视觉风格: {style}")
+        if genre:
+            style_info.append(f"题材类型: {genre}")
+        context_parts.append(f"\n=== 创作方向 ===\n" + "，".join(style_info))
 
     if characters:
         # 角色名映射 — LLM 在 action/dialogue 中必须用角色真实名字，characters 字段用英文 ID
@@ -98,21 +109,34 @@ def generate_storyboard(llm, outline: str, characters: list[dict] = None,
 
     logger.info(f"LLM 生成分镜: 大纲 {len(outline)} 字, 目标 {target_duration}s")
 
-    try:
-        raw = llm.chat(prompt, system=STORYBOARD_SYSTEM, max_tokens=4096)
-        shots = parse_llm_json(raw)
-        if not shots:
-            logger.error("LLM 返回无法解析为镜头列表")
-            return []
+    import time as _time
+    shots = None
+    for attempt in range(3):
+        try:
+            raw = llm.chat(prompt, system=STORYBOARD_SYSTEM, max_tokens=4096)
+            shots = parse_llm_json(raw)
+            if shots:
+                break
+            if attempt < 2:
+                wait = 2 ** attempt
+                logger.warning(f"  ⚠ 分镜 JSON 解析失败（尝试 {attempt+1}/3），{wait}s 后重试")
+                _time.sleep(wait)
+        except Exception as e:
+            if attempt < 2:
+                wait = 2 ** attempt
+                logger.warning(f"  ⚠ 分镜生成失败（尝试 {attempt+1}/3）: {e}，{wait}s 后重试")
+                _time.sleep(wait)
+            else:
+                logger.error(f"  ❌ 分镜生成最终失败: {e}")
 
-        # 后处理
-        shots = _postprocess_shots(shots, episode)
-        logger.info(f"生成 {len(shots)} 个镜头, 预计 {sum(int(s.get('duration', 4)) for s in shots)} 秒")
-        return shots
-
-    except Exception as e:
-        logger.error(f"LLM 分镜生成失败: {e}")
+    if not shots:
+        logger.error("LLM 返回无法解析为镜头列表")
         return []
+
+    # 后处理
+    shots = _postprocess_shots(shots, episode)
+    logger.info(f"生成 {len(shots)} 个镜头, 预计 {sum(int(s.get('duration', 4)) for s in shots)} 秒")
+    return shots
 
 
 # ── 角色生成 ──
@@ -195,7 +219,7 @@ def _normalize_character(char: dict) -> dict:
 
 
 def generate_characters(llm, descriptions: list[str], expected_ids: list[str] | None = None) -> list[dict | None]:
-    """从描述生成角色配置
+    """从描述生成角色配置（带重试）
 
     Args:
         llm: LLM 后端实例
@@ -205,6 +229,8 @@ def generate_characters(llm, descriptions: list[str], expected_ids: list[str] | 
     Returns:
         角色配置列表，与 descriptions 等长，失败的位置为 None
     """
+    import time as _time
+
     results = []
     used_names: set[str] = set()
     for i, desc in enumerate(descriptions):
@@ -212,30 +238,45 @@ def generate_characters(llm, descriptions: list[str], expected_ids: list[str] | 
             results.append(None)
             continue
         logger.info(f"LLM 生成角色: {desc[:40]}...")
-        try:
-            raw = llm.chat(desc, system=CHARACTER_SYSTEM, max_tokens=1024)
-            char = parse_llm_json(raw)
-            if char and isinstance(char, dict):
-                if expected_ids and i < len(expected_ids):
-                    char["id"] = expected_ids[i]
-                char = _normalize_character(char)
-                # 去重：如果 name 与已有角色重复，追加 ID 后缀
-                cname = char.get("name", "").strip()
-                if cname in used_names:
-                    suffix = char.get("id", str(i + 1))
-                    new_name = f"{cname}_{suffix}"
-                    logger.warning(f"  ⚠ 角色名重复: {cname} → {new_name}")
-                    char["name"] = new_name
-                    cname = new_name
-                used_names.add(cname)
-                results.append(char)
-                logger.info(f"  ✅ 生成角色: {char.get('name', '?')} ({char.get('id', '?')})")
-            else:
-                results.append(None)
-                logger.warning(f"  ⚠ 解析失败")
-        except Exception as e:
+
+        char = None
+        for attempt in range(3):
+            try:
+                raw = llm.chat(desc, system=CHARACTER_SYSTEM, max_tokens=1024)
+                char = parse_llm_json(raw)
+                if char and isinstance(char, dict):
+                    break
+                # JSON 解析失败，重试
+                if attempt < 2:
+                    wait = 2 ** attempt
+                    logger.warning(f"  ⚠ 角色 {i+1} JSON 解析失败（尝试 {attempt+1}/3），{wait}s 后重试")
+                    _time.sleep(wait)
+            except Exception as e:
+                if attempt < 2:
+                    wait = 2 ** attempt
+                    logger.warning(f"  ⚠ 角色 {i+1} 生成失败（尝试 {attempt+1}/3）: {e}，{wait}s 后重试")
+                    _time.sleep(wait)
+                else:
+                    logger.error(f"  ❌ 角色 {i+1} 生成最终失败: {e}")
+
+        if char and isinstance(char, dict):
+            if expected_ids and i < len(expected_ids):
+                char["id"] = expected_ids[i]
+            char = _normalize_character(char)
+            # 去重：如果 name 与已有角色重复，追加 ID 后缀
+            cname = char.get("name", "").strip()
+            if cname in used_names:
+                suffix = char.get("id", str(i + 1))
+                new_name = f"{cname}_{suffix}"
+                logger.warning(f"  ⚠ 角色名重复: {cname} → {new_name}")
+                char["name"] = new_name
+                cname = new_name
+            used_names.add(cname)
+            results.append(char)
+            logger.info(f"  ✅ 生成角色: {char.get('name', '?')} ({char.get('id', '?')})")
+        else:
             results.append(None)
-            logger.error(f"  ❌ 角色生成失败: {e}")
+            logger.warning(f"  ⚠ 角色 {i+1} 解析失败")
     return results
 
 
@@ -261,7 +302,7 @@ SCENE_SYSTEM = """你是一位专业的短剧场景设计师。根据用户提�
 
 
 def generate_scenes(llm, descriptions: list[str], expected_ids: list[str] | None = None) -> list[dict | None]:
-    """从描述生成场景配置
+    """从描述生成场景配置（带重试）
 
     Args:
         llm: LLM 后端实例
@@ -271,6 +312,8 @@ def generate_scenes(llm, descriptions: list[str], expected_ids: list[str] | None
     Returns:
         场景配置列表，与 descriptions 等长，失败的位置为 None
     """
+    import time as _time
+
     results = []
     used_names: set[str] = set()
     for i, desc in enumerate(descriptions):
@@ -278,29 +321,42 @@ def generate_scenes(llm, descriptions: list[str], expected_ids: list[str] | None
             results.append(None)
             continue
         logger.info(f"LLM 生成场景: {desc[:40]}...")
-        try:
-            raw = llm.chat(desc, system=SCENE_SYSTEM, max_tokens=1024)
-            scene = parse_llm_json(raw)
-            if scene and isinstance(scene, dict):
-                if expected_ids and i < len(expected_ids):
-                    scene["id"] = expected_ids[i]
-                # 去重：如果 name 与已有场景重复，追加 ID 后缀
-                sname = scene.get("name", "").strip()
-                if sname in used_names:
-                    suffix = scene.get("id", str(i + 1))
-                    new_name = f"{sname}_{suffix}"
-                    logger.warning(f"  ⚠ 场景名重复: {sname} → {new_name}")
-                    scene["name"] = new_name
-                    sname = new_name
-                used_names.add(sname)
-                results.append(scene)
-                logger.info(f"  ✅ 生成场景: {scene.get('name', '?')} ({scene.get('id', '?')})")
-            else:
-                results.append(None)
-                logger.warning(f"  ⚠ 解析失败")
-        except Exception as e:
+
+        scene = None
+        for attempt in range(3):
+            try:
+                raw = llm.chat(desc, system=SCENE_SYSTEM, max_tokens=1024)
+                scene = parse_llm_json(raw)
+                if scene and isinstance(scene, dict):
+                    break
+                if attempt < 2:
+                    wait = 2 ** attempt
+                    logger.warning(f"  ⚠ 场景 {i+1} JSON 解析失败（尝试 {attempt+1}/3），{wait}s 后重试")
+                    _time.sleep(wait)
+            except Exception as e:
+                if attempt < 2:
+                    wait = 2 ** attempt
+                    logger.warning(f"  ⚠ 场景 {i+1} 生成失败（尝试 {attempt+1}/3）: {e}，{wait}s 后重试")
+                    _time.sleep(wait)
+                else:
+                    logger.error(f"  ❌ 场景 {i+1} 生成最终失败: {e}")
+
+        if scene and isinstance(scene, dict):
+            if expected_ids and i < len(expected_ids):
+                scene["id"] = expected_ids[i]
+            sname = scene.get("name", "").strip()
+            if sname in used_names:
+                suffix = scene.get("id", str(i + 1))
+                new_name = f"{sname}_{suffix}"
+                logger.warning(f"  ⚠ 场景名重复: {sname} → {new_name}")
+                scene["name"] = new_name
+                sname = new_name
+            used_names.add(sname)
+            results.append(scene)
+            logger.info(f"  ✅ 生成场景: {scene.get('name', '?')} ({scene.get('id', '?')})")
+        else:
             results.append(None)
-            logger.error(f"  ❌ 场景生成失败: {e}")
+            logger.warning(f"  ⚠ 场景 {i+1} 解析失败")
     return results
 
 

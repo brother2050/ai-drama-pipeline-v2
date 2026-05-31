@@ -1235,8 +1235,13 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
     # ── 1. 生成分镜（不传已有角色/场景，新用户没有） ──
     self.update_state(state="PROGRESS", meta={"step": "ai_storyboard", "progress": 30, "message": "AI 正在生成分镜..."})
 
+    # 读取项目 style/genre
+    style = cfg.get("project", {}).get("style", "")
+    genre = cfg.get("project", {}).get("genre", "")
+
     try:
-        shots = generate_storyboard(llm, outline, [], [], episode, duration)
+        shots = generate_storyboard(llm, outline, [], [], episode, duration,
+                                    style=style, genre=genre)
     except Exception as e:
         return {"status": "error", "reason": f"LLM 生成失败: {e}"}
 
@@ -1279,8 +1284,15 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
                 f"根据以下信息生成角色「{cid}」的配置。",
                 f"角色ID: {cid}（必须原样填入 id 字段，不可修改）",
                 f"剧情大纲: {outline}",
-                f"该角色在分镜中的表现:",
             ]
+            if style or genre:
+                ctx = []
+                if style:
+                    ctx.append(f"视觉风格: {style}")
+                if genre:
+                    ctx.append(f"题材类型: {genre}")
+                desc_parts.append(f"创作方向: {'，'.join(ctx)}")
+            desc_parts.append(f"该角色在分镜中的表现:")
             if actions:
                 for idx, a in enumerate(actions, 1):
                     desc_parts.append(f"  镜头{idx}: {a}")
@@ -1356,7 +1368,15 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
         for sid in sorted(scene_ids):
             scene_shots = [s for s in shots if (s.get("scene") or "").strip() == sid]
             actions = [s.get("action", "") for s in scene_shots[:5]]
-            desc_parts = [f"根据以下信息生成一个场景配置。", f"剧情大纲: {outline}", f"该场景在分镜中的画面:"]
+            desc_parts = [f"根据以下信息生成一个场景配置。", f"剧情大纲: {outline}"]
+            if style or genre:
+                ctx = []
+                if style:
+                    ctx.append(f"视觉风格: {style}")
+                if genre:
+                    ctx.append(f"题材类型: {genre}")
+                desc_parts.append(f"创作方向: {'，'.join(ctx)}")
+            desc_parts.append(f"该场景在分镜中的画面:")
             if actions:
                 for idx, a in enumerate(actions, 1):
                     desc_parts.append(f"  镜头{idx}: {a}")
@@ -1446,10 +1466,28 @@ def ai_storyboard_task(self, config_path: str, episode: int, outline: str,
         logger.warning(f"DB 写入跳过: {e}")
 
     total_sec = sum(int(s.get("duration", 4)) for s in shots)
-    return {"status": "done", "episode": episode, "count": len(shots),
-            "total_duration": total_sec, "shots": shots,
-            "generated_characters": generated_chars,
-            "generated_scenes": generated_scenes}
+
+    # 构建结果摘要
+    warnings = []
+    if char_ids and not generated_chars:
+        warnings.append(f"角色生成全部失败（{len(char_ids)} 个），请检查 LLM 服务后重新生成")
+    elif len(generated_chars) < len(char_ids):
+        failed = len(char_ids) - len(generated_chars)
+        warnings.append(f"{failed} 个角色生成失败")
+    if scene_ids and not generated_scenes:
+        warnings.append(f"场景生成全部失败（{len(scene_ids)} 个），请检查 LLM 服务后重新生成")
+    elif len(generated_scenes) < len(scene_ids):
+        failed = len(scene_ids) - len(generated_scenes)
+        warnings.append(f"{failed} 个场景生成失败")
+
+    result = {"status": "done", "episode": episode, "count": len(shots),
+              "total_duration": total_sec, "shots": shots,
+              "generated_characters": generated_chars,
+              "generated_scenes": generated_scenes}
+    if warnings:
+        result["warnings"] = warnings
+        logger.warning(f"分镜生成完成但有问题: {'; '.join(warnings)}")
+    return result
 
 
 @app.task(bind=True, name="pipeline.ai.characters", soft_time_limit=300)

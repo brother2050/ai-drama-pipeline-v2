@@ -186,7 +186,7 @@ def run_portraits(
     generated = 0
     for f in char_files:
         try:
-            with open(f) as fh:
+            with open(f, encoding="utf-8") as fh:
                 data = yaml.safe_load(fh) or {}
         except yaml.YAMLError as e:
             logger.warning(f"角色 YAML 格式错误 {f}: {e}")
