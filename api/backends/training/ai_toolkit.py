@@ -593,8 +593,8 @@ class AIToolkitTrainer:
                             break
                         except Exception as e:
                             logger.warning(f"  下载失败: {e}")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"从作业日志获取输出路径失败: {e}")
 
         if not result_found:
             # 回退：尝试从标准输出目录查找

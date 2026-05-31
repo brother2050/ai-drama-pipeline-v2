@@ -480,7 +480,7 @@ async function generateAllOutfits(charId) {
   reset();
 }
 
-var _currentEditCharId = '';
+let _currentEditCharId = '';
 
 // ── LoRA 训练 ──
 

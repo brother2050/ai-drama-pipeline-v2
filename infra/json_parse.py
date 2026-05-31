@@ -191,15 +191,19 @@ def parse_llm_json(text: str):
             pass
 
     # 5. 截断修复：LLM 输出因 token 限制被截断时，尝试补全闭合括号
-    for start_ch in ('[', '{'):
-        idx = text.find(start_ch)
-        if idx != -1:
-            repaired = _repair_truncated_json(text[idx:])
-            if repaired is not None:
-                try:
-                    return json.loads(repaired)
-                except json.JSONDecodeError:
-                    pass
+    # 只尝试最外层的分隔符（第一个出现的 { 或 [），避免修复内层子结构
+    first_bracket = -1
+    for ch in ('{', '['):
+        idx = text.find(ch)
+        if idx != -1 and (first_bracket == -1 or idx < first_bracket):
+            first_bracket = idx
+    if first_bracket != -1:
+        repaired = _repair_truncated_json(text[first_bracket:])
+        if repaired is not None:
+            try:
+                return json.loads(repaired)
+            except json.JSONDecodeError:
+                pass
 
     # 6. 全文修复（兜底）
     repaired = _repair_truncated_json(text)
