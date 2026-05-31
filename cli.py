@@ -85,6 +85,17 @@ def _ensure_redis():
         if _port_open(6379):
             return True
 
+    # Windows: 尝试 net start 或 sc start
+    if sys.platform == "win32":
+        for cmd in [["net", "start", "Redis"], ["sc", "start", "Redis"]]:
+            try:
+                subprocess.run(cmd, capture_output=True, timeout=30)
+                import time; time.sleep(2)
+                if _port_open(6379):
+                    return True
+            except Exception:
+                continue
+
     console.print("[red]❌ Redis 启动失败。请手动安装并启动 Redis[/red]")
     console.print("  Ubuntu: sudo apt install redis-server && sudo systemctl start redis")
     console.print("  macOS:  brew install redis && brew services start redis")

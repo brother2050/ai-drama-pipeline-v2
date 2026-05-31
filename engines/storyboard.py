@@ -1,11 +1,22 @@
 """分镜表读取器 — CSV 解析 + 数据验证 + 保存"""
 from __future__ import annotations
 import csv
-import fcntl
 import logging
 import os
 from pathlib import Path
 from typing import Any
+
+# 文件锁：fcntl (Unix) / msvcrt (Windows) / no-op (兜底)
+try:
+    import fcntl
+    _USE_FCNTL = True
+except ImportError:
+    _USE_FCNTL = False
+try:
+    import msvcrt
+    _USE_MSVCRT = True
+except ImportError:
+    _USE_MSVCRT = False
 
 logger = logging.getLogger(__name__)
 
@@ -64,36 +75,47 @@ def save_storyboard(path: Path, shots: list[dict], episode: int, append: bool = 
 
     # 使用文件锁防止并发写入丢失数据（多个 Celery 任务同时保存同一分镜表）
     lock_path = str(path) + ".lock"
-    with open(lock_path, "w") as lock_fd:
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)
-        try:
-            existing = []
-            if append and path.exists():
-                with open(path, encoding="utf-8") as f:
-                    for row in csv.DictReader(f):
-                        try:
-                            ep = int(row.get("episode", 0) or 0)
-                        except (ValueError, TypeError):
-                            ep = 0
-                        if ep != episode:
-                            existing.append(row)
+    lock_fd = open(lock_path, "w")
+    try:
+        if _USE_FCNTL:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        elif _USE_MSVCRT:
+            msvcrt.locking(lock_fd.fileno(), msvcrt.LK_LOCK, 1)
 
-            import tempfile
-            tmp_fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".csv.tmp")
+        existing = []
+        if append and path.exists():
+            with open(path, encoding="utf-8") as f:
+                for row in csv.DictReader(f):
+                    try:
+                        ep = int(row.get("episode", 0) or 0)
+                    except (ValueError, TypeError):
+                        ep = 0
+                    if ep != episode:
+                        existing.append(row)
+
+        import tempfile
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".csv.tmp")
+        try:
+            with os.fdopen(tmp_fd, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=STORYBOARD_FIELDNAMES, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(existing + shots)
+            os.replace(tmp_path, str(path))
+        except BaseException:
             try:
-                with os.fdopen(tmp_fd, "w", newline="", encoding="utf-8") as f:
-                    writer = csv.DictWriter(f, fieldnames=STORYBOARD_FIELDNAMES, extrasaction="ignore")
-                    writer.writeheader()
-                    writer.writerows(existing + shots)
-                os.replace(tmp_path, str(path))
-            except BaseException:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-                raise
-        finally:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+    finally:
+        if _USE_FCNTL:
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        elif _USE_MSVCRT:
+            try:
+                msvcrt.locking(lock_fd.fileno(), msvcrt.LK_UNLCK, 1)
+            except Exception:
+                pass
+        lock_fd.close()
 
 
 def validate_shot(shot: dict) -> list[str]:

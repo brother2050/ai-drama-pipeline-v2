@@ -387,9 +387,14 @@ def build_prompt(shot: dict, character_desc: str = "", scene_desc: str = "",
     # ── 判断后端 prompt 风格（从注册表查询，不硬编码后端名） ──
     if registry is None:
         from flow.model_registry import ModelRegistry
-        import os
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        registry = ModelRegistry(os.path.join(root, "config", "project.yaml"))
+        from infra.config import resolve_project_config
+        try:
+            cfg_path = resolve_project_config()
+        except FileNotFoundError:
+            import os
+            root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            cfg_path = os.path.join(root, "config", "project.yaml")
+        registry = ModelRegistry(cfg_path)
 
     prompt_style = registry.get_prompt_style(image_backend) if image_backend else "tag"
 

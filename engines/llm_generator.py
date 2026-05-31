@@ -460,5 +460,12 @@ def _postprocess_shots(shots: list[dict], episode: int) -> list[dict]:
                 elif len(val) >= 2 and val[0] == "'" and val[-1] == "'":
                     val = val[1:-1]
                 shot[_k] = val
+        # 校验 emotion 合法值（不在 EMOTION_MAP 中的回退到 neutral）
+        emotion = shot.get("emotion", "neutral")
+        valid_emotions = {"angry", "sad", "happy", "worried", "surprised", "smug",
+                          "serious", "calm", "determined", "fearful", "neutral", "romantic", "action"}
+        if emotion not in valid_emotions:
+            logger.warning(f"镜头 {sid} emotion='{emotion}' 不在合法值列表中，回退到 neutral")
+            shot["emotion"] = "neutral"
         result.append(shot)
     return result

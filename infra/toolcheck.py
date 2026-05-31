@@ -255,7 +255,6 @@ def _execute_health_check(name: str, hc: dict, cfg: dict,
 
 def _check_consistency(name: str, cfg: dict) -> dict:
     """检测一致性方案的可用性"""
-    from flow.model_registry import ModelRegistry
     registry = _get_registry()
 
     method = registry.get_consistency_method(name)
