@@ -421,7 +421,8 @@ flowchart LR
 | `ip_adapter.secondary_weight` | `0.45` | 多角色时次要角色权重 |
 
 **模型选择建议**：
-- 短剧角色（推荐）：`ip-adapter-plus-face_sd15` — 面部一致性最强
+- Flux 后端（推荐）：使用 **PuLID-Flux**（见下方），面部一致性更强
+- SD1.5 后端：`ip-adapter-plus-face_sd15` — 面部一致性最强
 - 通用场景：`ip-adapter-plus_sd15` — 风格+内容保持
 - SDXL：`ip-adapter-plus-face_sdxl_vit-h` — 高分辨率面部保持
 

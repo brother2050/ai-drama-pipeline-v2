@@ -222,7 +222,7 @@ def system_status():
 def _collect_tools(cfg: dict) -> dict:
     """收集所有工具状态（并行检测，避免串行超时累积）"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    names = ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg", "seko", "training", "ip_adapter"]
+    names = ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg", "seko", "training", "ip_adapter", "pulid_flux"]
     tools = {}
     with ThreadPoolExecutor(max_workers=5) as ex:
         futures = {ex.submit(_check_tool, name, cfg): name for name in names}
@@ -391,6 +391,19 @@ def test_tool(name: str):
             return {"ok": True, "name": name,
                     "message": f"IP-Adapter Plus: {model} (weight={weight})",
                     "model": model, "clip_vision": clip_vision, "weight": weight, **result}
+
+        elif name == "pulid_flux":
+            pulid_cfg = cfg.get("pulid_flux", {})
+            if not pulid_cfg.get("enabled", True):
+                return {"ok": False, "name": name, "message": "PuLID-Flux 未启用", **result}
+            model = pulid_cfg.get("model", "fpulid_flux.safetensors")
+            weight = pulid_cfg.get("weight", 0.9)
+            comfyui_check = _check_tool("comfyui", cfg)
+            if not comfyui_check.get("available"):
+                return {"ok": False, "name": name, "message": "ComfyUI 不可达（PuLID-Flux 依赖 ComfyUI）", **result}
+            return {"ok": True, "name": name,
+                    "message": f"PuLID-Flux: {model} (weight={weight})",
+                    "model": model, "weight": weight, **result}
 
         return {"ok": True, "name": name, "message": "可用", **result}
 

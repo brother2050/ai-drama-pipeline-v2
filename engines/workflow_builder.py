@@ -277,7 +277,12 @@ class WorkflowBuilder:
             ip_config = {}
 
         if char_ids:
-            # 为所有角色查找 LoRA，无 LoRA 的用 IP-Adapter 回退
+            # 判断后端架构，选择一致性方案
+            # Flux (DiT) → PuLID-Flux | SD1.5/SDXL (UNet) → IP-Adapter Plus
+            is_flux = img_backend.lower() == "flux"
+            pulid_config = self.config.get("pulid_flux", {})
+
+            # 为所有角色查找 LoRA，无 LoRA 的用一致性方案回退
             chars_with_lora = []
             chars_without_lora = []
             for cid in char_ids:
@@ -295,9 +300,14 @@ class WorkflowBuilder:
                 wf = self._inject_lora(wf, lora_path, strength=lora_strength, lora_name=name)
                 logger.info(f"使用角色 LoRA: {cid} → {lora_path}")
 
-            # 无 LoRA 的角色使用 IP-Adapter 回退
+            # 无 LoRA 的角色使用一致性方案
             if chars_without_lora:
-                wf = self._inject_character_refs(wf, chars_without_lora, ip_config, outfit=outfit)
+                if is_flux and pulid_config.get("enabled", True):
+                    # Flux 后端 → PuLID-Flux
+                    wf = self._inject_pulid_flux(wf, chars_without_lora, pulid_config, outfit=outfit)
+                else:
+                    # SD1.5/SDXL 后端 → IP-Adapter Plus
+                    wf = self._inject_character_refs(wf, chars_without_lora, ip_config, outfit=outfit)
 
         # 注入风格 LoRA（复用上方已读取的 genre）
         if genre:
@@ -640,6 +650,200 @@ class WorkflowBuilder:
         logger.info(f"添加第二角色 IP-Adapter: {char_id} (weight={secondary_weight:.2f})")
         return wf
 
+    # ── PuLID-Flux 注入（Flux DiT 架构专用）─────────────────
+
+    def _inject_pulid_flux(self, wf: dict, char_ids: list[str],
+                            pulid_config: dict, outfit: str = "") -> dict:
+        """注入 PuLID-Flux 面部一致性节点（Flux 后端专用）
+
+        PuLID-Flux 工作原理：
+        - 通过 InsightFace 检测参考图人脸
+        - 通过 EVA CLIP 编码人脸特征
+        - 将人脸 ID embedding 注入 Flux DiT 的注意力层
+        - 实现跨镜头角色面部一致性
+
+        节点结构：
+        LoadPuLIDFluxModel → ┐
+        LoadInsightFace     → ├→ ApplyPuLIDFlux → KSampler (model)
+        LoadEvaClip         → ┘
+        LoadImage (定妆照)  → ┘
+
+        Args:
+            wf: 工作流 dict
+            char_ids: 角色 ID 列表
+            pulid_config: PuLID-Flux 配置
+            outfit: 服装标签
+        """
+        wf = copy.deepcopy(wf)
+
+        # 1. 找模型加载节点和 KSampler
+        model_source = (find_first_node(wf, "UNETLoader")
+                        or find_first_node(wf, "CheckpointLoaderSimple"))
+        ksampler = find_first_node(wf, "KSampler")
+        if not model_source or not ksampler:
+            logger.warning("未找到模型加载节点或 KSampler，无法注入 PuLID-Flux")
+            return wf
+
+        # 2. 获取配置
+        weight = pulid_config.get("weight", 0.9)
+        start_at = pulid_config.get("start_at", 0.0)
+        end_at = pulid_config.get("end_at", 1.0)
+        fusion = pulid_config.get("fusion", "mean")
+        use_gray = pulid_config.get("use_gray", True)
+
+        # 3. 创建节点
+        suffix = random.randint(1000, 9999)
+        pulid_model_node = f"pulid_model_{suffix}"
+        insightface_node = f"pulid_insightface_{suffix}"
+        eva_clip_node = f"pulid_eva_clip_{suffix}"
+        load_image_node = f"pulid_ref_{suffix}"
+        apply_node = f"pulid_apply_{suffix}"
+
+        # 4. LoadPuLIDFluxModel
+        wf[pulid_model_node] = {
+            "class_type": "LoadPuLIDFluxModel",
+            "inputs": {"pulid_file": pulid_config.get("model", "fpulid_flux.safetensors")}
+        }
+
+        # 5. LoadInsightFace (PuLID Flux)
+        wf[insightface_node] = {
+            "class_type": "LoadInsightFace",
+            "inputs": {"provider": "CPU"}  # GPU 可选，但 CPU 更兼容
+        }
+
+        # 6. LoadEvaClip (PuLID Flux)
+        wf[eva_clip_node] = {
+            "class_type": "LoadEvaClip",
+            "inputs": {}
+        }
+
+        # 7. LoadImage（角色参考图）
+        wf[load_image_node] = {
+            "class_type": "LoadImage",
+            "inputs": {"image": ""}  # 由 build_upload_map 设置
+        }
+
+        # 8. ApplyPuLIDFlux
+        wf[apply_node] = {
+            "class_type": "ApplyPuLIDFlux",
+            "inputs": {
+                "weight": weight,
+                "start_at": start_at,
+                "end_at": end_at,
+                "fusion": fusion,
+                "use_gray": use_gray,
+                "model": [model_source, 0],
+                "pulid": [pulid_model_node, 0],
+                "insightface": [insightface_node, 0],
+                "eva_clip": [eva_clip_node, 0],
+                "image": [load_image_node, 0],
+            }
+        }
+
+        # 9. 将 KSampler 的 model 输入重接到 PuLID 输出
+        wf[ksampler]["inputs"]["model"] = [apply_node, 0]
+
+        logger.info(f"注入 PuLID-Flux: weight={weight}, fusion={fusion}, "
+                    f"start_at={start_at}, end_at={end_at}")
+
+        # 多角色：链式注入次要角色
+        if len(char_ids) > 1:
+            for i, secondary_id in enumerate(char_ids[1:]):
+                secondary_refs = self._get_character_refs(secondary_id, outfit=outfit)
+                if secondary_refs:
+                    secondary_weight = max(0.3, weight * 0.7)
+                    wf = self._inject_pulid_flux_chain(
+                        wf, secondary_id, secondary_refs,
+                        weight=secondary_weight, pulid_config=pulid_config,
+                        suffix=suffix)
+
+        return wf
+
+    def _inject_pulid_flux_chain(self, wf: dict, char_id: str, ref_images: list[str],
+                                  weight: float = 0.6, pulid_config: dict | None = None,
+                                  suffix: int = 0) -> dict:
+        """链式注入第二个角色的 PuLID-Flux（串联在已有 PuLID 之后）"""
+        wf = copy.deepcopy(wf)
+        if pulid_config is None:
+            pulid_config = {}
+
+        # 找已有 ApplyPuLIDFlux 节点
+        pulid_nodes = find_nodes_by_class(wf, "ApplyPuLIDFlux")
+        if not pulid_nodes:
+            logger.warning("未找到已有 PuLID-Flux 节点，无法链式注入")
+            return wf
+
+        last_pulid = pulid_nodes[-1]
+
+        # 找下游消费者
+        downstream_node = None
+        downstream_input = None
+        for nid, node in wf.items():
+            if nid == last_pulid or node.get("class_type") == "LoadImage":
+                continue
+            for inp_name, inp_val in node.get("inputs", {}).items():
+                if isinstance(inp_val, list) and len(inp_val) == 2 and inp_val[0] == last_pulid:
+                    downstream_node = nid
+                    downstream_input = inp_name
+                    break
+            if downstream_node:
+                break
+
+        if not downstream_node:
+            downstream_node = find_first_node(wf, "KSampler")
+            downstream_input = "model"
+
+        if not downstream_node:
+            return wf
+
+        # 复用主角色的 PuLID 模型、InsightFace、EVA CLIP 节点
+        pulid_model_node = None
+        insightface_node = None
+        eva_clip_node = None
+        for nid, node in wf.items():
+            ct = node.get("class_type", "")
+            if ct == "LoadPuLIDFluxModel":
+                pulid_model_node = nid
+            elif ct == "LoadInsightFace":
+                insightface_node = nid
+            elif ct == "LoadEvaClip":
+                eva_clip_node = nid
+
+        # 创建新节点
+        s = random.randint(1000, 9999)
+        new_load = f"pulid_ref2_{char_id}_{s}"
+        new_apply = f"pulid_apply2_{char_id}_{s}"
+
+        wf[new_load] = {
+            "class_type": "LoadImage",
+            "inputs": {"image": os.path.basename(ref_images[0])}
+        }
+
+        apply_inputs = {
+            "weight": weight,
+            "start_at": pulid_config.get("start_at", 0.0),
+            "end_at": pulid_config.get("end_at", 1.0),
+            "fusion": pulid_config.get("fusion", "mean"),
+            "use_gray": pulid_config.get("use_gray", True),
+            "model": [last_pulid, 0],
+            "image": [new_load, 0],
+        }
+        if pulid_model_node:
+            apply_inputs["pulid"] = [pulid_model_node, 0]
+        if insightface_node:
+            apply_inputs["insightface"] = [insightface_node, 0]
+        if eva_clip_node:
+            apply_inputs["eva_clip"] = [eva_clip_node, 0]
+
+        wf[new_apply] = {"class_type": "ApplyPuLIDFlux", "inputs": apply_inputs}
+
+        # 重接下游
+        if downstream_node and downstream_input:
+            wf[downstream_node]["inputs"][downstream_input] = [new_apply, 0]
+
+        logger.info(f"链式注入第二角色 PuLID-Flux: {char_id} (weight={weight:.2f})")
+        return wf
+
     # ── LoRA 查找与注入 ────────────────────────────────────
 
     def _find_character_lora(self, char_id: str) -> str | None:
@@ -858,29 +1062,38 @@ class WorkflowBuilder:
 
         all_load_nodes = find_load_image_nodes(wf)
 
-        # 区分 IP-Adapter 参考图节点和场景图节点
+        # 区分一致性参考图节点和场景图节点
         # IP-Adapter 节点命名规则: ipadapter_ref_* (主角色), ipadapter_ref2_* (次要角色)
         ipa_primary_nodes = [n for n in all_load_nodes if n.startswith("ipadapter_ref_") and not n.startswith("ipadapter_ref2_")]
         ipa_secondary_nodes = [n for n in all_load_nodes if n.startswith("ipadapter_ref2_")]
+        # PuLID-Flux 节点命名规则: pulid_ref_* (主角色), pulid_ref2_* (次要角色)
+        pulid_primary_nodes = [n for n in all_load_nodes if n.startswith("pulid_ref_") and not n.startswith("pulid_ref2_")]
+        pulid_secondary_nodes = [n for n in all_load_nodes if n.startswith("pulid_ref2_")]
         # 旧式节点命名兼容
         char2_nodes = [n for n in all_load_nodes if n.startswith("char2_load_")]
         # 剩余的是场景图节点
-        ipa_node_set = set(ipa_primary_nodes) | set(ipa_secondary_nodes) | set(char2_nodes)
+        ipa_node_set = (set(ipa_primary_nodes) | set(ipa_secondary_nodes)
+                        | set(pulid_primary_nodes) | set(pulid_secondary_nodes)
+                        | set(char2_nodes))
         scene_nodes = [n for n in all_load_nodes if n not in ipa_node_set
-                       and not n.startswith("ipadapter_")]
+                       and not n.startswith("ipadapter_")
+                       and not n.startswith("pulid_")]
 
         # 主角色
         if char_ids:
             refs = self._get_character_refs(char_ids[0], outfit=outfit)
-            target_node = ipa_primary_nodes[0] if ipa_primary_nodes else (all_load_nodes[0] if all_load_nodes else None)
+            # 优先用 PuLID 节点，再用 IP-Adapter 节点，最后回退到第一个 LoadImage
+            target_node = (pulid_primary_nodes[0] if pulid_primary_nodes
+                          else ipa_primary_nodes[0] if ipa_primary_nodes
+                          else all_load_nodes[0] if all_load_nodes else None)
             if refs and target_node:
                 uploads[target_node] = refs[0]
 
         # 第二角色
         for i, cid in enumerate(char_ids[1:]):
             refs = self._get_character_refs(cid, outfit=outfit)
-            # 优先用 ipadapter_ref2 节点，回退到 char2_load 节点
-            secondary_pool = ipa_secondary_nodes + char2_nodes
+            # 优先用 pulid_ref2 节点，回退到 ipadapter_ref2 / char2_load
+            secondary_pool = pulid_secondary_nodes + ipa_secondary_nodes + char2_nodes
             if refs and i < len(secondary_pool):
                 uploads[secondary_pool[i]] = refs[0]
 
@@ -948,7 +1161,7 @@ class WorkflowBuilder:
         return sorted(refs)
 
     def cleanup_dangling_refs(self, wf: dict, removed_ids: list[str]) -> dict:
-        """清理工作流中对已删除节点的残留引用（含 IP-Adapter 链）"""
+        """清理工作流中对已删除节点的残留引用（含 IP-Adapter / PuLID-Flux 链）"""
         removed_set = set(removed_ids)
         model_source = find_first_node(wf, "UNETLoader") or find_first_node(wf, "CheckpointLoaderSimple")
 
@@ -960,8 +1173,7 @@ class WorkflowBuilder:
                     else:
                         del node["inputs"][key]
 
-        # 移除缺少必需输入的 IP-Adapter 节点（级联清理）
-        ipa_types = {"IPAdapterAdvanced", "IPAdapterModelLoader", "CLIPVisionLoader"}
+        # 移除缺少必需输入的 IP-Adapter / PuLID-Flux 节点（级联清理）
         changed = True
         while changed:
             changed = False
@@ -969,6 +1181,12 @@ class WorkflowBuilder:
             for nid, node in list(wf.items()):
                 ct = node.get("class_type", "")
                 if ct == "IPAdapterAdvanced":
+                    img = node.get("inputs", {}).get("image")
+                    if not img or (isinstance(img, list) and len(img) == 2 and img[0] not in wf):
+                        current_removed.add(nid)
+                        del wf[nid]
+                        changed = True
+                elif ct == "ApplyPuLIDFlux":
                     img = node.get("inputs", {}).get("image")
                     if not img or (isinstance(img, list) and len(img) == 2 and img[0] not in wf):
                         current_removed.add(nid)

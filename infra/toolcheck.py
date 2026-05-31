@@ -194,4 +194,22 @@ def _check_tool_inner(name: str, cfg: dict) -> dict:
         return {"available": True, "backend": "ip-adapter-plus", "type": "gpu",
                 "model": model, "reason": f"IP-Adapter Plus ({model})"}
 
+    elif name == "pulid_flux":
+        pulid_cfg = cfg.get("pulid_flux", {})
+        if not pulid_cfg.get("enabled", True):
+            return {"available": False, "backend": "pulid-flux", "type": "gpu",
+                    "reason": "PuLID-Flux 未启用"}
+        # 检查 ComfyUI
+        comfyui_cfg = cfg.get("comfyui", {})
+        url = comfyui_cfg.get("url", "http://127.0.0.1:8188")
+        api_key = comfyui_cfg.get("api_key", "")
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+        comfyui_ok = _url_ok(url, "/system_stats", headers=headers)
+        if not comfyui_ok:
+            return {"available": False, "backend": "pulid-flux", "type": "gpu",
+                    "reason": "ComfyUI 不可达"}
+        model = pulid_cfg.get("model", "fpulid_flux.safetensors")
+        return {"available": True, "backend": "pulid-flux", "type": "gpu",
+                "model": model, "reason": f"PuLID-Flux ({model})"}
+
     return {"available": False, "backend": "unknown", "type": "unknown", "reason": "未知工具"}

@@ -16,7 +16,8 @@
 | **人性化工作台** | 内联编辑、撤销重做、批量执行、资源预览 |
 | **多语言界面** | 中文/English 双语支持 |
 | **Seko 策划案** | 集成 seko.sensetime.com 影视策划案生成/修改 |
-| **IP-Adapter Plus** | 基于 ip-adapter-plus-face 模型的角色面部一致性，跨镜头保持人物特征 |
+| **IP-Adapter Plus** | 基于 ip-adapter-plus-face 模型的角色面部一致性（SD1.5/SDXL 后端） |
+| **PuLID-Flux** | 基于 PuLID 的 Flux 面部一致性（Flux 后端，推荐） |
 | **安全加固** | 输入校验、路径遍历防护、速率限制 |
 | **96 项测试** | 集成测试 + Celery Mock + 前端 E2E |
 
@@ -145,16 +146,14 @@ drama serve
 
 #### ⚠️ 后端兼容性
 
-IP-Adapter Plus 通过修改 UNet 的 cross-attention 层工作，**仅支持 SD1.5/SDXL 架构**：
+| 图像后端 | 架构 | 面部一致性方案 | 说明 |
+|---------|------|:-------------:|------|
+| `flux` | DiT | **⭐ PuLID-Flux** | **推荐**，画质最佳 + 面部一致性强 |
+| `sd15` | UNet | IP-Adapter Plus | 成熟稳定，面部一致性好 |
+| `cosmos` | DiT | LoRA 训练 | 无现成一致性方案，需训练 |
 
-| 图像后端 | 架构 | IP-Adapter 兼容 | 推荐一致性方案 |
-|---------|------|:---------------:|--------------|
-| `sd15` | UNet | ✅ | IP-Adapter Plus |
-| `flux` | DiT | ❌ | LoRA 训练 |
-| `cosmos` | DiT | ❌ | LoRA 训练 |
-
-> 当前默认后端为 `cosmos`（DiT 架构），IP-Adapter Plus 不适用。如需使用 IP-Adapter，请先切换到 `sd15` 后端（在 `config/system.yaml` 中设置 `models.image_backend: sd15`）。
-> Cosmos/Flux 后端的角色一致性依赖 **LoRA 训练**（Web 工作台「🧠 LoRA 训练」功能）。
+> **推荐组合**：`flux` 后端 + `PuLID-Flux` — 画质和一致性都是最佳。
+> Cosmos 后端暂无原生面部一致性方案，建议切换到 Flux 或使用 LoRA 训练。
 
 #### 6.1 安装 ComfyUI 自定义节点
 
@@ -238,6 +237,57 @@ ip_adapter:
 ```bash
 drama status   # 应显示 IP-Adapter Plus ✅
 ```
+
+### 7. PuLID-Flux（Flux 面部一致性，推荐）
+
+> 基于 [PuLID](https://github.com/ToTheBeginning/PuLID) 的 Flux 面部一致性方案。通过 InsightFace 检测人脸 + EVA CLIP 编码面部特征，将 ID embedding 注入 Flux DiT 注意力层，实现跨镜头角色面部一致性。
+
+#### 7.1 安装 ComfyUI 自定义节点
+
+```bash
+cd ComfyUI/custom_nodes/
+git clone https://github.com/balazik/ComfyUI-PuLID-Flux.git
+# 可选增强版（更多融合方法）：
+# git clone https://github.com/sipie800/ComfyUI-PuLID-Flux-Enhanced.git
+# 重启 ComfyUI
+```
+
+#### 7.2 下载模型文件
+
+需要下载 **3 类模型**：
+
+```bash
+# 1. PuLID Flux 模型 → ComfyUI/models/pulid/
+mkdir -p ComfyUI/models/pulid/
+wget -O ComfyUI/models/pulid/fpulid_flux.safetensors \
+  https://huggingface.co/huchenlei/ipadapter_pulid/resolve/main/fpulid_flux.safetensors
+
+# 2. InsightFace AntelopeV2（5 个文件）→ ComfyUI/models/insightface/models/antelopev2/
+mkdir -p ComfyUI/models/insightface/models/antelopev2/
+# 从 https://huggingface.co/MonsterMMORPG/tools/tree/main 下载后解压到此目录
+
+# 3. EVA02-CLIP-L-14-336 → 首次运行自动下载（或手动放到 ComfyUI/models/clip/）
+```
+
+#### 7.3 配置
+
+PuLID-Flux 默认已启用，配置在 `config/system.yaml` 中：
+
+```yaml
+pulid_flux:
+  enabled: true
+  model: "fpulid_flux.safetensors"
+  weight: 0.9              # 推荐 0.8-0.95（1.0 过拟合）
+  fusion: "mean"           # 多图融合方法: mean / concat / max / train_weight
+  use_gray: true           # 灰度优化（边缘轮廓更自然）
+```
+
+#### 7.4 技巧
+
+- **参考图质量很重要**：使用清晰、正面、光线均匀的定妆照
+- **weight 推荐 0.8-0.95**：1.0 容易过拟合，面部僵硬
+- **Euler + simple** 调度器始终可用；Euler + beta 对低质量参考图效果更好
+- **多角色同框**：自动链式注入，主角色 weight=0.9，次要角色自动降权
 
 ### 三阶段架构（推荐工作流）
 

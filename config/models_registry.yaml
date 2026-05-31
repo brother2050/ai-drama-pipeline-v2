@@ -75,6 +75,21 @@ ip_adapter_models:
     clip_vision: "CLIP-ViT-bigG-14-laion2B-39B-b160k.safetensors"
     base: "sdxl"
 
+pulid_flux_models:
+  fpulid_flux:
+    description: "PuLID Flux — Flux 面部一致性（推荐 weight=0.8-0.95）"
+    file: "fpulid_flux.safetensors"
+    folder: "pulid"
+    requires:
+      - name: "AntelopeV2"
+        folder: "insightface/models/antelopev2"
+        files: ["1k3d68.onnx", "2d106det.onnx", "genderage.onnx", "glintr100.onnx", "scrfd_10g_bnkps.onnx"]
+      - name: "EVA02-CLIP-L-14-336"
+        folder: "clip"
+        auto_download: true
+    base: "flux"
+    install: "cd ComfyUI/custom_nodes && git clone https://github.com/balazik/ComfyUI-PuLID-Flux.git"
+
 music_backends:
   template:
     description: "ffmpeg 模板配乐（开箱即用）"

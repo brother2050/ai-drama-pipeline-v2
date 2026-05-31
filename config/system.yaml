@@ -78,6 +78,21 @@ ip_adapter:
   # 嵌入缩放: all / v only / k+v (v only 对面部一致性最好)
   embeds_scaling: "V only"
 
+pulid_flux:
+  enabled: true
+  # PuLID Flux 模型（放入 ComfyUI/models/pulid/）
+  # 下载: https://huggingface.co/huchenlei/ipadapter_pulid/resolve/main/fpulid_flux.safetensors
+  model: "fpulid_flux.safetensors"
+  # 面部一致性权重（推荐 0.8-0.95，1.0 过拟合）
+  weight: 0.9
+  # PuLID 生效的去噪范围
+  start_at: 0.0
+  end_at: 1.0
+  # 融合方法: mean / concat / max / max_token / train_weight
+  fusion: "mean"
+  # 灰度优化（边缘轮廓优化）
+  use_gray: true
+
 timeouts:
   comfyui: 900
   tts: 60

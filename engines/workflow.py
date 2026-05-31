@@ -8,6 +8,7 @@ __all__ = [
     "find_first_node", "find_nodes_by_class", "find_load_image_nodes",
     "find_character_load_image_nodes", "find_lora_nodes",
     "find_ip_adapter_nodes", "find_ip_adapter_load_image_nodes",
+    "find_pulid_flux_nodes",
     "set_clip_text_prompts",
     "apply_ip_adapter_config", "resolve_node_aliases",
 ]
@@ -103,6 +104,36 @@ def find_ip_adapter_load_image_nodes(wf: dict) -> list[str]:
             if not nid.startswith("_")
             and node.get("class_type") == "LoadImage"
             and nid.startswith("ipadapter_ref")]
+
+
+def find_pulid_flux_nodes(wf: dict) -> dict[str, list[str]]:
+    """查找所有 PuLID-Flux 相关节点，按类型分组
+
+    Returns:
+        {
+            "apply": ["pulid_apply_xxx", ...],           # ApplyPuLIDFlux
+            "model_loader": ["pulid_model_xxx", ...],    # LoadPuLIDFluxModel
+            "insightface": ["pulid_insightface_xxx", ...],# LoadInsightFace
+            "eva_clip": ["pulid_eva_clip_xxx", ...],     # LoadEvaClip
+            "ref_images": ["pulid_ref_xxx", ...],        # PuLID LoadImage
+        }
+    """
+    result = {"apply": [], "model_loader": [], "insightface": [], "eva_clip": [], "ref_images": []}
+    for nid, node in wf.items():
+        if nid.startswith("_"):
+            continue
+        ct = node.get("class_type", "")
+        if ct == "ApplyPuLIDFlux":
+            result["apply"].append(nid)
+        elif ct == "LoadPuLIDFluxModel":
+            result["model_loader"].append(nid)
+        elif ct == "LoadInsightFace" and nid.startswith("pulid_"):
+            result["insightface"].append(nid)
+        elif ct == "LoadEvaClip" and nid.startswith("pulid_"):
+            result["eva_clip"].append(nid)
+        elif ct == "LoadImage" and nid.startswith("pulid_ref"):
+            result["ref_images"].append(nid)
+    return result
 
 
 def find_lora_nodes(wf: dict) -> list[tuple[str, str]]:
