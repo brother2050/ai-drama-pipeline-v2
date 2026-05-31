@@ -114,6 +114,44 @@ class Container:
             self._snapshots[key] = cfg
             return inst
 
+    def get_with_fallback(self, service_type: str, name: str | None = None) -> tuple[Any, str]:
+        """获取后端实例，主后端不可用时自动 fallback 到同类型其他后端
+
+        Returns:
+            (实例, 实际使用的后端名)
+        """
+        primary = name or self._resolve(service_type)
+        try:
+            inst = self.get(service_type, primary)
+            # 快速健康检查
+            if hasattr(inst, "health_check"):
+                ok, _ = inst.health_check()
+                if ok:
+                    return inst, primary
+            else:
+                return inst, primary
+        except Exception as e:
+            logger.warning(f"主后端 {service_type}:{primary} 不可用: {e}")
+
+        # 遍历同类型其他后端（按 priority 排序）
+        candidates = registry.list_by_type(service_type)
+        for candidate in candidates:
+            if candidate == primary:
+                continue
+            try:
+                inst = self.get(service_type, candidate)
+                if hasattr(inst, "health_check"):
+                    ok, _ = inst.health_check()
+                    if not ok:
+                        continue
+                logger.info(f"Fallback: {service_type}:{primary} → {candidate}")
+                return inst, candidate
+            except Exception:
+                continue
+
+        # 全部失败，返回主后端（让调用方处理错误）
+        return self.get(service_type, primary), primary
+
     def _resolve(self, service_type: str) -> str:
         # 1. 优先从 models 段读取（如 tts_backend, image_backend）
         models = self._config.get("models", {})
@@ -186,6 +224,12 @@ class Container:
                         logger.debug(f"{type(e).__name__}: {e}")
             self._instances.clear()
             self._snapshots.clear()
+        # 关闭共享 HTTP 连接池
+        try:
+            from infra.http_pool import shutdown_all as pool_shutdown
+            pool_shutdown()
+        except Exception:
+            pass
 
 
 # 全局单例

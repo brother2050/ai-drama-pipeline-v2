@@ -370,8 +370,9 @@ def tts_core(shot_id: str, shot: dict, cfg, cont, out_dir: Path, *,
     language = shot.get("language", "zh")
 
     try:
-        cont.get("tts").synthesize(dialogue, audio_path, voice_config=voice_config,
-                                   emotion=emotion, language=language)
+        tts_inst, tts_name = cont.get_with_fallback("tts")
+        tts_inst.synthesize(dialogue, audio_path, voice_config=voice_config,
+                            emotion=emotion, language=language)
     except Exception as e:
         return _err(shot_id, "tts", f"TTS 合成失败: {e}")
     return _done(shot_id, "tts", audio_path)
@@ -654,7 +655,8 @@ def lipsync_core(shot_id: str, cont, out_dir: Path, *, force: bool = False) -> d
 
     synced_path = str(out_dir / "synced.mp4")
     try:
-        cont.get("lipsync").sync(str(video_path), str(audio_path), synced_path)
+        lipsync_inst, lipsync_name = cont.get_with_fallback("lipsync")
+        lipsync_inst.sync(str(video_path), str(audio_path), synced_path)
     except Exception as e:
         return _err(shot_id, "lipsync", f"口型同步失败: {e}")
     return _done(shot_id, "lipsync", synced_path)
@@ -2202,7 +2204,16 @@ def train_lora_task(self, config_path: str, char_id: str, *,
         except Exception:
             trigger_word = f"ohwx {char_id}"
 
-    # 执行训练
+    # 执行训练（带进度回调）
+    update = self.update_state  # 局部变量，避免闭包持有 self
+
+    def _on_progress(current: int, total: int, msg: str):
+        # 进度范围: 15%（训练开始）~ 95%（训练完成）
+        pct = int(15 + current / max(total, 1) * 80)
+        update(state="PROGRESS", meta={
+            "step": "train_lora", "progress": pct,
+            "message": msg, "current": current, "total": total})
+
     try:
         result_path = trainer.train_lora(
             char_id, str(char_assets_dir),
@@ -2212,6 +2223,7 @@ def train_lora_task(self, config_path: str, char_id: str, *,
             rank=rank,
             resolution=resolution,
             output_name=f"{char_id}_lora",
+            progress_cb=_on_progress,
         )
     except Exception as e:
         logger.error(f"LoRA 训练失败: {e}", exc_info=True)

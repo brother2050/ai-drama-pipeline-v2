@@ -35,11 +35,11 @@ class _ComfyUIVideoBase:
         return self._get_comfyui().generate(workflow, output_dir)
 
     def health_check(self):
-        import httpx
+        from infra.http_pool import get_client
         try:
-            with httpx.Client(timeout=3) as c:
-                r = c.get(f"{self._comfyui_url}/system_stats", headers=self._headers())
-                return True, f"{self.name} via ComfyUI (HTTP {r.status_code})"
+            c = get_client(timeout=3)
+            r = c.get(f"{self._comfyui_url}/system_stats", headers=self._headers())
+            return True, f"{self.name} via ComfyUI (HTTP {r.status_code})"
         except Exception as e:
             return False, str(e)
 

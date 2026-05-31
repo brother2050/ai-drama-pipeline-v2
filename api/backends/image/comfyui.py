@@ -13,7 +13,7 @@ class ComfyUI:
         self._url = config.get("url", "http://127.0.0.1:8188").rstrip("/")
         self._timeout = config.get("timeouts", {}).get("comfyui", 900)
         self._api_key = config.get("api_key", "")
-        self._client = httpx.Client(timeout=self._timeout)
+        from infra.http_pool import get_client; self._client = get_client(timeout=self._timeout)
 
     @property
     def name(self): return "comfyui"
@@ -158,7 +158,7 @@ class ComfyUI:
             return False, f"ComfyUI unreachable: {e}"
 
     def shutdown(self):
-        self._client.close()
+        pass  # 共享连接池，无需关闭
 
 def _f(config): return ComfyUI(config)
 registry.register(BackendMeta(name="comfyui", service_type="image", factory=_f,

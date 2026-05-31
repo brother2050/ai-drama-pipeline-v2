@@ -55,7 +55,7 @@ class MimoVoiceClone:
     def __init__(self, config: dict):
         self._api_key = config.get("api_key") or os.environ.get("MIMO_API_KEY", "")
         self._timeout = config.get("timeouts", {}).get("tts", 60)
-        self._client = httpx.Client(timeout=self._timeout)
+        from infra.http_pool import get_client; self._client = get_client(timeout=self._timeout)
 
     @property
     def name(self) -> str:
@@ -157,7 +157,7 @@ class MimoVoiceClone:
         return True, "API key 已配置"
 
     def shutdown(self) -> None:
-        self._client.close()
+        pass  # 共享连接池，无需关闭
 
 
 def _factory(config: dict) -> MimoVoiceClone:

@@ -12,8 +12,9 @@ class OllamaLLM:
         self._model = config.get("model", "qwen3:8b")
         self._timeout = config.get("timeouts", {}).get("llm", 300)
         self._ctx = config.get("context_length", 0)
-        self._client = httpx.Client(timeout=self._timeout)
-        self._fast_client = httpx.Client(timeout=5)
+        from infra.http_pool import get_client
+        self._client = get_client(timeout=self._timeout)
+        self._fast_client = get_client(timeout=5)
 
     @property
     def name(self): return "ollama"
@@ -55,8 +56,7 @@ class OllamaLLM:
             return False, f"Ollama unreachable: {e}"
 
     def shutdown(self):
-        self._client.close()
-        self._fast_client.close()
+        pass  # 共享连接池，无需关闭
 
 def _f(config): return OllamaLLM(config)
 registry.register(BackendMeta(name="ollama", service_type="llm", factory=_f,
@@ -89,8 +89,9 @@ class OpenAICompatLLM:
         self._headers = {"Content-Type": "application/json"}
         if self._api_key:
             self._headers["Authorization"] = f"Bearer {self._api_key}"
-        self._client = httpx.Client(timeout=self._timeout, headers=self._headers)
-        self._fast_client = httpx.Client(timeout=5, headers=self._headers)
+        from infra.http_pool import get_client
+        self._client = get_client(timeout=self._timeout)
+        self._fast_client = get_client(timeout=5)
 
     @property
     def name(self): return "openai"
@@ -114,19 +115,19 @@ class OpenAICompatLLM:
         r = self._client.post(f"{self._url}/v1/chat/completions", json={
             "model": self._model, "messages": messages,
             "max_tokens": kwargs.get("max_tokens", 2048),
-        })
+        }, headers=self._headers)
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"]
 
     def health_check(self) -> tuple[bool, str]:
         try:
-            r = self._fast_client.get(f"{self._url}/v1/models")
+            r = self._fast_client.get(f"{self._url}/v1/models", headers=self._headers)
             return True, f"OpenAI-compat reachable (HTTP {r.status_code})"
         except Exception as e:
             return False, f"OpenAI-compat unreachable: {e}"
 
     def shutdown(self):
-        self._client.close()
+        pass  # 共享连接池，无需关闭
         self._fast_client.close()
 
 def _f2(config): return OpenAICompatLLM(config)

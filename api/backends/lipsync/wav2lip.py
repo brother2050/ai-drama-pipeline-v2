@@ -11,8 +11,8 @@ class Wav2Lip:
     def __init__(self, config: dict):
         self._url = config.get("api_url", "http://127.0.0.1:8084")
         self._timeout = config.get("timeouts", {}).get("lipsync", 120)
-        self._client = httpx.Client(timeout=self._timeout)
-        self._fast_client = httpx.Client(timeout=3)
+        from infra.http_pool import get_client; self._client = get_client(timeout=self._timeout)
+        from infra.http_pool import get_client; self._fast_client = get_client(timeout=3)
 
     @property
     def name(self): return "wav2lip"
@@ -35,8 +35,8 @@ class Wav2Lip:
             return False, f"Wav2Lip unreachable: {e}"
 
     def shutdown(self):
-        self._client.close()
-        self._fast_client.close()
+        pass  # 共享连接池，无需关闭
+        pass  # 共享连接池
 
 def _f(config): return Wav2Lip(config)
 registry.register(BackendMeta(name="wav2lip", service_type="lipsync", factory=_f,

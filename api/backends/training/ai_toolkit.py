@@ -44,7 +44,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from api.registry import BackendMeta, registry
 from infra.config import ProjectPaths
@@ -425,7 +425,8 @@ class AIToolkitTrainer:
                    learning_rate: float = 1e-4,
                    rank: int = 16,
                    resolution: str = "512x768",
-                   output_name: str = "") -> str:
+                   output_name: str = "",
+                   progress_cb: Callable[[int, int, str], None] | None = None) -> str:
         """训练角色 LoRA
 
         Args:
@@ -437,6 +438,7 @@ class AIToolkitTrainer:
             rank: LoRA rank (network_dim)
             resolution: 训练分辨率
             output_name: 输出文件名（默认 {char_id}_lora）
+            progress_cb: 进度回调 (current_step, total_steps, message) → None
 
         Returns:
             本地 .safetensors 路径
@@ -542,6 +544,11 @@ class AIToolkitTrainer:
                 logger.info(f"  训练状态: {status}, step={step}, info={info}")
                 last_status = status
                 last_step = step
+                if progress_cb:
+                    try:
+                        progress_cb(step, steps, f"训练中: {status}, step={step}/{steps}")
+                    except Exception:
+                        pass
 
             if status in ("done", "complete", "finished"):
                 logger.info(f"  训练完成: {info}")
