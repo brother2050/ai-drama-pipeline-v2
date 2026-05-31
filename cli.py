@@ -547,9 +547,10 @@ def gen_storyboard(episode, outline, text, duration, config_path, append):
 
     # 加载已有角色和场景
     from engines.llm_generator import generate_storyboard
-    project_dir = Path(cfg_file).parent.parent
-    characters = _load_yaml_entities(project_dir / "config" / "characters", "character")
-    scenes = _load_yaml_entities(project_dir / "config" / "scenes", "scene")
+    from infra.config import ProjectPaths
+    paths = ProjectPaths(Path(cfg_file).parent.parent)
+    characters = _load_yaml_entities(paths.characters_dir, "character")
+    scenes = _load_yaml_entities(paths.scenes_dir, "scene")
 
     console.print(f"\n[bold cyan]📝 生成分镜表 — 第{episode}集[/bold cyan]")
     console.print(f"[dim]大纲: {len(outline_text)} 字 | 目标: {duration}s | 角色: {len(characters)} | 场景: {len(scenes)}[/dim]\n")
@@ -564,7 +565,7 @@ def gen_storyboard(episode, outline, text, duration, config_path, append):
         sys.exit(1)
 
     # 保存
-    sb_path = project_dir / "storyboard" / "episodes.csv"
+    sb_path = paths.storyboard_csv
     _save_storyboard_csv(sb_path, shots, episode, append)
 
     total_sec = sum(int(s.get("duration", 4)) for s in shots)
@@ -599,11 +600,11 @@ def gen_characters(desc, config_path):
         sys.exit(1)
 
     # 保存
-    project_dir = Path(cfg_file).parent.parent
-    char_dir = project_dir / "config" / "characters"
+    from infra.config import ProjectPaths, save_yaml
+    paths = ProjectPaths(Path(cfg_file).parent.parent)
+    char_dir = paths.characters_dir
     char_dir.mkdir(parents=True, exist_ok=True)
 
-    from infra.config import save_yaml
     for char in chars:
         cid = char.get("id", "unknown")
         path = char_dir / f"{cid}.yaml"
@@ -634,11 +635,11 @@ def gen_scenes(desc, config_path):
         console.print("[red]❌ 生成失败[/red]")
         sys.exit(1)
 
-    project_dir = Path(cfg_file).parent.parent
-    scene_dir = project_dir / "config" / "scenes"
+    from infra.config import ProjectPaths, save_yaml
+    paths = ProjectPaths(Path(cfg_file).parent.parent)
+    scene_dir = paths.scenes_dir
     scene_dir.mkdir(parents=True, exist_ok=True)
 
-    from infra.config import save_yaml
     for scene in scene_list:
         sid = scene.get("id", "unknown")
         path = scene_dir / f"{sid}.yaml"
@@ -669,9 +670,10 @@ def gen_all(episode, outline, duration, config_path):
     from engines.llm_generator import generate_storyboard, generate_characters, generate_scenes
 
     # 先生成分镜（会自动使用已有角色/场景）
-    project_dir = Path(cfg_file).parent.parent
-    characters = _load_yaml_entities(project_dir / "config" / "characters", "character")
-    scenes = _load_yaml_entities(project_dir / "config" / "scenes", "scene")
+    from infra.config import ProjectPaths
+    paths = ProjectPaths(Path(cfg_file).parent.parent)
+    characters = _load_yaml_entities(paths.characters_dir, "character")
+    scenes = _load_yaml_entities(paths.scenes_dir, "scene")
 
     console.print("[bold][1/3] 生成分镜表...[/bold]")
     style = cfg.get("project", {}).get("style", "")
@@ -680,7 +682,7 @@ def gen_all(episode, outline, duration, config_path):
                                 style=style, genre=genre)
 
     if shots:
-        sb_path = project_dir / "storyboard" / "episodes.csv"
+        sb_path = paths.storyboard_csv
         _save_storyboard_csv(sb_path, shots, episode, False)
         console.print(f"  ✅ {len(shots)} 个镜头")
     else:

@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import Any
 
 from api.registry import BackendMeta, registry
+from infra.config import ProjectPaths
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,7 @@ class AIToolkitTrainer:
                              or config.get("_project_dir") or "")
         if not self._project_dir:
             logger.warning("AIToolkitTrainer: project_dir 为空，下载结果可能失败")
+        self._paths = ProjectPaths(self._project_dir) if self._project_dir else None
 
         # 训练参数默认值
         defaults = config.get("defaults", {})
@@ -570,7 +572,7 @@ class AIToolkitTrainer:
         training_folder = settings.get("TRAINING_FOLDER", "/tmp/ai_toolkit_output")
 
         # 获取作业日志以查找输出文件路径
-        output_dir = Path(self._project_dir) / "assets" / "loras"
+        output_dir = self._paths.loras_dir if self._paths else Path(self._project_dir) / "assets" / "loras"
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = str(output_dir / f"{output_name}.safetensors")
 

@@ -25,6 +25,7 @@ from engines.workflow import (
     find_nodes_by_class, resolve_node_aliases, set_clip_text_prompts,
 )
 from engines.gpu_adapter import get_gpu_config
+from infra.config import ProjectPaths
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,8 @@ class WorkflowBuilder:
         self.config = config
         self.models = models
         self.project_dir = project_dir
-        self.wf_dir = wf_dir or os.path.join(project_dir, "workflows")
+        self._paths = ProjectPaths(project_dir)
+        self.wf_dir = wf_dir or str(self._paths.workflows_dir)
         self.registry = registry
         self.comfyui = comfyui
         self.force = force
@@ -70,8 +72,7 @@ class WorkflowBuilder:
         # 确保 registry 可用（懒加载内置默认）
         if not self.registry:
             from flow.model_registry import ModelRegistry
-            self.registry = ModelRegistry(
-                os.path.join(self.project_dir, "config", "project.yaml"))
+            self.registry = ModelRegistry(str(self._paths.project_yaml))
 
         # 从注册表读取默认后端名（注册表是唯一真相来源）
         defaults = self.registry.get_defaults()
@@ -822,7 +823,7 @@ class WorkflowBuilder:
 
     def _find_character_lora(self, char_id: str) -> str | None:
         """查找已训练的角色 LoRA 文件"""
-        lora_dir = Path(self.project_dir) / "assets" / "loras"
+        lora_dir = self._paths.loras_dir
         from infra.asset_tracker import comfyui_asset_name
         lora_name = comfyui_asset_name(self.project_dir, char_id, f"{char_id}_lora.safetensors")
         candidates = [
@@ -831,7 +832,7 @@ class WorkflowBuilder:
             lora_dir / f"{char_id}.safetensors",             # {char_id}.safetensors
         ]
         # 也检查角色目录下的 lora 子目录
-        char_dir = Path(self.project_dir) / "assets" / "characters" / char_id / "lora"
+        char_dir = self._paths.character_lora_dir(char_id)
         if char_dir.exists():
             for f in char_dir.glob("*.safetensors"):
                 candidates.append(f)
@@ -843,7 +844,7 @@ class WorkflowBuilder:
 
     def _find_style_lora(self, genre: str) -> str | None:
         """查找已训练的风格 LoRA 文件"""
-        lora_dir = Path(self.project_dir) / "assets" / "loras"
+        lora_dir = self._paths.loras_dir
         candidates = [
             lora_dir / f"style_{genre}_lora.safetensors",
             lora_dir / f"style_{genre}.safetensors",
@@ -1080,11 +1081,11 @@ class WorkflowBuilder:
         """获取角色参考图路径列表（优先返回 outfit 对应的图）"""
         from engines.portrait import ensure_portrait
 
-        char_dir = Path(self.project_dir) / "assets" / "characters" / char_id
+        char_dir = self._paths.character_asset_dir(char_id)
 
         # 1. 优先查找 outfit 子目录
         if outfit:
-            outfit_dir = char_dir / outfit
+            outfit_dir = self._paths.character_outfit_dir(char_id, outfit)
             refs = []
             if outfit_dir.exists():
                 for ext in ("*.png", "*.jpg", "*.jpeg"):
@@ -1118,9 +1119,8 @@ class WorkflowBuilder:
         if portrait:
             return [portrait]
 
-        # 4. 从全局主体库查找（ROOT/shared_assets/）
-        root_dir = Path(__file__).resolve().parent.parent
-        shared_dir = root_dir / "shared_assets" / "characters" / char_id
+        # 4. 从全局主体库查找
+        shared_dir = self._paths.shared_assets_dir / "characters" / char_id
         if shared_dir.exists():
             for ext in ("*.png", "*.jpg", "*.jpeg"):
                 refs.extend(str(p) for p in shared_dir.glob(ext))

@@ -181,13 +181,43 @@ class ProjectPaths:
 
     @property
     def shared_assets_dir(self) -> Path:
-        """全局共享资产目录（项目根的上一级）"""
-        return self._root.parent / "shared_assets"
+        """全局共享资产目录（仓库根目录级别）"""
+        return self._root.parent.parent / "shared_assets"
 
     @property
     def tts_preview_dir(self) -> Path:
         """TTS 预览目录"""
         return self._root / "output" / "tts_preview"
+
+    @property
+    def logs_dir(self) -> Path:
+        """日志目录"""
+        return self._root / "logs"
+
+    def bgm_file(self, tag: str = "") -> Path:
+        """配乐文件路径（tag 用于区分不同用途，如时间戳）"""
+        name = f"bgm_{tag}.wav" if tag else "bgm.wav"
+        return self._root / "output" / name
+
+    def config_entity_dir(self, entity_type: str) -> Path:
+        """通用实体配置目录（characters / scenes）"""
+        return self._root / "config" / entity_type
+
+    def assets_entity_dir(self, entity_type: str) -> Path:
+        """通用实体资产目录（characters / scenes）"""
+        return self._root / "assets" / entity_type
+
+    def config_entity_yaml(self, entity_type: str, entity_id: str) -> Path:
+        """通用实体配置文件"""
+        return self._root / "config" / entity_type / f"{entity_id}.yaml"
+
+    def assets_entity_file(self, entity_type: str, entity_id: str, filename: str) -> Path:
+        """通用实体资产文件"""
+        return self._root / "assets" / entity_type / entity_id / filename
+
+    def seko_asset_dir(self, task_id: str) -> Path:
+        """Seko 策划案资产目录"""
+        return self._root / "assets" / "seko" / task_id
 
     def ensure_dirs(self) -> None:
         """创建所有标准子目录"""

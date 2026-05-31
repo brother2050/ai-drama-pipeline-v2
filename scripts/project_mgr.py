@@ -130,14 +130,17 @@ def _active(root: Path) -> Path:
 
 def _ensure_project_dirs(project_dir: Path) -> None:
     """确保项目具备完整的目录结构"""
-    for sub in _PROJECT_DIRS:
-        (project_dir / sub).mkdir(parents=True, exist_ok=True)
+    from infra.config import ProjectPaths
+    ProjectPaths(project_dir).ensure_dirs()
 
 
 def _scaffold_default_config(project_dir: Path, name: str, style: str = "cinematic", genre: str = "urban") -> None:
     """为新项目生成默认配置文件（已存在时仅更新项目名称和风格）"""
+    from infra.config import ProjectPaths, save_yaml
+    paths = ProjectPaths(project_dir)
+
     # project.yaml — 始终确保名称和风格正确
-    cfg_path = project_dir / "config" / "project.yaml"
+    cfg_path = paths.project_yaml
     if cfg_path.exists():
         # 已有配置：只更新项目名称和风格，不覆盖其他自定义内容
         with open(cfg_path, encoding="utf-8") as f:
@@ -145,7 +148,6 @@ def _scaffold_default_config(project_dir: Path, name: str, style: str = "cinemat
         data.setdefault("project", {})["name"] = name
         data["project"]["style"] = style
         data["project"]["genre"] = genre
-        from infra.config import save_yaml
         save_yaml(cfg_path, data)
     else:
         # 无配置：从模板生成
@@ -155,7 +157,7 @@ def _scaffold_default_config(project_dir: Path, name: str, style: str = "cinemat
         )
 
     # 空分镜表
-    sb_path = project_dir / "storyboard" / "episodes.csv"
+    sb_path = paths.storyboard_csv
     if not sb_path.exists():
         sb_path.write_text(_DEFAULT_STORYBOARD_CSV, encoding="utf-8")
 
@@ -179,7 +181,9 @@ def list_projects(console):
     for d in sorted(projects_dir.iterdir()):
         if not d.is_dir() or d.name.startswith("."):
             continue
-        cfg = d / "config" / "project.yaml"
+        from infra.config import ProjectPaths
+        dp = ProjectPaths(d)
+        cfg = dp.project_yaml
         if cfg.exists():
             with open(cfg, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
@@ -188,11 +192,11 @@ def list_projects(console):
             name = d.name
 
         # 统计角色数
-        chars_dir = d / "config" / "characters"
+        chars_dir = dp.characters_dir
         char_count = len([f for f in chars_dir.glob("*.yaml")]) if chars_dir.exists() else 0
 
         # 统计分镜数
-        sb_path = d / "storyboard" / "episodes.csv"
+        sb_path = dp.storyboard_csv
         sb_count = 0
         if sb_path.exists():
             try:
@@ -329,18 +333,20 @@ def _cleanup_project_db(project_dir: Path) -> None:
         if not dsn:
             return
         import psycopg2
+        from infra.config import ProjectPaths
         conn = psycopg2.connect(dsn, connect_timeout=3)
         try:
             cur = conn.cursor()
             # 按项目配置目录匹配角色/场景（YAML 文件删除前执行）
             proj_str = str(project_dir)
+            paths = ProjectPaths(project_dir)
 
             # 清理 comfyui_assets（按 project_dir 匹配）
             cur.execute("DELETE FROM comfyui_assets WHERE project_dir = %s", (proj_str,))
 
             # 清理 characters/scenes/shots/generation_status
             # 通过读取项目 YAML 文件获取 ID 列表
-            chars_dir = project_dir / "config" / "characters"
+            chars_dir = paths.characters_dir
             if chars_dir.exists():
                 for f in chars_dir.glob("*.yaml"):
                     if f.stem.endswith(".example"):
@@ -354,7 +360,7 @@ def _cleanup_project_db(project_dir: Path) -> None:
                     except Exception:
                         logger.debug(f"{type(e).__name__}: {e}")
 
-            scenes_dir = project_dir / "config" / "scenes"
+            scenes_dir = paths.scenes_dir
             if scenes_dir.exists():
                 for f in scenes_dir.glob("*.yaml"):
                     if f.stem.endswith(".example"):
@@ -369,7 +375,7 @@ def _cleanup_project_db(project_dir: Path) -> None:
                         logger.debug(f"{type(e).__name__}: {e}")
 
             # 清理 shots 和 generation_status（按 episode 匹配）
-            sb_path = project_dir / "storyboard" / "episodes.csv"
+            sb_path = paths.storyboard_csv
             episodes_seen = set()
             if sb_path.exists():
                 import csv as _csv

@@ -610,7 +610,7 @@ def run_music(req: MusicRequest):
     """配乐生成"""
     from pipeline.tasks import music_task
     import time
-    output = str(_proj() / "output" / f"bgm_{int(time.time())}.wav")
+    output = str(_paths().bgm_file(str(int(time.time()))))
     return _submit_task(music_task, _cfg_path(), req.duration, req.mood, output)
 
 
@@ -879,7 +879,7 @@ def _proj() -> Path:
 
 def _yaml_list(yaml_dir: str, entity_key: str) -> list[dict]:
     """通用 YAML 实体列表读取"""
-    d = _proj() / "config" / yaml_dir
+    d = _paths().config_entity_dir(yaml_dir)
     if not d.exists():
         return []
     result = []
@@ -901,7 +901,7 @@ def _yaml_list(yaml_dir: str, entity_key: str) -> list[dict]:
 def _yaml_save(yaml_dir: str, entity_key: str, entity_id: str, data: dict,
                db_upsert=None) -> None:
     """通用 YAML 实体保存（YAML + DB 双写，与已有数据合并）"""
-    d = _proj() / "config" / yaml_dir
+    d = _paths().config_entity_dir(yaml_dir)
     d.mkdir(parents=True, exist_ok=True)
     path = d / f"{entity_id}.yaml"
     # 读取已有数据，合并后写入（避免丢失 reference_images 等字段）
@@ -932,12 +932,13 @@ def _parse_entity(req) -> tuple[str, dict]:
 
 def _yaml_delete(yaml_dir: str, entity_id: str, label: str, db_delete=None) -> None:
     """通用 YAML 实体删除（文件 + DB + 资产目录）"""
-    path = _proj() / "config" / yaml_dir / f"{entity_id}.yaml"
+    p = _paths()
+    path = p.config_entity_yaml(yaml_dir, entity_id)
     if not path.exists():
         raise HTTPException(404, f"{label} {entity_id} 不存在")
     path.unlink()
     # 清理资产目录（图片、服装等）
-    asset_dir = _proj() / "assets" / yaml_dir / entity_id
+    asset_dir = p.assets_entity_dir(yaml_dir) / entity_id
     if asset_dir.exists():
         shutil.rmtree(asset_dir, ignore_errors=True)
     if db_delete:
@@ -1071,7 +1072,8 @@ async def upload_entity_image(entity_type: str, entity_id: str, file: UploadFile
         raise HTTPException(400, "文件内容不是有效的图片格式")
 
     # 保存到 assets 目录
-    asset_dir = _proj() / "assets" / entity_type / entity_id
+    p = _paths()
+    asset_dir = p.assets_entity_dir(entity_type) / entity_id
     asset_dir.mkdir(parents=True, exist_ok=True)
     filename = f"cover{ext}"
     dest = asset_dir / filename
@@ -1081,7 +1083,7 @@ async def upload_entity_image(entity_type: str, entity_id: str, file: UploadFile
     # 更新 YAML 中的 reference_images
     yaml_dir = "characters" if entity_type == "characters" else "scenes"
     entity_key = "character" if entity_type == "characters" else "scene"
-    yaml_path = _proj() / "config" / yaml_dir / f"{entity_id}.yaml"
+    yaml_path = p.config_entity_yaml(yaml_dir, entity_id)
     if yaml_path.exists():
         try:
             with open(yaml_path, encoding="utf-8") as f:
@@ -1113,7 +1115,7 @@ def get_entity_asset(entity_type: str, entity_id: str, filename: str):
     _check_id(entity_id)
     _check_filename(filename)
 
-    file_path = _proj() / "assets" / entity_type / entity_id / filename
+    file_path = _paths().assets_entity_file(entity_type, entity_id, filename)
     if not file_path.exists():
         raise HTTPException(404, f"文件不存在: {filename}")
 
@@ -1132,7 +1134,7 @@ def get_entity_sub_asset(entity_type: str, entity_id: str, sub_dir: str, filenam
     _check_filename(sub_dir)
     _check_filename(filename)
 
-    file_path = _safe_path(_proj() / "assets" / entity_type / entity_id, sub_dir, filename)
+    file_path = _safe_path(_paths().assets_entity_dir(entity_type) / entity_id, sub_dir, filename)
     if not file_path.exists():
         raise HTTPException(404, f"文件不存在: {sub_dir}/{filename}")
 
@@ -1502,7 +1504,8 @@ def copy_asset_to_project(entity_type: str, entity_id: str):
     if not src.exists():
         raise HTTPException(404, f"主体库中不存在: {entity_id}")
 
-    proj_dir = _proj() / "config" / entity_type
+    p = _paths()
+    proj_dir = p.config_entity_dir(entity_type)
     proj_dir.mkdir(parents=True, exist_ok=True)
     dst = proj_dir / f"{entity_id}.yaml"
     if dst.exists():
@@ -1513,7 +1516,7 @@ def copy_asset_to_project(entity_type: str, entity_id: str):
     # 复制图片到 assets 目录（非 config 目录）
     src_img = shared_dir / entity_id
     if src_img.is_dir():
-        dst_img = _proj() / "assets" / entity_type / entity_id
+        dst_img = p.assets_entity_dir(entity_type) / entity_id
         dst_img.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(str(src_img), str(dst_img), dirs_exist_ok=True)
 
@@ -1542,7 +1545,8 @@ def add_to_shared_library(entity_type: str, entity_id: str):
     _check_entity_type(entity_type)
     _check_id(entity_id)
 
-    proj_dir = _proj() / "config" / entity_type
+    p = _paths()
+    proj_dir = p.config_entity_dir(entity_type)
     src = proj_dir / f"{entity_id}.yaml"
     if not src.exists():
         raise HTTPException(404, f"项目中不存在: {entity_id}")
@@ -1554,7 +1558,7 @@ def add_to_shared_library(entity_type: str, entity_id: str):
     shutil.copy2(str(src), str(dst))
 
     # 复制图片（从 assets 目录，非 config 目录）
-    src_img = _proj() / "assets" / entity_type / entity_id
+    src_img = p.assets_entity_dir(entity_type) / entity_id
     if src_img.is_dir():
         dst_img = shared_dir / entity_id
         dst_img.parent.mkdir(parents=True, exist_ok=True)
@@ -1621,22 +1625,23 @@ def train_lora(req: TrainingRequest):
 def training_status(char_id: str):
     """查询角色 LoRA 训练状态"""
     _check_id(char_id, "角色 ID")
-    project = _proj()
+    p = _paths()
+    project = str(p.root)
     from infra.asset_tracker import comfyui_asset_name
-    lora_dir = project / "assets" / "loras"
+    lora_dir = p.loras_dir
     # 按优先级查找 LoRA 文件
-    lora_name = comfyui_asset_name(str(project), char_id, f"{char_id}_lora.safetensors")
+    lora_name = comfyui_asset_name(project, char_id, f"{char_id}_lora.safetensors")
     candidates = [
         lora_dir / lora_name,                            # proj_{hash}_{char_id}_lora.safetensors
         lora_dir / f"{char_id}_lora.safetensors",        # {char_id}_lora.safetensors
         lora_dir / f"{char_id}.safetensors",             # {char_id}.safetensors
     ]
     lora_path = None
-    for p in candidates:
-        if p.exists():
-            lora_path = p
+    for c in candidates:
+        if c.exists():
+            lora_path = c
             break
-    char_yaml = project / "config" / "characters" / f"{char_id}.yaml"
+    char_yaml = p.character_yaml(char_id)
     has_lora = lora_path is not None
     lora_size = lora_path.stat().st_size if has_lora else 0
     # 读取角色配置中的 lora_path
@@ -1698,7 +1703,7 @@ def seko_proposal_status(req: SekoProposalStatusRequest):
             _check_id(req.task_id, "task_id")
             # 特殊值 __project_assets__ → 使用当前项目的 assets 目录
             if req.download_dir == "__project_assets__":
-                download_dir = str(_proj() / "assets" / "seko" / req.task_id)
+                download_dir = str(_paths().seko_asset_dir(req.task_id))
             else:
                 # 校验 download_dir：禁止 .. 遍历
                 if ".." in req.download_dir.split("/"):
