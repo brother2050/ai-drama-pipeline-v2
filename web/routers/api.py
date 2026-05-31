@@ -92,6 +92,17 @@ from web.schemas import (
 
 # ── 工具函数 ──
 
+def _get_cfg_nested(cfg: dict, dotted_key: str, default=""):
+    """从嵌套 dict 中按点分路径取值，如 'models.gpt_sovits.api_url'"""
+    parts = dotted_key.split(".")
+    cur = cfg
+    for p in parts:
+        if not isinstance(cur, dict):
+            return default
+        cur = cur.get(p)
+    return cur if cur is not None else default
+
+
 def _cfg() -> dict:
     from infra.config import Config
     cfg_path = _cfg_path()
@@ -310,16 +321,32 @@ def test_tool(name: str):
 
         if name == "tts":
             backend = cfg.get("models", {}).get("tts_backend", _defaults.get("tts_backend"))
-            if "mimo" in backend:
-                backend_key = backend.replace("-", "_")
-                cfg_key = cfg.get("models", {}).get(backend_key, {}).get("api_key", "")
-                env_key = os.environ.get("MIMO_API_KEY", "")
-                source = "配置文件" if cfg_key else ("环境变量" if env_key else "未配置")
-                return {"ok": True, "name": name, "message": f"MIMO API Key ({source})", **result}
+            # 从注册表获取 TTS 后端的健康检查配置（不硬编码后端名）
+            hc = _reg.get_health_check("tts", backend)
+            if hc:
+                hc_type = hc.get("type", "")
+                if hc_type == "api_key_env":
+                    env_name = hc.get("env", "")
+                    env_val = os.environ.get(env_name, "")
+                    # 也检查配置文件中的 api_key
+                    cfg_key_path = hc.get("config_key", "")
+                    cfg_val = _get_cfg_nested(cfg, cfg_key_path) if cfg_key_path else ""
+                    source = "配置文件" if cfg_val else ("环境变量" if env_val else "未配置")
+                    return {"ok": True, "name": name, "message": f"{backend} API Key ({source})", **result}
+                elif hc_type == "http":
+                    api_url = _get_cfg_nested(cfg, hc.get("config_key", ""))
+                    if not api_url:
+                        return {"ok": False, "name": name, "message": f"{backend} 服务地址未配置", **result}
+                    import httpx
+                    r = httpx.get(api_url + hc.get("path", "/"), timeout=5)
+                    return {"ok": True, "name": name, "message": f"{backend} 连接成功 (HTTP {r.status_code})", **result}
+            # 无健康检查配置时，尝试通用 HTTP 检测
             api_url = cfg.get("models", {}).get(backend.replace("-", "_"), {}).get("api_url", "")
-            import httpx
-            r = httpx.get(api_url, timeout=5)
-            return {"ok": True, "name": name, "message": f"连接成功 (HTTP {r.status_code})", **result}
+            if api_url:
+                import httpx
+                r = httpx.get(api_url, timeout=5)
+                return {"ok": True, "name": name, "message": f"{backend} 连接成功 (HTTP {r.status_code})", **result}
+            return {"ok": True, "name": name, "message": f"{backend} 已配置", **result}
 
         elif name == "comfyui":
             url = cfg.get("comfyui", {}).get("url", "http://127.0.0.1:8188")

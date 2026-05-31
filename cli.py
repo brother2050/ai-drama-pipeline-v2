@@ -37,6 +37,17 @@ logging.basicConfig(
 logger = logging.getLogger("cli")
 
 
+def _cfg_get(cfg: dict, dotted_key: str, default=""):
+    """从嵌套 dict 中按点分路径取值，如 'models.gpt_sovits.api_url'"""
+    parts = dotted_key.split(".")
+    cur = cfg
+    for p in parts:
+        if not isinstance(cur, dict):
+            return default
+        cur = cur.get(p)
+    return cur if cur is not None else default
+
+
 def _load_env():
     env_file = ROOT / ".env"
     if env_file.exists():
@@ -238,18 +249,30 @@ def status():
     table.add_row("ComfyUI", "[green]✅[/green]" if comfyui_ok else "[yellow]⚠[/yellow]",
                    comfyui_url, "图片/视频生成")
 
-    # TTS（默认后端名从注册表读取）
+    # TTS（从注册表读取健康检查，不硬编码后端名）
     from flow.model_registry import ModelRegistry as _MR
     try:
         _reg = _MR(cfg_path)
-        _default_tts = _reg.get_defaults().get("tts_backend")
+        _defaults = _reg.get_defaults()
     except Exception:
-        _default_tts = None
-    tts = cfg.get("models", {}).get("tts_backend", _default_tts)
-    if tts and "mimo" in tts:
-        key = os.environ.get("MIMO_API_KEY", "")
-        table.add_row("MiMo TTS", "[green]✅[/green]" if key else "[yellow]⚠ 未配置[/yellow]",
-                       "云 API", "语音合成（免费）")
+        _reg = None
+        _defaults = {}
+    tts = cfg.get("models", {}).get("tts_backend", _defaults.get("tts_backend"))
+    if tts and _reg:
+        hc = _reg.get_health_check("tts", tts)
+        if hc:
+            hc_type = hc.get("type", "")
+            if hc_type == "api_key_env":
+                env_name = hc.get("env", "")
+                key = os.environ.get(env_name, "")
+                table.add_row(f"TTS ({tts})", "[green]✅[/green]" if key else f"[yellow]⚠ {env_name} 未配置[/yellow]",
+                               "云 API", f"语音合成")
+            elif hc_type == "http":
+                api_url = _cfg_get(cfg, hc.get("config_key", ""), "")
+                table.add_row(f"TTS ({tts})", "[green]✅[/green]" if api_url else "[yellow]⚠ 未配置[/yellow]",
+                               api_url or "-", f"语音合成")
+            else:
+                table.add_row(f"TTS ({tts})", "[dim]—[/dim]", "-", f"语音合成")
 
     console.print(table)
     if not redis or not celery_ok:
