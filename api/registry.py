@@ -30,6 +30,7 @@ class BackendMeta:
     description: str = ""
     priority: int = 100
     tags: list[str] = field(default_factory=list)
+    test_handler: Callable[..., dict] | None = None  # 连接测试回调 (name, result, cfg) → dict
 
 
 class ServiceRegistry:
@@ -44,6 +45,18 @@ class ServiceRegistry:
 
     def get(self, service_type: str, name: str) -> BackendMeta | None:
         return self._backends.get(f"{service_type}:{name}")
+
+    def get_test_handler(self, service_type: str, name: str) -> Callable[..., dict] | None:
+        """查询后端的连接测试回调"""
+        meta = self.get(service_type, name)
+        return meta.test_handler if meta else None
+
+    def find_test_handler(self, name: str) -> Callable[..., dict] | None:
+        """按后端名遍历所有服务类型查找测试回调"""
+        for meta in self._backends.values():
+            if meta.name == name and meta.test_handler:
+                return meta.test_handler
+        return None
 
     def list_by_type(self, service_type: str) -> list[str]:
         candidates = [m for m in self._backends.values() if m.service_type == service_type]
