@@ -17,40 +17,38 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# 尝试加载人脸库
-_face_engine: str | None = None
 
-try:
-    import insightface
-    import numpy as np
-    from PIL import Image
-
-    _face_engine = "insightface"
-    logger.info("人脸引擎: insightface")
-except ImportError:
-    pass
-
-if _face_engine is None:
+def _detect_face_engine() -> str:
+    """检测可用的人脸引擎（延迟到首次使用时执行）"""
     try:
-        import face_recognition
-        import numpy as np
-
-        _face_engine = "face_recognition"
-        logger.info("人脸引擎: face_recognition")
+        import insightface  # noqa: F401
+        import numpy  # noqa: F401
+        from PIL import Image  # noqa: F401
+        return "insightface"
     except ImportError:
         pass
-
-if _face_engine is None:
-    logger.info("人脸引擎: 图片哈希回退（安装 insightface 或 face_recognition 可获得更好精度）")
+    try:
+        import face_recognition  # noqa: F401
+        import numpy  # noqa: F401
+        return "face_recognition"
+    except ImportError:
+        pass
+    return "hash"
 
 
 class CharacterConsistency:
     """角色一致性管理器"""
 
+    _engine_cache: str | None = None  # 类级缓存，只检测一次
+
     def __init__(self):
         self._cache: dict[str, Any] = {}
         self._lock = threading.Lock()
-        self._engine = _face_engine
+        # 延迟检测人脸引擎（只在首次实例化时执行一次）
+        if CharacterConsistency._engine_cache is None:
+            CharacterConsistency._engine_cache = _detect_face_engine()
+            logger.info("人脸引擎: %s", CharacterConsistency._engine_cache)
+        self._engine = CharacterConsistency._engine_cache
         self._insightface_app = None
 
     def _get_insightface_app(self):
