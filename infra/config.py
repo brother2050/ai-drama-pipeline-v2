@@ -229,6 +229,18 @@ class ProjectPaths:
         ]:
             d.mkdir(parents=True, exist_ok=True)
 
+
+def cfg_get(cfg: dict, dotted_key: str, default=""):
+    """从嵌套 dict 中按点分路径取值，如 'models.gpt_sovits.api_url'"""
+    parts = dotted_key.split(".")
+    cur = cfg
+    for p in parts:
+        if not isinstance(cur, dict):
+            return default
+        cur = cur.get(p)
+    return cur if cur is not None else default
+
+
 _cache: dict[str, tuple[dict, float]] = {}
 _lock = threading.Lock()
 

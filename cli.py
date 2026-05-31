@@ -36,16 +36,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("cli")
 
-
-def _cfg_get(cfg: dict, dotted_key: str, default=""):
-    """从嵌套 dict 中按点分路径取值，如 'models.gpt_sovits.api_url'"""
-    parts = dotted_key.split(".")
-    cur = cfg
-    for p in parts:
-        if not isinstance(cur, dict):
-            return default
-        cur = cur.get(p)
-    return cur if cur is not None else default
+# 从 infra.config 导入共享工具函数
+from infra.config import cfg_get as _cfg_get
 
 
 def _load_env():

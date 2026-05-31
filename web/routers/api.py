@@ -92,15 +92,8 @@ from web.schemas import (
 
 # ── 工具函数 ──
 
-def _get_cfg_nested(cfg: dict, dotted_key: str, default=""):
-    """从嵌套 dict 中按点分路径取值，如 'models.gpt_sovits.api_url'"""
-    parts = dotted_key.split(".")
-    cur = cfg
-    for p in parts:
-        if not isinstance(cur, dict):
-            return default
-        cur = cur.get(p)
-    return cur if cur is not None else default
+# 从 infra.config 导入共享工具函数
+from infra.config import cfg_get as _get_cfg_nested
 
 
 def _cfg() -> dict:
@@ -242,7 +235,7 @@ def _collect_tools(cfg: dict) -> dict:
             if method_name != "none" and method_meta.get("config_key"):
                 names.append(method_name)
     except Exception:
-        names = ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg"]
+        names = ["redis", "celery", "tts", "comfyui", "lipsync", "llm", "music", "ffmpeg", "seko", "training", "ip_adapter", "pulid_flux"]
     tools = {}
     with ThreadPoolExecutor(max_workers=5) as ex:
         futures = {ex.submit(_check_tool, name, cfg): name for name in names}
