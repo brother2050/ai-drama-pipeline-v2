@@ -278,14 +278,15 @@ def prepare(episode, config_path, force, no_translate):
 
 @cli.command()
 @click.argument("episode", type=int)
+@click.option("--vertical", is_flag=True, help="横转竖")
 @click.option("-c", "--config", "config_path", default=None)
 @click.option("--force", is_flag=True, help="强制覆盖已有文件")
-def produce(episode, config_path, force):
+def produce(episode, vertical, config_path, force):
     """完整生产（通过 Celery 异步执行）"""
     _ensure_deps()
     cfg = _resolve_config(config_path)
     console.print(f"\n[bold cyan]🎬 生产 第{episode}集[/bold cyan]\n")
-    if not _run_via_celery("pipeline.produce", cfg, episode, force=force):
+    if not _run_via_celery("pipeline.produce", cfg, episode, vertical=vertical, force=force):
         sys.exit(1)
 
 
@@ -321,7 +322,7 @@ def run_all(episode, vertical, config_path, force):
         if task_name == "pipeline.post":
             ok = _run_via_celery(task_name, cfg, episode, vertical=vertical)
         elif task_name == "pipeline.produce":
-            ok = _run_via_celery(task_name, cfg, episode, force=force)
+            ok = _run_via_celery(task_name, cfg, episode, vertical=vertical, force=force)
         else:
             ok = _run_via_celery(task_name, cfg, episode, force=force)
         if not ok:
