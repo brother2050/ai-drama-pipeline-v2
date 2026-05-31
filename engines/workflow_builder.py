@@ -277,10 +277,21 @@ class WorkflowBuilder:
             ip_config = {}
 
         if char_ids:
-            # 判断后端架构，选择一致性方案
-            # Flux (DiT) → PuLID-Flux | SD1.5/SDXL (UNet) → IP-Adapter Plus
-            is_flux = img_backend.lower() == "flux"
-            pulid_config = self.config.get("pulid_flux", {})
+            # 一致性方案选择（与 image_backend 解耦）
+            # 优先级: models.consistency_method > system.consistency_method > auto
+            consistency = self.models.get("consistency_method",
+                                          self.config.get("consistency_method", "auto"))
+
+            # auto 模式：根据后端自动选择
+            if consistency == "auto":
+                is_flux = img_backend.lower() == "flux"
+                is_sd = img_backend.lower() in ("sd15", "sdxl")
+                if is_flux:
+                    consistency = "pulid_flux"
+                elif is_sd:
+                    consistency = "ip_adapter"
+                else:
+                    consistency = "none"
 
             # 为所有角色查找 LoRA，无 LoRA 的用一致性方案回退
             chars_with_lora = []
@@ -302,12 +313,22 @@ class WorkflowBuilder:
 
             # 无 LoRA 的角色使用一致性方案
             if chars_without_lora:
-                if is_flux and pulid_config.get("enabled", True):
-                    # Flux 后端 → PuLID-Flux
-                    wf = self._inject_pulid_flux(wf, chars_without_lora, pulid_config, outfit=outfit)
+                if consistency == "pulid_flux":
+                    pulid_config = self.config.get("pulid_flux", {})
+                    if pulid_config.get("enabled", True):
+                        wf = self._inject_pulid_flux(wf, chars_without_lora, pulid_config, outfit=outfit)
+                    else:
+                        logger.info("PuLID-Flux 已禁用，跳过一致性注入")
+                elif consistency == "ip_adapter":
+                    ip_config = self.models.get("ip_adapter", {})
+                    if not ip_config:
+                        ip_config = self.config.get("ip_adapter", {})
+                    if ip_config.get("enabled") is not False:
+                        wf = self._inject_character_refs(wf, chars_without_lora, ip_config, outfit=outfit)
+                    else:
+                        logger.info("IP-Adapter 已禁用，跳过一致性注入")
                 else:
-                    # SD1.5/SDXL 后端 → IP-Adapter Plus
-                    wf = self._inject_character_refs(wf, chars_without_lora, ip_config, outfit=outfit)
+                    logger.info(f"一致性方案: {consistency}，跳过面部一致性注入")
 
         # 注入风格 LoRA（复用上方已读取的 genre）
         if genre:

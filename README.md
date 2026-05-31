@@ -241,14 +241,22 @@ drama serve
 
 #### ⚠️ 后端兼容性
 
-| 图像后端 | 架构 | 面部一致性方案 | 说明 |
+| 图像后端 | 架构 | 可用一致性方案 | 说明 |
 |---------|------|:-------------:|------|
-| `flux` | DiT | **⭐ PuLID-Flux** | **推荐**，画质最佳 + 面部一致性强 |
+| `flux` | DiT | **PuLID-Flux** | **推荐**，画质最佳 + 面部一致性强 |
 | `sd15` | UNet | IP-Adapter Plus | 成熟稳定，面部一致性好 |
-| `cosmos` | DiT | LoRA 训练 | 无现成一致性方案，需训练 |
+| `cosmos` | DiT | 无 | 仅 LoRA 训练 |
 
-> **推荐组合**：`flux` 后端 + `PuLID-Flux` — 画质和一致性都是最佳。
-> Cosmos 后端暂无原生面部一致性方案，建议切换到 Flux 或使用 LoRA 训练。
+> 一致性方案与后端**独立配置**，通过 `consistency_method` 字段选择：
+
+```yaml
+# config/system.yaml
+consistency_method: auto   # auto / pulid_flux / ip_adapter / none
+#   auto:        根据 image_backend 自动选择（flux→pulid, sd15→ip_adapter, cosmos→none）
+#   pulid_flux:  强制使用 PuLID-Flux（需 Flux 后端）
+#   ip_adapter:  强制使用 IP-Adapter Plus（需 SD1.5/SDXL 后端）
+#   none:        不使用一致性方案（仅靠 LoRA + seed）
+```
 
 #### 6.1 安装 ComfyUI 自定义节点
 

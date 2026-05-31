@@ -51,6 +51,14 @@ post_production:
   transition_duration: 0.5
   bgm_volume: 0.15
   subtitle_platform: douyin
+# 角色面部一致性方案（与 image_backend 解耦，独立选择）
+# 可选值: auto / pulid_flux / ip_adapter / none
+#   auto:        根据 image_backend 自动选择（flux→pulid_flux, sd15/sdxl→ip_adapter, cosmos→none）
+#   pulid_flux:  PuLID-Flux（需要 Flux 后端 + ComfyUI-PuLID-Flux 自定义节点）
+#   ip_adapter:  IP-Adapter Plus（需要 SD1.5/SDXL 后端 + ComfyUI_IPAdapter_plus 自定义节点）
+#   none:        不使用一致性方案（仅靠 LoRA + seed）
+consistency_method: auto
+
 ip_adapter:
   enabled: true
   # ⚠️ IP-Adapter Plus 仅支持 SD1.5/SDXL 后端（UNet 架构）
