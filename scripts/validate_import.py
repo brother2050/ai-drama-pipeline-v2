@@ -18,7 +18,7 @@ import yaml
 
 # ── 校验规则 ──
 
-ID_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
+ID_RE = re.compile(r"^[a-zA-Z0-9_\-\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]+$")
 VALID_CAMERAS = {"固定", "缓慢推近", "跟随平移", "手持晃动", "环绕", "俯视", "仰视"}
 VALID_SHOT_TYPES = {"特写", "近景", "中景", "过肩", "全身", "全景", "远景", "双人全景"}
 VALID_EMOTIONS = {"happy", "sad", "worried", "surprised", "angry", "romantic", "calm", "determined", "serious", "neutral", "smug", "fearful", "action"}
