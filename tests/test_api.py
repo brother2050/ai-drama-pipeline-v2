@@ -17,8 +17,9 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# 设置测试项目目录
-_test_project = tempfile.mkdtemp(prefix="drama_test_")
+# 设置测试项目目录（模拟 projects/default/ 结构，与 _proj() 的查找逻辑一致）
+_test_root = tempfile.mkdtemp(prefix="drama_test_")
+_test_project = f"{_test_root}/projects/default"
 os.makedirs(f"{_test_project}/config", exist_ok=True)
 os.makedirs(f"{_test_project}/storyboard", exist_ok=True)
 os.makedirs(f"{_test_project}/config/characters", exist_ok=True)
@@ -55,8 +56,8 @@ with open(f"{_test_project}/config/scenes/keting.yaml", "w") as f:
 @pytest.fixture
 def client():
     """创建测试客户端"""
-    # Monkey-patch ROOT 到测试目录
-    with patch("web.routers.api.ROOT", Path(_test_project)):
+    # Monkey-patch ROOT 到测试根目录（包含 projects/default/ 结构）
+    with patch("web.routers.api.ROOT", Path(_test_root)):
         from web.app import create_app
         app = create_app()
         from fastapi.testclient import TestClient

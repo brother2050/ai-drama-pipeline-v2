@@ -1814,6 +1814,10 @@ def seko_import_task(
     paths = _paths(config_path)
     result = {"characters": 0, "scenes": 0, "shots": 0, "images_downloaded": 0, "images_failed": 0}
 
+    # 预初始化，避免跳过导入时 NameError
+    chars: list[dict] = []
+    scenes: list[dict] = []
+
     # ── 1. 导入角色 ──
     if import_characters:
         self.update_state(state="PROGRESS", meta={"step": "seko_import", "progress": 10, "message": "解析角色..."})

@@ -682,24 +682,22 @@ def update_config(req: ConfigUpdate):
     # 校验合并后的配置合法性（必填字段 + 数值范围）
     from infra.config import Config
     import tempfile
+    tmp = None
     try:
         fd, tmp = tempfile.mkstemp(suffix=".yaml", dir=str(Path(cfg_path).parent))
         os.close(fd)
         save_config(tmp, merged)
         Config(tmp)  # 触发 _validate
-        os.unlink(tmp)
     except ValueError as e:
-        # 清理临时文件
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
         raise HTTPException(400, f"配置校验失败: {e}")
-    except Exception:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
+    except Exception as e:
+        raise HTTPException(500, f"配置校验异常: {e}")
+    finally:
+        if tmp:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
     save_config(cfg_path, merged)
     # 注意: Container 在每次请求/任务时按需创建，下次会自动读取新配置
     return {"status": "ok"}
