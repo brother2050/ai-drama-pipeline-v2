@@ -143,6 +143,19 @@ drama serve
 
 > 基于 [ComfyUI_IPAdapter_plus](https://github.com/cubiq/ComfyUI_IPAdapter_plus) 实现跨镜头角色面部一致性。安装后定妆照的面部特征会通过 IP-Adapter 注入到每个镜头的首帧生成中，大幅提升同一角色在不同镜头间的辨识度。
 
+#### ⚠️ 后端兼容性
+
+IP-Adapter Plus 通过修改 UNet 的 cross-attention 层工作，**仅支持 SD1.5/SDXL 架构**：
+
+| 图像后端 | 架构 | IP-Adapter 兼容 | 推荐一致性方案 |
+|---------|------|:---------------:|--------------|
+| `sd15` | UNet | ✅ | IP-Adapter Plus |
+| `flux` | DiT | ❌ | LoRA 训练 |
+| `cosmos` | DiT | ❌ | LoRA 训练 |
+
+> 当前默认后端为 `cosmos`（DiT 架构），IP-Adapter Plus 不适用。如需使用 IP-Adapter，请先切换到 `sd15` 后端（在 `config/system.yaml` 中设置 `models.image_backend: sd15`）。
+> Cosmos/Flux 后端的角色一致性依赖 **LoRA 训练**（Web 工作台「🧠 LoRA 训练」功能）。
+
 #### 6.1 安装 ComfyUI 自定义节点
 
 ```bash
@@ -152,6 +165,8 @@ git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus.git
 ```
 
 #### 6.2 下载模型文件
+
+**方案 A：SD1.5 后端（推荐，IP-Adapter Plus 兼容）**
 
 需要下载 **1 个 IP-Adapter 模型** + **1 个 CLIP Vision 编码器**：
 
@@ -166,18 +181,37 @@ wget -O ComfyUI/models/clip_vision/CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors \
   https://huggingface.co/h94/IP-Adapter/resolve/main/models/image_encoder/model.safetensors
 ```
 
+**方案 B：SDXL 后端**
+
+```bash
+# IP-Adapter 模型（SDXL 版）
+wget -O ComfyUI/models/ipadapter/ip-adapter-plus-face_sdxl_vit-h.safetensors \
+  https://huggingface.co/h94/IP-Adapter/resolve/main/sdxl_models/ip-adapter-plus-face_sdxl_vit-h.safetensors
+
+# CLIP Vision 编码器（SDXL 用 bigG）
+wget -O ComfyUI/models/clip_vision/CLIP-ViT-bigG-14-laion2B-39B-b160k.safetensors \
+  https://huggingface.co/h94/IP-Adapter/resolve/main/sdxl_models/image_encoder/model.safetensors
+```
+
 <details>
-<summary>可选模型（按需下载）</summary>
+<summary>全部可用模型</summary>
 
-| 模型 | 说明 | 适用场景 |
-|------|------|----------|
-| `ip-adapter-plus-face_sd15.safetensors` | **默认推荐**，面部一致性最强 | 短剧角色，人物特写 |
-| `ip-adapter-plus_sd15.safetensors` | 通用 Plus，风格+内容保持 | 场景风格保持 |
-| `ip-adapter-full-face_sd15.safetensors` | 更强面部保持，可能过度拟合 | 需要极高面部相似度 |
-| `ip-adapter_sd15.safetensors` | 基础模型，影响最弱 | 轻度参考 |
-| `ip-adapter-plus-face_sdxl_vit-h.safetensors` | SDXL 面部模型 | 使用 SDXL 后端时 |
+**SD1.5 系列**（CLIP Vision: `CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors`）
 
-SDXL 模型需搭配 `CLIP-ViT-bigG-14-laion2B-39B-b160k.safetensors` 编码器。
+| 模型 | 说明 |
+|------|------|
+| `ip-adapter-plus-face_sd15.safetensors` | **默认推荐**，面部一致性最强 |
+| `ip-adapter-plus_sd15.safetensors` | 通用 Plus，风格+内容保持 |
+| `ip-adapter-full-face_sd15.safetensors` | 更强面部保持，可能过度拟合 |
+| `ip-adapter_sd15.safetensors` | 基础模型，影响最弱 |
+
+**SDXL 系列**（CLIP Vision: `CLIP-ViT-bigG-14-laion2B-39B-b160k.safetensors`）
+
+| 模型 | 说明 |
+|------|------|
+| `ip-adapter-plus-face_sdxl_vit-h.safetensors` | SDXL 面部模型 |
+| `ip-adapter-plus_sdxl_vit-h.safetensors` | SDXL 通用 Plus |
+| `ip-adapter_sdxl.safetensors` | SDXL 基础（需 bigG 编码器） |
 
 </details>
 
@@ -188,12 +222,14 @@ IP-Adapter 默认已启用，配置在 `config/system.yaml` 中：
 ```yaml
 ip_adapter:
   enabled: true
-  model: "ip-adapter-plus-face_sd15.safetensors"   # 面部一致性最佳
+  model: "ip-adapter-plus-face_sd15.safetensors"   # SD1.5 面部模型
   clip_vision: "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
   weight: 0.75              # 参考图权重（官方建议 ≤0.8）
   secondary_weight: 0.45    # 多角色时次要角色权重
   embeds_scaling: "V only"  # 面部特征保持最佳的缩放模式
 ```
+
+> 如使用 SDXL 后端，将 `model` 改为 `ip-adapter-plus-face_sdxl_vit-h.safetensors`，`clip_vision` 改为 `CLIP-ViT-bigG-14-laion2B-39B-b160k.safetensors`。
 
 #### 6.4 验证
 

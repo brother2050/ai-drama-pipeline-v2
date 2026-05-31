@@ -53,10 +53,13 @@ post_production:
   subtitle_platform: douyin
 ip_adapter:
   enabled: true
+  # ⚠️ IP-Adapter Plus 仅支持 SD1.5/SDXL 后端（UNet 架构）
+  # Cosmos/Flux（DiT 架构）不兼容，请使用 LoRA 训练代替
+  # 切换后端: models.image_backend: sd15
+  #
   # IP-Adapter 模型（放入 ComfyUI/models/ipadapter/）
-  # 推荐: ip-adapter-plus-face_sd15.safetensors（人物面部一致性最佳）
-  # 可选: ip-adapter-plus_sd15.safetensors（通用，含风格）
-  # 可选: ip-adapter_sd15.safetensors（基础，影响较弱）
+  # SD1.5 推荐: ip-adapter-plus-face_sd15.safetensors + CLIP-ViT-H-14
+  # SDXL 推荐:  ip-adapter-plus-face_sdxl_vit-h.safetensors + CLIP-ViT-bigG-14
   model: "ip-adapter-plus-face_sd15.safetensors"
   # CLIP Vision 模型（放入 ComfyUI/models/clip_vision/）
   # SD1.5 配 CLIP-ViT-H-14, SDXL 配 CLIP-ViT-bigG-14
