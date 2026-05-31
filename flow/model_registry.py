@@ -62,9 +62,11 @@ def _builtin_defaults() -> dict:
         },
         "consistency_methods": {
             "ip_adapter": {"compatible_backends": ["sd15", "sdxl"], "config_key": "ip_adapter",
-                           "inject_method": "_inject_ip_adapter_plus"},
+                           "inject_method": "_inject_ip_adapter_plus",
+                           "required_comfyui_node": "IPAdapterAdvanced"},
             "pulid_flux": {"compatible_backends": ["flux"], "config_key": "pulid_flux",
-                           "inject_method": "_inject_pulid_flux"},
+                           "inject_method": "_inject_pulid_flux",
+                           "required_comfyui_node": "PulidFluxModelLoader"},
             "none": {"compatible_backends": ["*"]},
         },
         "pipeline_steps": [

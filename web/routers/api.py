@@ -442,8 +442,6 @@ def _test_llm(cfg: dict, result: dict) -> dict:
     import httpx
     try:
         # 从注册表查询 LLM 后端的健康检查类型（替代硬编码 backend == "ollama"）
-        from flow.model_registry import ModelRegistry
-        _reg = ModelRegistry(_cfg_path())
         hc = _reg.get_health_check("llm", backend)
         hc_type = hc.get("type", "") if hc else ""
 

@@ -209,14 +209,14 @@ def _execute_health_check(name: str, hc: dict, cfg: dict,
             return _result(name, False, result_backend, "cloud", "LLM 地址未配置")
         # 检查 enabled 状态
         llm_enabled = _get_cfg_value(cfg, "llm.enabled")
-        if llm_enabled and llm_enabled.lower() in ("false", "0", ""):
+        if llm_enabled and llm_enabled.lower() in ("false", "0"):
             service_ok = _url_ok(url.rstrip("/") + "/v1/models",
                                 headers=_resolve_auth(cfg, hc.get("api_key_from", "")))
             if service_ok:
                 return _result(name, False, result_backend, "cloud",
                                "服务已就绪，但未启用（请在设置中开启）")
             return _result(name, False, result_backend, "cloud", "LLM 未启用")
-        # 正常检测
+        # 正常检测（确保 URL 以 /v1 结尾，避免重复拼接）
         check_url = url.rstrip("/")
         if not check_url.endswith("/v1"):
             check_url += "/v1"
