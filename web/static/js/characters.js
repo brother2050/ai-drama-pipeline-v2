@@ -81,10 +81,10 @@ function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, 
     const item = (d[type] || []).find(x => x.id === id);
     if (!item) { toast(t(notFoundKey), 'error'); return; }
     const imgs = item[imgKey] || [];
-    // 多图 gallery（三视图）或单图回退
+    // 多图 gallery（五视图）或单图回退
     let existingImg;
     if (imgs.length > 1) {
-      const viewLabels = ['正面', '侧面', '背面'];
+      const viewLabels = ['正面', '左侧', '右侧', '背面', '3/4侧'];
       const gallery = imgs.map((url, i) =>
         `<div class="upload-preview" style="display:inline-block;margin-right:.4rem;position:relative">
           <img src="${esc(url)}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;cursor:pointer" onclick="previewImage('${esc(url)}')" title="${viewLabels[i] || '参考图'}">
@@ -164,7 +164,7 @@ function _editEntityPanel(type, id, { titleKey, notFoundKey, fields, imgPrefix, 
     window[`_${p}ImgRemoved`] = true;
     _html(document.getElementById(`${p}-img-wrap`), `<div class="upload-area" onclick="document.getElementById('${p}-file').click()"><span class="upload-icon">📷</span><span>${t('common.upload_hint')}</span></div>`);
   };
-  // 删除指定索引的图片（三视图场景）
+  // 删除指定索引的图片（五视图场景）
   window[`${p}RemoveImgAt`] = async function(eid, idx) {
     if (!await modalConfirm('删除此图片？')) return;
     if (!window[`_${p}RemovedIndices`]) window[`_${p}RemovedIndices`] = [];
