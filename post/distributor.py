@@ -108,7 +108,7 @@ def check_platform_compat(video: str, platform: str) -> dict:
         issues.append(f"时长过长: {info['duration']:.0f}s > {max_dur}s")
 
     return {
-        "compatible": len(issues) == 0,
+        "compatible": not issues,
         "issues": issues,
         "preset": preset,
         "video_info": info,

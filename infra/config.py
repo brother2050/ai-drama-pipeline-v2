@@ -349,8 +349,8 @@ class Config:
             reg_defaults = reg.get_defaults()
             if reg_defaults:
                 merged.setdefault("models", {}).update(reg_defaults)
-        except Exception:
-            pass  # 注册表不可用时使用 DEFAULTS 中的硬编码兜底
+        except Exception as e:
+            logger.debug(f"注册表不可用，使用 DEFAULTS 兜底: {e}")
         # 1. 合并系统全局配置
         sys_path = getattr(Config, 'SYSTEM_CONFIG', None)
         if sys_path and os.path.isfile(sys_path):

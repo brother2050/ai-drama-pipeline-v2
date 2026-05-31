@@ -240,7 +240,7 @@ def validate_file(path: Path) -> bool:
     else:
         print(f"  ❌ 发现 {len(errors)} 个错误，需要修正后才能导入")
 
-    return len(errors) == 0
+    return not errors
 
 
 def main():

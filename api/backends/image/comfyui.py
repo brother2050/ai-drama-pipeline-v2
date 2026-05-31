@@ -119,8 +119,8 @@ class ComfyUI:
                             if not files:
                                 raise RuntimeError("ComfyUI 任务完成但未返回任何文件")
                             return files
-            except httpx.HTTPError:
-                pass  # 网络抖动，继续重试
+            except httpx.HTTPError as e:
+                logger.debug(f"ComfyUI 轮询网络抖动: {e}")
             time.sleep(poll_interval)
             poll_interval = min(poll_interval * 2, 16)
         raise TimeoutError(f"ComfyUI workflow timeout ({self._timeout}s)")

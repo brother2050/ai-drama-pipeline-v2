@@ -871,9 +871,8 @@ def _proj() -> Path:
                 p = Path(active_file.read_text().strip())
                 if p.exists():
                     d = p
-        except (OSError, ValueError):
-            # 文件在 exists() 和 read_text() 之间被删除，或内容为空
-            pass
+        except (OSError, ValueError) as e:
+            logger.debug(f"读取 .active 项目失败: {e}")
         _proj_cache = (mt, d)
         return d
 

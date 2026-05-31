@@ -219,12 +219,12 @@ def _try_mark_running_atomic(config_path: str, episode: int, shot_id: str, step:
                             return False
                 finally:
                     cur.close()
-        except Exception:
-            pass  # DB 完全不可用，跳过检查
+        except Exception as e:
+            logger.debug(f"DB 状态检查跳过: {e}")
         try:
             _db_mark_running(config_path, episode, shot_id, step)
-        except Exception:
-            pass  # 数据库完全不可用时忽略
+        except Exception as e:
+            logger.debug(f"DB 标记跳过: {e}")
         return True
 
 

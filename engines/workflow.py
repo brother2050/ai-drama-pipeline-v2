@@ -163,7 +163,7 @@ def set_clip_text_prompts(wf: dict, positive: str, negative: str = "", backend: 
             # 空文本不作为判断依据（避免误判）
             text_lower = text.lower().strip()
             is_negative = (
-                len(text_lower) > 0 and (
+                text_lower and (
                     len(text_lower) < 20 or
                     any(kw in text_lower for kw in ["bad quality", "worst quality", "ugly",
                         "deformed", "blurry", "negative", "low quality", "bad anatomy"])

@@ -111,9 +111,8 @@ def _migrate_scenes_reference_images(cursor) -> None:
         """)
         if cursor.fetchone():
             cursor.execute("ALTER TABLE scenes RENAME COLUMN reference_image TO reference_images")
-    except Exception:
-        # 列已迁移或表不存在，静默跳过
-        pass
+    except Exception as e:
+        logger.debug(f"scenes 列迁移跳过: {e}")
 
 
 def _migrate_characters_columns(cursor) -> None:
