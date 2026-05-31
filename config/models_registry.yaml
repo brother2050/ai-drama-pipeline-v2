@@ -10,6 +10,7 @@ defaults:
   music_backend: "template"
   image_backend: "sd15"
   video_backend: "animatediff"
+  llm_backend: "openai"
 
 # ══════════════════════════════════════════════════════════
 #  TTS 后端

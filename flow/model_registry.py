@@ -32,6 +32,7 @@ def _builtin_defaults() -> dict:
             "music_backend": "template",
             "image_backend": "sd15",
             "video_backend": "animatediff",
+            "llm_backend": "openai",
         },
         "image_backends": {
             "sd15": {"workflow": "01_first_frame_sd15.json", "prompt_style": "tag",
