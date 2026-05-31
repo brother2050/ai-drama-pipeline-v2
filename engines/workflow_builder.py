@@ -320,8 +320,8 @@ class WorkflowBuilder:
         elif not primary_refs:
             logger.warning(f"角色 '{primary_id}' 无定妆照，IP-Adapter 将使用占位图")
 
-        # 设置 IP-Adapter 权重
-        weight = ip_config.get("weight", 0.6)
+        # 设置 IP-Adapter 权重（0.75 保持角色面部一致性，可通过 models.ip_adapter.weight 覆盖）
+        weight = ip_config.get("weight", 0.75)
         for nid in find_nodes_by_class(wf, "IPAdapterAdvanced"):
             if nid in wf:
                 wf[nid]["inputs"]["weight"] = weight
