@@ -65,36 +65,21 @@ pip install -e ".[all]"
 
 | 后端 | UNet / Checkpoint | CLIP | VAE | 显存需求 |
 |------|-------------------|------|-----|---------|
-| **Flux（推荐）** | `flux1-dev.safetensors` | `clip_l.safetensors` + `t5xxl_fp16.safetensors` | Flux 自带 | ~16GB |
-| **Cosmos** | `cosmos_predict2_2B_t2i.safetensors` | `oldt5_xxl_fp8_e4m3fn_scaled.safetensors` | `wan_2.1_vae.safetensors` | ~12GB |
+| **Cosmos（默认推荐）** | `cosmos_predict2_2B_t2i.safetensors` | `oldt5_xxl_fp8_e4m3fn_scaled.safetensors` | `wan_2.1_vae.safetensors` | ~12GB |
+| **Flux** | `flux1-dev.safetensors` | `clip_l.safetensors` + `t5xxl_fp16.safetensors` | Flux 自带 | **≥32GB**（FP8 约 16GB） |
 | **SD1.5** | `v1-5-pruned-emaonly.safetensors` | Checkpoint 自带 | Checkpoint 自带 | ~6GB |
 
-#### 方案 A：Flux 后端（推荐）
+> **GPU 兼容性速查**：
+>
+> | GPU | 显存 | 推荐后端 | 说明 |
+> |-----|------|---------|------|
+> | T4 | 16GB | Cosmos / SD1.5 | Flux fp8 可尝试，fp16 不行 |
+> | A10 | 24GB | Cosmos / SD1.5 | Flux fp8 可尝试，fp16 不行 |
+> | V100-32G | 32GB | Flux fp8 / Cosmos | Flux fp16 勉强，推荐 fp8 |
+> | A100-40G | 40GB | Flux fp16 / Cosmos | 全部后端可用 |
+> | A100-80G | 80GB | 全部 | 无限制 |
 
-```bash
-# 1. UNet 模型 → ComfyUI/models/diffusion_models/（或 ComfyUI/models/unet/）
-mkdir -p ComfyUI/models/diffusion_models/
-wget -O ComfyUI/models/diffusion_models/flux1-dev.safetensors \
-  https://huggingface.co/Comfy-Org/flux1-dev/resolve/main/flux1-dev.safetensors
-
-# 2. CLIP 模型 → ComfyUI/models/clip/
-mkdir -p ComfyUI/models/clip/
-wget -O ComfyUI/models/clip/clip_l.safetensors \
-  https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors
-wget -O ComfyUI/models/clip/t5xxl_fp16.safetensors \
-  https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp16.safetensors
-
-# 3. VAE：Flux UNet 自带 VAE，无需单独下载
-```
-
-> **FP8 省显存版**（8GB 显存可跑）：
-> ```bash
-> # 用 FP8 UNet 替代 FP16，显存从 16GB 降到 ~8GB
-> wget -O ComfyUI/models/diffusion_models/flux1-dev-fp8.safetensors \
->   https://huggingface.co/Kijai/flux-fp8/resolve/main/flux1-dev-fp8.safetensors
-> ```
-
-#### 方案 B：Cosmos 后端
+#### 方案 A：Cosmos 后端（推荐，12GB 显存即可）
 
 ```bash
 # 1. UNet 模型 → ComfyUI/models/diffusion_models/
@@ -119,7 +104,33 @@ wget -O ComfyUI/models/vae/wan_2.1_vae.safetensors \
 >   https://huggingface.co/nvidia/Cosmos-Predict2-2B-Video2World/resolve/main/cosmos_predict2_2B_video2world_480p_16fps.safetensors
 > ```
 
-#### 方案 C：SD1.5 后端
+#### 方案 B：Flux 后端（≥32GB 显存）
+
+```bash
+# 1. UNet 模型 → ComfyUI/models/diffusion_models/（或 ComfyUI/models/unet/）
+mkdir -p ComfyUI/models/diffusion_models/
+wget -O ComfyUI/models/diffusion_models/flux1-dev.safetensors \
+  https://huggingface.co/Comfy-Org/flux1-dev/resolve/main/flux1-dev.safetensors
+
+# 2. CLIP 模型 → ComfyUI/models/clip/
+mkdir -p ComfyUI/models/clip/
+wget -O ComfyUI/models/clip/clip_l.safetensors \
+  https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors
+wget -O ComfyUI/models/clip/t5xxl_fp16.safetensors \
+  https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp16.safetensors
+
+# 3. VAE：Flux UNet 自带 VAE，无需单独下载
+```
+
+> **FP8 省显存版**（T4/A10 可尝试）：
+> ```bash
+> # 用 FP8 UNet 替代 FP16，显存从 32GB+ 降到 ~16GB
+> # 注意：仍需 T4 (16GB) 级别以上，且生成速度较慢
+> wget -O ComfyUI/models/diffusion_models/flux1-dev-fp8.safetensors \
+>   https://huggingface.co/Kijai/flux-fp8/resolve/main/flux1-dev-fp8.safetensors
+> ```
+
+#### 方案 C：SD1.5 后端（≥6GB 显存，入门级）
 
 ```bash
 # Checkpoint 模型 → ComfyUI/models/checkpoints/
