@@ -231,6 +231,10 @@ const I18N = {
   'proj.created': { zh: '已创建', en: 'Created' },
   'proj.switched': { zh: '已切换', en: 'Switched' },
   'proj.input_name': { zh: '名称:', en: 'Name:' },
+  'proj.create_title': { zh: '新建短剧项目', en: 'New Drama Project' },
+  'proj.name_ph': { zh: '输入项目名称', en: 'Enter project name' },
+  'proj.style': { zh: '视觉风格', en: 'Visual Style' },
+  'proj.genre': { zh: '题材类型', en: 'Genre' },
   'proj.confirm_delete': { zh: '确认删除项目 {name}？', en: 'Delete project {name}?' },
   'proj.deleted': { zh: '项目已删除', en: 'Project deleted' },
 

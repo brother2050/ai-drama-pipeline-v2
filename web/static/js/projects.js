@@ -17,7 +17,61 @@ async function loadProjects() {
     loadEpisodeManager();
   } catch (e) { el.innerHTML = `<div class="card"><h2>${t('common.error')}</h2><p>${esc(e.message)}</p></div>`; }
 }
-async function newProj() { const n = await modalPrompt(t('proj.input_name')); if (!n) return; api('/projects/new', { method: 'POST', body: { name: n } }).then(() => { toast(t('toast.created')); loadProjects(); }).catch(e => toast(e.message, 'error')); }
+async function newProj() {
+  // 加载预设列表
+  let styles = {}, genres = {};
+  try {
+    const presets = await api('/projects/presets');
+    styles = presets.styles || {};
+    genres = presets.genres || {};
+  } catch (e) { /* 回退到默认值 */ }
+
+  const styleOpts = Object.entries(styles).map(([k, v]) => `<option value="${k}">${esc(k)} — ${esc(v)}</option>`).join('');
+  const genreOpts = Object.entries(genres).map(([k, v]) => `<option value="${k}">${esc(k)} — ${esc(v)}</option>`).join('');
+
+  return new Promise(resolve => {
+    const o = document.createElement('div'); o.className = 'edit-overlay';
+    o.innerHTML = `<div class="edit-panel" style="width:480px"><div class="edit-header"><h3>🎬 ${t('proj.create_title')}</h3></div>
+      <div class="edit-body">
+        <div class="edit-field">
+          <label style="font-size:.85rem;margin-bottom:.2rem;display:block">${t('proj.name')}</label>
+          <input id="_np-name" type="text" placeholder="${t('proj.name_ph')}" style="width:100%">
+        </div>
+        <div class="edit-field" style="margin-top:.6rem">
+          <label style="font-size:.85rem;margin-bottom:.2rem;display:block">${t('proj.style')}</label>
+          <select id="_np-style" style="width:100%">${styleOpts}</select>
+        </div>
+        <div class="edit-field" style="margin-top:.6rem">
+          <label style="font-size:.85rem;margin-bottom:.2rem;display:block">${t('proj.genre')}</label>
+          <select id="_np-genre" style="width:100%">${genreOpts}</select>
+        </div>
+      </div>
+      <div class="edit-footer"><button class="btn btn-primary" id="_np-ok">${t('btn.confirm')}</button>
+      <button class="btn btn-outline" id="_np-cancel">${t('btn.cancel')}</button></div></div>`;
+    document.body.appendChild(o);
+    const nameInp = o.querySelector('#_np-name');
+    const cleanup = (result) => { o.remove(); resolve(result); };
+    o.querySelector('#_np-ok').onclick = () => {
+      const name = nameInp.value.trim();
+      if (!name) { nameInp.focus(); return; }
+      cleanup({
+        name,
+        style: o.querySelector('#_np-style').value,
+        genre: o.querySelector('#_np-genre').value,
+      });
+    };
+    o.querySelector('#_np-cancel').onclick = () => cleanup(null);
+    o.onclick = (e) => { if (e.target === o) cleanup(null); };
+    nameInp.focus();
+    nameInp.addEventListener('keydown', (e) => { if (e.key === 'Enter') o.querySelector('#_np-ok').click(); if (e.key === 'Escape') cleanup(null); });
+  }).then(result => {
+    if (!result) return;
+    api('/projects/new', { method: 'POST', body: result }).then(() => {
+      toast(t('toast.created'));
+      loadProjects();
+    }).catch(e => toast(e.message, 'error'));
+  });
+}
 function switchProj(name) {
   api('/projects/switch', { method: 'POST', body: { name } }).then(() => {
     _cache.clear();
