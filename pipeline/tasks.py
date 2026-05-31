@@ -1704,9 +1704,20 @@ def _parse_seko_storyboard(steps: list[dict], episode: int) -> list[dict]:
         shot_id_match = re.search(r"镜头(\d+)", shot_name)
         shot_id = shot_id_match.group(1).zfill(3) if shot_id_match else f"{len(shots) + 1:03d}"
 
-        # 提取镜头描述
-        desc_match = re.search(r":editable\[(.*?)\]", block, re.DOTALL)
-        desc_raw = desc_match.group(1).strip() if desc_match else ""
+        # 提取镜头描述（支持嵌套括号：:editable[画面：[特写] ...]）
+        desc_raw = ""
+        editable_match = re.search(r":editable\[", block)
+        if editable_match:
+            start = editable_match.end()
+            depth = 1
+            end = start
+            while end < len(block) and depth > 0:
+                if block[end] == '[':
+                    depth += 1
+                elif block[end] == ']':
+                    depth -= 1
+                end += 1
+            desc_raw = block[start:end - 1].strip()
 
         # 解析描述中的各字段
         scene = ""

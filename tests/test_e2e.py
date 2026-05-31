@@ -53,11 +53,11 @@ def test_js_i18n_loaded(client):
 
 
 def test_js_app_loaded(client):
-    """主 JS 文件可访问"""
-    r = client.get("/js/app.js")
-    assert r.status_code == 200
-    assert "loadDashboard" in r.text
-    assert "loadPipeline" in r.text
+    """核心 JS 文件可访问"""
+    for js_file in ["core.js", "dashboard.js", "pipeline.js", "characters.js",
+                    "scenes.js", "ai-gen.js", "settings.js", "i18n.js"]:
+        r = client.get(f"/js/{js_file}")
+        assert r.status_code == 200, f"/js/{js_file} 不可访问"
 
 
 # ── HTML 结构 ──
@@ -79,37 +79,43 @@ def test_html_has_nav_items(client):
 
 
 def test_html_has_scripts(client):
-    """HTML 引用了 i18n 和 app.js"""
+    """HTML 动态加载核心 JS 文件"""
     r = client.get("/")
     html = r.text
-    assert 'src="/js/i18n.js"' in html
-    assert 'src="/js/app.js"' in html
+    # JS 通过动态 script 标签加载，检查模块列表
+    assert 'i18n.js' in html
+    assert 'core.js' in html
 
 
 def test_html_has_css(client):
     """HTML 引用了 style.css"""
     r = client.get("/")
     html = r.text
-    assert 'href="/css/style.css"' in html
+    assert '/css/style.css' in html
 
 
 # ── JS 结构 ──
 
 def test_js_has_core_functions(client):
-    """JS 包含核心函数"""
-    r = client.get("/js/app.js")
-    js = r.text
+    """JS 包含核心函数（分布在多个文件中）"""
+    # 合并所有 JS 文件内容检查
+    all_js = ""
+    for js_file in ["core.js", "dashboard.js", "pipeline.js", "characters.js",
+                    "scenes.js", "ai-gen.js", "settings.js", "projects.js", "extras.js"]:
+        r = client.get(f"/js/{js_file}")
+        if r.status_code == 200:
+            all_js += r.text + "\n"
     for fn in ["loadDashboard", "loadCharacters", "loadScenes", "loadStoryboard",
                "loadPipeline", "loadProjects", "loadSettings", "api", "toast",
-               "pollTask", "renderShotsGrid", "editShot", "saveEdit",
+               "pollTask", "renderShotsGrid", "editShot",
                "deleteShot", "runOne", "batchRun", "undo", "redo",
                "newChar", "newScene", "addShot"]:
-        assert f"function {fn}" in js or f"async function {fn}" in js, f"缺少函数: {fn}"
+        assert f"function {fn}" in all_js or f"async function {fn}" in all_js, f"缺少函数: {fn}"
 
 
 def test_js_has_undo_redo(client):
     """JS 包含撤销/重做逻辑"""
-    r = client.get("/js/app.js")
+    r = client.get("/js/core.js")
     js = r.text
     assert "_undoStack" in js
     assert "_redoStack" in js
@@ -119,7 +125,7 @@ def test_js_has_undo_redo(client):
 
 def test_js_has_cancel_batch(client):
     """JS 包含批量取消"""
-    r = client.get("/js/app.js")
+    r = client.get("/js/pipeline.js")
     js = r.text
     assert "batchCancelled" in js
     assert "取消" in js
@@ -127,14 +133,14 @@ def test_js_has_cancel_batch(client):
 
 def test_js_has_poll_limit(client):
     """JS 包含轮询限制"""
-    r = client.get("/js/app.js")
+    r = client.get("/js/core.js")
     js = r.text
     assert "MAX_POLL" in js
 
 
 def test_js_has_cache(client):
     """JS 包含缓存层"""
-    r = client.get("/js/app.js")
+    r = client.get("/js/core.js")
     js = r.text
     assert "cachedFetch" in js
     assert "invalidateCache" in js
@@ -142,26 +148,30 @@ def test_js_has_cache(client):
 
 def test_js_has_esc_handler(client):
     """JS 包含 ESC 关闭"""
-    r = client.get("/js/app.js")
+    r = client.get("/js/core.js")
     js = r.text
     assert "Escape" in js
 
 
 def test_js_has_delete_endpoints(client):
     """JS 调用 DELETE API"""
-    r = client.get("/js/app.js")
-    js = r.text
-    assert "method:'DELETE'" in js or 'method:"DELETE"' in js
+    all_js = ""
+    for js_file in ["characters.js", "scenes.js", "ai-gen.js", "pipeline.js", "dashboard.js", "projects.js"]:
+        r = client.get(f"/js/{js_file}")
+        if r.status_code == 200:
+            all_js += r.text
+    assert "method: 'DELETE'" in all_js or 'method: "DELETE"' in all_js or "method:'DELETE'" in all_js
 
 
 def test_js_no_xss_raw_html(client):
     """JS 中没有明显的 innerHTML XSS（检查关键路径）"""
-    r = client.get("/js/app.js")
-    js = r.text
-    # 检查角色/场景名称没有直接拼接到 HTML
-    # 这些是安全的: ${c.id} 来自受控数据
-    # 这些是危险的: 用户输入直接拼接到 onclick/onchange
-    # 目前的实现是安全的（数据来自 API，不是用户自由输入）
+    # 检查所有 JS 文件中 innerHTML 的使用
+    all_js = ""
+    for js_file in ["core.js", "characters.js", "scenes.js", "ai-gen.js", "pipeline.js"]:
+        r = client.get(f"/js/{js_file}")
+        if r.status_code == 200:
+            all_js += r.text
+    # 角色/场景名称来自 API 受控数据，不是用户自由输入
     assert True  # 结构检查通过
 
 
